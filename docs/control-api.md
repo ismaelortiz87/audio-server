@@ -22,8 +22,12 @@ Wire format: JSON text frames over one WebSocket. No binary frames in v1.
 | WebSocket | `GET /api/v1/ws` (upgrade) |
 | Liveness | `GET /api/v1/health` → `200 {"ok":true,"app":"Crosspoint","version":"1.7.2","role":"console"}` (for the proxy and monitoring; no auth, no state) |
 
-**Binding** (P4.1): `127.0.0.1` by default. A non-loopback bind (the web
-container, P7) is only allowed together with a token (see §2.2).
+**Binding** (P4.1, implemented): `127.0.0.1` by default, port **7070**
+(Console) / **7071** (VDI agent); `--api-port 0` disables it. Flags `--api-port`,
+`--api-bind`, `--api-token` (or env `CROSSPOINT_API_TOKEN`),
+`--api-allow-origin` (repeatable), `--ui-dir`; the YAML `api:` section gives
+defaults. A non-loopback bind (the web container, P7) refuses to start
+without a token (see §2.2). The listener is IPv4 only.
 
 **Behind maelo's proxy** (D13): TLS terminates at the proxy; the engine
 speaks plain HTTP/WS. The proxy must pass `Upgrade`/`Connection` headers and
@@ -33,7 +37,16 @@ localhost.
 **Origin check:** the server accepts the WS upgrade only from its own origin
 (`Host` match), `http://localhost:<port>`, `http://127.0.0.1:<port>`, and any
 origins in the config's `api.allowed_origins` (e.g.
-`https://crosspoint.app.lagreca.io`). Otherwise it answers `403`.
+`https://crosspoint.app.lagreca.io`). Otherwise it answers `403`. A WebSocket upgrade **without** an `Origin`
+header is accepted (non-browser clients such as Node or websocat send none);
+when present it must match. **On a loopback bind the `Host` header must be
+`localhost`, `127.0.0.1` or `[::1]`** (any request), which blocks DNS-rebinding
+pages from talking to a local engine.
+
+**Not part of this API:** WebRTC audio signalling for the web Console is
+served by the gateway sidecar under `/rtc/*` (`POST /rtc/offer`,
+`GET /rtc/config|stats|health`; see `docker/web-console/gateway/README.md`).
+The proxy routes `/rtc/` there; it is plain HTTP.
 
 ## 2. Session
 
@@ -281,6 +294,14 @@ node) · `wrong_mode` · `busy` (not allowed in the current state) ·
 `not_supported` (feature not on this platform, e.g. global hotkey on web) ·
 `io_error` (couldn't write the config) · `internal`.
 
+### 5.4 Recording (P10, additive; designed in `design/recording.md` §5)
+State: `stations{}.recording: null | { "since": iso, "includesMe": bool }`,
+`settings.recordingIncludesMe`, `recordingsRunning`. Command:
+`station.record { station, on }`. Finished sessions are a REST resource:
+`GET /api/v1/sessions`, `GET /api/v1/sessions/{id}`,
+`GET /api/v1/sessions/{id}/audio/{station|me}`, `DELETE /api/v1/sessions/{id}`,
+`POST /api/v1/sessions/{id}/retry`.
+
 ## 6. Versioning
 - `v` in `hello` and `/api/v1/` in paths. Additive changes (new fields, message
   types, commands, features) stay v1; clients ignore what they don't know.
@@ -289,9 +310,8 @@ node) · `wrong_mode` · `busy` (not allowed in the current state) ·
   this document; keep them in sync in the same PR.
 
 ## 7. Open points for the engine tasks
-- **P4.1:** pick the WS implementation (small vendored lib vs JUCE sockets +
-  minimal framing). Static files and `/api/v1/health` are served by the same
-  listener.
+- **P4.1:** done (JUCE sockets + own framing; see TASKS P4.1 Result).
+  `hello.features` lists only what's implemented.
 - **P4.2:** remembered stations (colour index, level, pan, mute, talk,
   lastSeen) live in the Console's saved state; `forget` removes them.
 - **P1.7 → P4.2:** the VDI's agent report is carried in peer info and copied
