@@ -150,8 +150,7 @@ check_case mesh-ok 0 mesh-stock
 assert_contains mesh-ok "PASS"
 
 # ---------------------------------------------------------------------------
-# 2. matrix model is CORRECT but the scenario documents it as pending:
-#    matrix-target-check asserts the matrix directly and must PASS on correct
+# 2. matrix-target-check asserts the matrix directly and must PASS on correct
 #    cross-role dumps.
 # ---------------------------------------------------------------------------
 D="$WORK/matrix-target-ok"
@@ -170,23 +169,40 @@ check_case matrix-2v2-target-ok 0 matrix-2v2 --expect matrix
 assert_contains matrix-2v2-target-ok "PASS"
 
 # ---------------------------------------------------------------------------
-# 3. The CURRENT real-app state: roles known, everything blocked. This is what
-#    matrix-1v1 / matrix-2v2 expect today, and it must PASS.
+# 3. P1.4 is implemented, so matrix-1v1 / matrix-2v2 now expect the matrix
+#    directly: correct cross-role dumps PASS with no --expect override. The
+#    pre-P1.4 all-blocked state is now the WRONG answer for these scenarios and
+#    must fail, which is the regression guard that the scenarios really flipped.
 # ---------------------------------------------------------------------------
-D="$WORK/matrix-1v1-blocked-ok"
+D="$WORK/matrix-1v1-ok"
+matrix_dump "$D" c1 console v1:vdi
+matrix_dump "$D" v1 vdi c1:console
+check_case matrix-1v1-ok 0 matrix-1v1
+assert_contains matrix-1v1-ok "PASS"
+
+D="$WORK/matrix-2v2-ok"
+matrix_dump "$D" c1 console c2:console v1:vdi v2:vdi
+matrix_dump "$D" c2 console c1:console v1:vdi v2:vdi
+matrix_dump "$D" v1 vdi c1:console c2:console v2:vdi
+matrix_dump "$D" v2 vdi c1:console c2:console v1:vdi
+check_case matrix-2v2-ok 0 matrix-2v2
+assert_contains matrix-2v2-ok "PASS"
+
+# The old all-blocked state must no longer satisfy these scenarios.
+D="$WORK/matrix-1v1-blocked-wrong"
 all_blocked_dump "$D" c1 console v1:vdi
 all_blocked_dump "$D" v1 vdi c1:console
-check_case matrix-1v1-blocked-ok 0 matrix-1v1
-assert_contains matrix-1v1-blocked-ok "PASS"
-assert_contains matrix-1v1-blocked-ok "target not yet satisfied"
+check_case matrix-1v1-blocked-wrong 1 matrix-1v1
+assert_contains matrix-1v1-blocked-wrong "MISMATCH"
+assert_contains matrix-1v1-blocked-wrong "sendAllow: expected true, got false"
 
-D="$WORK/matrix-2v2-blocked-ok"
+D="$WORK/matrix-2v2-blocked-wrong"
 all_blocked_dump "$D" c1 console c2:console v1:vdi v2:vdi
 all_blocked_dump "$D" c2 console c1:console v1:vdi v2:vdi
 all_blocked_dump "$D" v1 vdi c1:console c2:console v2:vdi
 all_blocked_dump "$D" v2 vdi c1:console c2:console v1:vdi
-check_case matrix-2v2-blocked-ok 0 matrix-2v2
-assert_contains matrix-2v2-blocked-ok "PASS"
+check_case matrix-2v2-blocked-wrong 1 matrix-2v2
+assert_contains matrix-2v2-blocked-wrong "MISMATCH"
 
 # ---------------------------------------------------------------------------
 # 4. blocked-unknown passes: peers observe "unknown" and nothing routes.

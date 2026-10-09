@@ -914,7 +914,18 @@ private:
     RemotePeer *  findRemotePeerByRemoteSinkId(EndpointState * endpoint, int32_t sinkId);
     RemotePeer *  doAddRemotePeerIfNecessary(EndpointState * endpoint, int32_t ourId=AOO_ID_NONE, const String & username={}, const String & groupname={});
     bool doRemoveRemotePeerIfNecessary(EndpointState * endpoint, int32_t ourId);
-    
+
+    // P1.4: apply the routing matrix (docs/ROADMAP.md) to one peer, or to every
+    // peer after our own role changes. Both expect mCoreLock to be held for
+    // reading: the allow/active setters take it again, and JUCE read locks are
+    // recursive per thread. Never call them under a ScopedWriteLock, because
+    // they open/close real AOO streams.
+    void applyRoleMatrixToPeer(RemotePeer * peer);
+    void applyRoleMatrixToAllPeers();
+    // Index of a peer already known to be in the table, or -1. The caller must
+    // hold mCoreLock; this deliberately does not take it itself.
+    int indexOfRemotePeer(RemotePeer * peer) const;
+
     bool removeAllRemotePeersWithEndpoint(EndpointState * endpoint);
 
     void adjustRemoteSendMatrix(int index, bool removed);

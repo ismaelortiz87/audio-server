@@ -25,10 +25,11 @@
     "  3 role-less peers + SONOBUS_NO_ROLE_BLOCK=1 -> full mesh, all flags true.",
     "  role-less peer + SONOBUS_NO_ROLE_ADVERT=1   -> observed role 'unknown',",
     "                                                 both directions blocked.",
-    "  console + vdi (no env)                      -> both directions blocked,",
-    "                                                 because P1.4 is not yet",
-    "                                                 implemented (P1.3 blocks)",
-    "                                                 every new peer by default."
+    "  console + vdi (no env)                      -> both directions OPEN (P1.4",
+    "                                                 applies the routing matrix",
+    "                                                 on role arrival).",
+    "  console + console, or vdi + vdi (no env)    -> both directions blocked",
+    "                                                 (same role)."
   ],
   "scenarios": {
     "mesh-stock": {
@@ -46,22 +47,20 @@
       ]
     },
     "matrix-1v1": {
-      "description": "One console and one vdi. Targets the routing matrix, but the real app blocks every new peer until P1.4 lands, so this run expects all-blocked and reports the target separately.",
+      "description": "One console and one vdi. Opposite roles, so the routing matrix opens the path both ways.",
       "group": "f2-matrix-1v1",
       "routing": "matrix",
-      "expect": "all-blocked",
-      "pending": "P1.4 (apply the routing matrix to open console<->vdi paths) is not implemented; P1.3 blocks all new peers.",
+      "expect": "matrix",
       "peers": [
         { "name": "c1", "role": "console" },
         { "name": "v1", "role": "vdi" }
       ]
     },
     "matrix-2v2": {
-      "description": "Two consoles and two vdis. Targets the routing matrix (cross-role allowed, same-role blocked); today every direction is blocked pending P1.4.",
+      "description": "Two consoles and two vdis. Targets the routing matrix: console<->vdi allowed both ways, same-role pairs blocked.",
       "group": "f2-matrix-2v2",
       "routing": "matrix",
-      "expect": "all-blocked",
-      "pending": "P1.4 is not implemented; P1.3 blocks all new peers. With --expect matrix this scenario shows the target model is not yet satisfied.",
+      "expect": "matrix",
       "peers": [
         { "name": "c1", "role": "console" },
         { "name": "c2", "role": "console" },
@@ -80,11 +79,10 @@
       ]
     },
     "matrix-target-check": {
-      "description": "Same peers as matrix-1v1 but compared against the TARGET matrix model. Expected to fail until P1.4 lands; useful to see exactly which paths are still closed.",
+      "description": "Same peers as matrix-1v1 but compared against the TARGET matrix model. Since P1.4 this passes; kept as the explicit acceptance test for the routing matrix.",
       "group": "f2-matrix-1v1",
       "routing": "matrix",
       "expect": "matrix",
-      "pending": "This scenario intentionally asserts the P1.4 target; it should fail until P1.4 is implemented.",
       "peers": [
         { "name": "c1", "role": "console" },
         { "name": "v1", "role": "vdi" }

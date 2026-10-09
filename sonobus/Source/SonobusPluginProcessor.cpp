@@ -109,6 +109,21 @@ static bool disableRoleAdvertising()
     return flag;
 }
 
+// P1.4: the routing matrix from docs/ROADMAP.md -- may `sender` send to
+// `receiver`? Either side Unknown is blocked (stock SonoBus peers stay blocked,
+// which is P1.6), same role is blocked, and the only remaining pair,
+// console <-> vdi, is allowed both ways. This mirrors
+// tests/f2/evaluate.py::allowed() exactly; keep the two in step.
+static bool roleMatrixAllows(SonobusAudioProcessor::PeerRole sender,
+                             SonobusAudioProcessor::PeerRole receiver)
+{
+    if (sender == SonobusAudioProcessor::PeerRole::Unknown
+        || receiver == SonobusAudioProcessor::PeerRole::Unknown) {
+        return false;
+    }
+    return sender != receiver;
+}
+
 String SonobusAudioProcessor::peerRoleToString(PeerRole role)
 {
     switch (role) {
@@ -135,7 +150,9 @@ void SonobusAudioProcessor::setRole(PeerRole role)
     std::cerr << "SonoBus role: " << peerRoleToString(role) << std::endl;
 
     // our own role affects which peers we may talk to, so re-apply the matrix
-    // (P1.4). Until that lands this only records the value.
+    // (P1.4). Our own role is half of every decision, so a change here can open
+    // or close every peer we know about. Safe to call before any peer exists.
+    applyRoleMatrixToAllPeers();
 }
 
 static String extraStateCollectionKey("ExtraState");
@@ -3241,17 +3258,33 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
 
     // P1.2: role advertised by the remote peer. Absent for stock SonoBus
     // peers, which must remain Unknown (and therefore blocked, P1.6).
+    bool roleChanged = false;
     if (infodata.hasProperty("role")) {
         auto role = peerRoleFromString(infodata.getProperty("role", "").toString());
         if (role != peer->remoteRole) {
             DBG("peerinfo: remote role is now " << peerRoleToString(role));
             peer->remoteRole = role;
+            roleChanged = true;
         }
         peer->hasRemoteRole = true;
     }
 
     peer->hasRemoteInfo = true;
 
+    // P1.4: apply the routing matrix when this peer's role is first learned or
+    // changes, and only then. Deliberately NOT on every peer-info update: this
+    // message is also re-sent for unrelated reasons (buffer auto-sizing, the
+    // first ping, layout changes), and re-applying the matrix would there
+    // silently re-open a peer the user has muted -- per-peer mute via
+    // setRemotePeerSendAllow(false), or the global send/recv mute, both of
+    // which are expressed purely through these same allow flags. Restricting the
+    // trigger to a role change keeps the matrix authoritative for routing while
+    // leaving user mute state alone. mCoreLock is already held for reading by
+    // the caller; the setters inside re-take it, which JUCE permits recursively
+    // on the same thread.
+    if (roleChanged) {
+        applyRoleMatrixToPeer(peer);
+    }
 }
 
 void SonobusAudioProcessor::sendRemotePeerInfoUpdate(int index, RemotePeer * topeer)
@@ -5988,6 +6021,169 @@ SonobusAudioProcessor::PeerRole SonobusAudioProcessor::getRemotePeerRole(int ind
         return mRemotePeers.getUnchecked(index)->remoteRole;
     }
     return PeerRole::Unknown;
+}
+
+
+// P1.4: apply the routing matrix to a single peer.
+//
+// Called (a) when a peer's role is first learned or changes, from
+// handleRemotePeerInfoUpdate, and (b) for every known peer when our own role
+// changes (setRole). It is deliberately NOT called on every peer-info update --
+// see the note in handleRemotePeerInfoUpdate. The caller must already hold
+// mCoreLock for reading: the public setters used here re-take it, and JUCE read
+// locks are recursive on the same thread. It must NOT be called under a
+// ScopedWriteLock, because opening and closing these streams touches live AOO
+// sources and sinks.
+//
+// The three outcomes, for (our role, the remote role we observe):
+//
+//   * either role Unknown -> blocked, indefinitely. An unknown remote may be a
+//     stock SonoBus peer that will never advertise a role, so this must not
+//     time out, and no later, unrelated event may open it. roleBlocked stays
+//     set, which is exactly what keeps the other open paths out (P1.6).
+//
+//   * same known role -> blocked as well, and roleBlocked stays set. Only a
+//     positive, opposite-role decision clears the gate, so the gate means
+//     "the matrix has not authorised this peer" rather than "we are still
+//     waiting". That keeps one single rule for every blocked case and leaves
+//     no window in which some other path could open a same-role peer.
+//
+//   * opposite known roles -> allowed, and only then is the gate cleared.
+//     Clear it FIRST, then open: both setRemotePeerSendActive and
+//     setRemotePeerRecvActive silently refuse to open a roleBlocked peer, so
+//     setting the allow flags first would be dropped.
+//
+// Both streams depend on a handshake that may not have finished yet: send needs
+// the outbound sink added by the AOO_SINK_ADD_EVENT handler, recv needs the
+// remote source id from AOO_SOURCE_ADD_EVENT. Both handlers re-check the allow
+// flags when they run, so a decision made before the handshake still takes
+// effect as soon as it completes. That is what makes both arrival orders work:
+// role-then-handshake and handshake-then-role.
+void SonobusAudioProcessor::applyRoleMatrixToPeer(RemotePeer * peer)
+{
+    if (peer == nullptr) return;
+
+    // Test-only escape hatch: SONOBUS_NO_ROLE_BLOCK restores the pre-P1.3
+    // open-by-default mesh, which F2's mesh-stock scenario verifies. The matrix
+    // must not touch peers at all in that mode, or it would close them again.
+    if (disableRoleBlocking()) return;
+
+    const int index = indexOfRemotePeer(peer);
+    if (index < 0) return; // peer removed from the table concurrently
+
+    // Read our own role fresh on every call: setRole re-applies this to every
+    // peer precisely because our own role is half of every decision.
+    const PeerRole ours = mRole.load();
+    const PeerRole theirs = peer->remoteRole;
+
+    const bool allowSend = roleMatrixAllows(ours, theirs);   // we may send to them
+    const bool allowRecv = roleMatrixAllows(theirs, ours);   // they may send to us
+    // The hard gate is released ONLY for a positive, allowed decision (both
+    // roles known and opposite). Every other outcome -- a same-role peer or a
+    // remote whose role is still unknown -- keeps roleBlocked set, so no other
+    // path (global unmute, solo, the peer UI) can open it. This is what makes
+    // an unknown role blocked *indefinitely* rather than merely until the next
+    // event: a stock SonoBus peer never advertises, so nothing should ever
+    // clear this. A same-role peer stays gated for the same reason, and the
+    // allow flags below are belt-and-braces on top of the gate.
+    const bool wantRoleBlocked = !(allowSend || allowRecv);
+
+    // The matrix says what is *permitted*; the two global mutes say what the
+    // user currently *wants*. A permitted peer that is globally muted must not
+    // be opened now, but its cache records the permission so the existing
+    // unmute handler restores it later. This mirrors how a new peer is created
+    // (allow = !mute, cache = true), and it is why a role arriving while muted
+    // must not start audio.
+    const bool wantSendAllow = allowSend && !mMainSendMute.get();
+    const bool wantRecvAllow = allowRecv && !mMainRecvMute.get();
+
+    // Idempotence guard. This runs on role arrival/change and on any change of
+    // our own role, and re-issuing invite_source/start on an already-correct
+    // peer would churn the AOO streams for nothing. Skip only when every
+    // relevant field already matches; a real role change always moves at least
+    // one of them, so it can never be skipped. Note this is NOT "skip if we have
+    // applied before" -- roles can change repeatedly.
+    const bool sendSettled = (peer->sendAllow == wantSendAllow)
+                          && (peer->sendAllowCache == allowSend)
+                          && (!wantSendAllow || peer->sendActive);
+    // Recv is settled once recvAllow/cache agree and either the source is
+    // already active, or its id is not known yet (the source-add handler will
+    // invite it). recvActive legitimately flaps false on source state events,
+    // and re-inviting in that case is harmless (invite_source is idempotent).
+    const bool recvSettled = (peer->recvAllow == wantRecvAllow)
+                          && (peer->recvAllowCache == allowRecv)
+                          && (!wantRecvAllow || peer->recvActive || peer->remoteSourceId == AOO_ID_NONE);
+
+    if (sendSettled && recvSettled && peer->roleBlocked == wantRoleBlocked) {
+        return;
+    }
+
+    DBG("P1.4 matrix: ours=" << peerRoleToString(ours)
+        << " theirs=" << peerRoleToString(theirs)
+        << " -> sendAllow=" << (int) allowSend
+        << " recvAllow=" << (int) allowRecv
+        << " roleBlocked=" << (int) wantRoleBlocked);
+
+    // Set the hard gate before touching any stream. When allowing, it must
+    // already be clear before the Active setters run below; when blocking, this
+    // keeps every other open path out while we stop the streams.
+    peer->roleBlocked = wantRoleBlocked;
+
+    // Cache records the *permission*, independent of the current mute, exactly
+    // as at peer creation. For a blocked peer it must be false: at creation the
+    // cache is !mMainSendMute (normally true), and the global unmute handler
+    // restores the cache through the Active setter, which force-sets the allow
+    // flags back on. Leaving it true would let one mute->unmute cycle silently
+    // re-open a peer the matrix has blocked.
+    peer->sendAllowCache = allowSend;
+    peer->recvAllowCache = allowRecv;
+
+    if (wantSendAllow) {
+        // Opens the stream; this also sets sendAllow/sendAllowCache true.
+        setRemotePeerSendActive(index, true);
+    }
+    else {
+        // Either blocked by the matrix or globally muted. Setting the allow flag
+        // false routes to setRemotePeerSendActive(false), which stops the
+        // source; that is safe on a roleBlocked peer because the refusal only
+        // guards opening.
+        setRemotePeerSendAllow(index, false);
+    }
+
+    if (wantRecvAllow) {
+        // Ordering hazard: setRemotePeerRecvActive invites the remote source,
+        // which requires a valid remoteSourceId. Before the sink handshake that
+        // id is AOO_ID_NONE, and inviting it would be wrong. Set recvAllow alone
+        // in that case -- AOO_SOURCE_ADD_EVENT invites the source the moment the
+        // real id arrives, precisely because recvAllow is set.
+        if (peer->remoteSourceId == AOO_ID_NONE) {
+            peer->recvAllow = true;
+        }
+        else {
+            setRemotePeerRecvActive(index, true);
+        }
+    }
+    else {
+        setRemotePeerRecvAllow(index, false);
+    }
+}
+
+void SonobusAudioProcessor::applyRoleMatrixToAllPeers()
+{
+    const ScopedReadLock sl (mCoreLock);
+    for (auto * peer : mRemotePeers) {
+        applyRoleMatrixToPeer(peer);
+    }
+}
+
+int SonobusAudioProcessor::indexOfRemotePeer(RemotePeer * peer) const
+{
+    // Callers hold mCoreLock; this must not take it (it is also called from
+    // applyRoleMatrixToPeer, which already sits inside a read lock).
+    for (int i = 0; i < mRemotePeers.size(); ++i) {
+        if (mRemotePeers.getUnchecked(i) == peer) return i;
+    }
+    return -1;
 }
 
 
