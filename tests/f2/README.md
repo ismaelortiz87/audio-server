@@ -96,7 +96,7 @@ shows `UserJoin` + `GroupJoin`.
   "group": "f2-matrix-2v2",
   "routing": "matrix",
   "expect": "all-blocked",
-  "pending": "P1.4 is not implemented; P1.3 blocks all new peers.",
+  "pending": "why expect differs from routing, when it does",
   "env": { "SONOBUS_NO_ROLE_BLOCK": "1" },
   "peers": [
     { "name": "c1", "role": "console" },
@@ -166,10 +166,10 @@ Built from the current worktree sources (`build/desktop-release` and
 | Scenario | Peer config | Result |
 | --- | --- | --- |
 | `mesh-stock` | 3 role-less peers + `SONOBUS_NO_ROLE_BLOCK=1` | **PASS** — all flags true both ways |
-| `matrix-1v1` | 1 `--role console` + 1 `--role vdi` | **PASS** — all blocked (P1.3); target model reported as not yet satisfied |
-| `matrix-2v2` | 2 console + 2 vdi | **PASS** — all blocked; same as above |
+| `matrix-1v1` | 1 `--role console` + 1 `--role vdi` | **PASS** — cross-role open both ways (P1.4) |
+| `matrix-2v2` | 2 console + 2 vdi | **PASS** — console↔vdi open, same-role pairs blocked |
 | `blocked-unknown` | 2 peers + `SONOBUS_NO_ROLE_ADVERT=1` | **PASS** — observed role `unknown`, all blocked |
-| `matrix-target-check` | 1 console + 1 vdi, `expect: matrix` | **FAIL (intended)** — proves the harness still catches a real mismatch; passes only once P1.4 lands |
+| `matrix-target-check` | 1 console + 1 vdi, `expect: matrix` | **PASS** — the P1.4 acceptance test; it failed before P1.4 landed |
 
 Observed raw dumps (abridged):
 
@@ -180,11 +180,11 @@ Observed raw dumps (abridged):
    "sendAllow":true,"recvAllow":true,"sendActive":true,"recvActive":true,
    "receivingAudio":true}, ...]}
 
-# matrix-1v1, peer c1 (P1.4 absent: roles known, nothing routed)
+# matrix-1v1, peer c1 (P1.4: roles known and opposite, so the path is open)
 {"self":"c1","selfRole":"console","peers":[
   {"name":"v1","role":"vdi","hasRole":true,"connected":true,
-   "sendAllow":false,"recvAllow":false,"sendActive":false,"recvActive":false,
-   "receivingAudio":false}]}
+   "sendAllow":true,"recvAllow":true,"sendActive":true,"recvActive":true,
+   "receivingAudio":true}]}
 
 # blocked-unknown, peer u1 (selfRole stays console; u2 is observed as unknown)
 {"self":"u1","selfRole":"console","peers":[

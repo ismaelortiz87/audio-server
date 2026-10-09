@@ -79,11 +79,10 @@
       ]
     },
     "matrix-target-check": {
-      "description": "Same peers as matrix-1v1 but compared against the TARGET matrix model. Expected to fail until P1.4 lands; useful to see exactly which paths are still closed.",
+      "description": "Same peers as matrix-1v1 but compared against the TARGET matrix model. Since P1.4 this passes; kept as the explicit acceptance test for the routing matrix.",
       "group": "f2-matrix-1v1",
       "routing": "matrix",
       "expect": "matrix",
-      "pending": "This scenario intentionally asserts the P1.4 target; it should fail until P1.4 is implemented.",
       "peers": [
         { "name": "c1", "role": "console" },
         { "name": "v1", "role": "vdi" }
