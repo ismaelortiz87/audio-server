@@ -83,6 +83,60 @@ String SonobusAudioProcessor::paramInputReverbPreDelay  ("inreverbpredelay");
 static String recentsCollectionKey("RecentConnections");
 static String recentsItemKey("ServerConnectionInfo");
 
+static String roleStateKey("Role");
+
+// F2 needs to check the pre-roles behaviour (full mesh) against the same
+// instrumented build, and P1.6 wants a way to run a peer that advertises no
+// role. Two environment variables cover both without adding CLI surface:
+//   SONOBUS_NO_ROLE_BLOCK=1  -> do not block new peers (pre-P1.3 behaviour)
+//   SONOBUS_NO_ROLE_ADVERT=1 -> do not advertise a role (looks like stock)
+static bool envFlagSet(const char * name)
+{
+    auto v = SystemStats::getEnvironmentVariable(name, "");
+    return v == "1" || v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes");
+}
+
+static bool disableRoleBlocking()
+{
+    static bool flag = envFlagSet("SONOBUS_NO_ROLE_BLOCK");
+    return flag;
+}
+
+static bool disableRoleAdvertising()
+{
+    static bool flag = envFlagSet("SONOBUS_NO_ROLE_ADVERT");
+    return flag;
+}
+
+String SonobusAudioProcessor::peerRoleToString(PeerRole role)
+{
+    switch (role) {
+        case PeerRole::VDI:     return "vdi";
+        case PeerRole::Console: return "console";
+        case PeerRole::Unknown:
+        default:                return "unknown";
+    }
+}
+
+SonobusAudioProcessor::PeerRole SonobusAudioProcessor::peerRoleFromString(const String & str)
+{
+    auto s = str.trim().toLowerCase();
+    if (s == "vdi") return PeerRole::VDI;
+    if (s == "console") return PeerRole::Console;
+    return PeerRole::Unknown;
+}
+
+void SonobusAudioProcessor::setRole(PeerRole role)
+{
+    mRole.store(role);
+    // Visible in headless runs too (DBG is a no-op in release builds), which is
+    // how P1.1's "reflected in a debug log at startup" is checked.
+    std::cerr << "SonoBus role: " << peerRoleToString(role) << std::endl;
+
+    // our own role affects which peers we may talk to, so re-apply the matrix
+    // (P1.4). Until that lands this only records the value.
+}
+
 static String extraStateCollectionKey("ExtraState");
 static String useSpecificUdpPortKey("UseUdpPort");
 static String changeQualForAllKey("ChangeQualForAll");
@@ -363,6 +417,17 @@ struct SonobusAudioProcessor::RemotePeer {
     bool remoteIsRecording = false;
     bool hasRemoteInfo = false;
     bool blockedUs = false;
+
+    // role learned from the peer-info JSON (P1.2). Unknown until it arrives,
+    // and stays Unknown for stock SonoBus peers.
+    PeerRole remoteRole = PeerRole::Unknown;
+    // set once we have seen any peer-info update from this peer
+    bool hasRemoteRole = false;
+    // P1.3: true until the peer's role is known. While set, the peer cannot be
+    // opened in either direction by ANY path (the routing matrix clears it in
+    // P1.4). Without this, the global mute/unmute handlers re-open peers via
+    // setRemotePeerSendActive/RecvActive, which force the allow flags back on.
+    bool roleBlocked = false;
 
     std::unique_ptr<AudioFormatWriter::ThreadedWriter> fileWriter;
 
@@ -3167,6 +3232,17 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
         peer->remoteIsRecording = isrec;
     }
 
+    // P1.2: role advertised by the remote peer. Absent for stock SonoBus
+    // peers, which must remain Unknown (and therefore blocked, P1.6).
+    if (infodata.hasProperty("role")) {
+        auto role = peerRoleFromString(infodata.getProperty("role", "").toString());
+        if (role != peer->remoteRole) {
+            DBG("peerinfo: remote role is now " << peerRoleToString(role));
+            peer->remoteRole = role;
+        }
+        peer->hasRemoteRole = true;
+    }
+
     peer->hasRemoteInfo = true;
 
 }
@@ -3180,6 +3256,14 @@ void SonobusAudioProcessor::sendRemotePeerInfoUpdate(int index, RemotePeer * top
     info->setProperty("inlat", 1e3 * currSamplesPerBlock / getSampleRate());
     info->setProperty("outlat", 1e3 * currSamplesPerBlock / getSampleRate());
     info->setProperty("rec", isRecordingToFile());
+
+    // P1.2: advertise our role so peers can apply the routing matrix. Sent on
+    // every peer-info update, including the first one after a peer joins.
+    // SONOBUS_NO_ROLE_ADVERT makes us look like stock SonoBus (no "role" key),
+    // which P1.6 uses to test unknown-peer handling.
+    if (!disableRoleAdvertising()) {
+        info->setProperty("role", peerRoleToString(mRole.load()));
+    }
 
     // nettype TODO
 
@@ -4415,7 +4499,9 @@ int SonobusAudioProcessor::connectRemotePeerRaw(void * sockaddr, const String & 
     
     RemotePeer * remote = doAddRemotePeerIfNecessary(endpoint, AOO_ID_NONE, username, groupname); // get new one
 
-    remote->recvAllow = !mMainRecvMute.get();
+    // P1.3: do NOT open recv here. The peer stays blocked until its role
+    // arrives (P1.4). The main recv-mute state is kept as the cache value set
+    // at peer creation, and restored when the role is applied.
     
     // special - use 0 
     bool ret = remote->oursink->invite_source(endpoint, 0, endpoint_send) == 1;
@@ -4425,16 +4511,20 @@ int SonobusAudioProcessor::connectRemotePeerRaw(void * sockaddr, const String & 
         remote->connected = true;
         remote->invitedPeer = reciprocate;
         //remote->recvActive = reciprocate;
-        if (!mMainSendMute.get()) {
-            remote->sendActive = true;
-            remote->oursource->start();
-            updateRemotePeerUserFormat(-1, remote);
-            sendRemotePeerInfoUpdate(-1, remote);
-        }
-        else {
+        // P1.3: sending to this peer also waits for its role, so it is not
+        // started here. Only the peer-info exchange (which carries the role)
+        // happens at this point.
+        if (disableRoleBlocking()) {
+            if (!mMainSendMute.get()) {
+                remote->sendActive = true;
+                remote->oursource->start();
+                updateRemotePeerUserFormat(-1, remote);
+            }
+        } else {
             remote->sendActive = false;
             remote->oursource->stop();
         }
+        sendRemotePeerInfoUpdate(-1, remote);
         sendBlockedInfoMessage(remote->endpoint, false);
         
     } else {
@@ -4450,7 +4540,7 @@ int SonobusAudioProcessor::connectRemotePeer(const String & host, int port, cons
 
     RemotePeer * remote = doAddRemotePeerIfNecessary(endpoint, AOO_ID_NONE, username, groupname); // get new one
 
-    remote->recvAllow = !mMainRecvMute.get();
+    // P1.3: stay blocked in both directions until the peer's role arrives.
 
     // special - use 0 
     bool ret = remote->oursink->invite_source(endpoint, 0, endpoint_send) == 1;
@@ -4460,12 +4550,22 @@ int SonobusAudioProcessor::connectRemotePeer(const String & host, int port, cons
         remote->connected = true;
         remote->invitedPeer = reciprocate;
         //remote->recvActive = reciprocate;
-        if (!mMainSendMute.get()) {
-            remote->sendActive = true;
-            remote->oursource->start();
-            updateRemotePeerUserFormat(-1, remote);
+        // P1.3: not started here; the routing matrix opens it on role arrival.
+        if (disableRoleBlocking()) {
+            if (!mMainSendMute.get()) {
+                remote->sendActive = true;
+                remote->oursource->start();
+                // Only meaningful once we are actually sending: this sends
+                // LAYOUTINFO referencing remoteSourceId, which is still unset
+                // before the sink handshake.
+                updateRemotePeerUserFormat(-1, remote);
+            }
+        } else {
+            remote->sendActive = false;
+            remote->oursource->stop();
         }
-
+        // Always advertised: this is what carries our role to the peer, and it
+        // must be sent even while the peer is blocked (P1.2/P1.3).
         sendRemotePeerInfoUpdate(-1, remote);
         sendBlockedInfoMessage(remote->endpoint, false);
         
@@ -5386,6 +5486,11 @@ void SonobusAudioProcessor::setRemotePeerRecvActive(int index, bool active)
 
         //remote->recvActive = active;
 
+        // P1.3: as with send, refuse to open a peer whose role is unknown.
+        if (active && remote->roleBlocked) {
+            return;
+        }
+
         if (active) {
             remote->recvAllow = true;
             remote->recvAllowCache = true;            
@@ -5820,6 +5925,14 @@ void SonobusAudioProcessor::setRemotePeerSendActive(int index, bool active)
     const ScopedReadLock sl (mCoreLock);        
     if (index < mRemotePeers.size()) {
         RemotePeer * remote = mRemotePeers.getUnchecked(index);
+        // P1.3: never open a peer whose role is still unknown, no matter who
+        // asks (global unmute, solo, patch matrix...). P1.4 clears roleBlocked
+        // once the routing matrix has decided this peer's fate.
+        if (active && remote->roleBlocked) {
+            remote->sendActive = false;
+            remote->oursource->stop();
+            return;
+        }
         remote->sendActive = active;
         if (active) {
             remote->sendAllow = true; // implied
@@ -5858,6 +5971,63 @@ bool SonobusAudioProcessor::getRemotePeerConnected(int index) const
         return remote->connected;
     }
     return false;        
+}
+
+
+SonobusAudioProcessor::PeerRole SonobusAudioProcessor::getRemotePeerRole(int index) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        return mRemotePeers.getUnchecked(index)->remoteRole;
+    }
+    return PeerRole::Unknown;
+}
+
+
+// F2 test harness support: write a JSON snapshot of the peer table. Called on a
+// timer off the audio thread; never called in normal use.
+void SonobusAudioProcessor::dumpPeersToFile(const File & file)
+{
+    DynamicObject::Ptr root = new DynamicObject();
+
+    root->setProperty("self", getCurrentUsername());
+    root->setProperty("selfRole", peerRoleToString(mRole.load()));
+
+    Array<var> peers;
+
+    {
+        const ScopedReadLock sl (mCoreLock);
+        for (int i = 0; i < mRemotePeers.size(); ++i) {
+            auto * peer = mRemotePeers.getUnchecked(i);
+
+            // A peer with no username yet is not a real group member; skipping
+            // it keeps the dump stable while the group is still forming.
+            if (peer->userName.isEmpty()) continue;
+
+            DynamicObject::Ptr p = new DynamicObject();
+            p->setProperty("name", peer->userName);
+            // A peer that never sent a role (stock SonoBus) reports "unknown",
+            // which is what P1.6 needs the harness to see.
+            p->setProperty("role", peerRoleToString(peer->remoteRole));
+            p->setProperty("hasRole", peer->hasRemoteRole);
+            p->setProperty("connected", peer->connected);
+            p->setProperty("sendAllow", peer->sendAllow);
+            p->setProperty("recvAllow", peer->recvAllow);
+            p->setProperty("sendActive", peer->sendActive);
+            p->setProperty("recvActive", peer->recvActive);
+            // recvActive already implies the allow flag and a live stream, so
+            // this is the "audio is actually arriving" signal F2 checks.
+            p->setProperty("receivingAudio", peer->recvActive && peer->recvAllow);
+            peers.add(var(p.get()));
+        }
+    }
+
+    root->setProperty("peers", peers);
+
+    // Write to a temp file and rename so a reader never sees a partial file.
+    auto tmp = file.getSiblingFile(file.getFileName() + ".tmp");
+    tmp.replaceWithText(JSON::toString(var(root.get()), true, 6));
+    tmp.moveFileTo(file);
 }
 
 
@@ -6081,11 +6251,26 @@ SonobusAudioProcessor::RemotePeer * SonobusAudioProcessor::doAddRemotePeerIfNece
         retpeer->recvMeterSource.resize (outchannels, meterRmsWindow);
         retpeer->sendMeterSource.resize (retpeer->sendChannels, meterRmsWindow);
 
-        retpeer->sendAllow = !mMainSendMute.get();
-        retpeer->sendAllowCache = true; // cache is allowed for new ones, so when it is unmuted it actually does
-        
-        retpeer->recvAllow = !mMainRecvMute.get();
-        retpeer->recvAllowCache = true;
+        // P1.3: a new peer starts blocked in both directions. Nothing is sent
+        // to or accepted from it until its role arrives in the peer-info JSON
+        // and P1.4 applies the routing matrix. The cache keeps the mute state
+        // so that a later unmute restores sane values.
+        // SONOBUS_NO_ROLE_BLOCK restores the old open-by-default behaviour so
+        // F2 can still verify the stock "full mesh" expectation.
+        if (disableRoleBlocking()) {
+            retpeer->roleBlocked = false;
+            retpeer->sendAllow = !mMainSendMute.get();
+            retpeer->sendAllowCache = true;
+            retpeer->recvAllow = !mMainRecvMute.get();
+            retpeer->recvAllowCache = true;
+        } else {
+            retpeer->roleBlocked = true;
+            retpeer->sendAllow = false;
+            retpeer->sendAllowCache = !mMainSendMute.get();
+
+            retpeer->recvAllow = false;
+            retpeer->recvAllowCache = !mMainRecvMute.get();
+        }
         
         retpeer->lastSendPingTimeMs = Time::getMillisecondCounterHiRes() - PEER_PING_INTERVAL_MS/2; // so that first ping doesn't happen immediately
         retpeer->haveSentFirstPeerInfo = false;
@@ -8539,6 +8724,7 @@ void SonobusAudioProcessor::getStateInformationWithOptions(MemoryBlock& destData
     extraTree.setProperty(lastSoundboardShownKey, mLastSoundboardShown, nullptr);
     extraTree.setProperty(linkMonitoringDelayTimesKey, mLinkMonitoringDelayTimes, nullptr);
     extraTree.setProperty(lastUsernameKey, mCurrentUsername, nullptr);
+    extraTree.setProperty(roleStateKey, peerRoleToString(mRole.load()), nullptr);
     extraTree.setProperty(langOverrideCodeKey, mLangOverrideCode, nullptr);
     extraTree.setProperty(useUnivFontKey, mUseUniversalFont, nullptr);
     extraTree.setProperty(lastWindowWidthKey, var((int)mPluginWindowWidth), nullptr);
@@ -8625,6 +8811,7 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
         
         DBG("SETSTATE: " << mState.state.toXmlString());
 
+
         if (includecache) {
             ValueTree recentsTree = mState.state.getChildWithName(recentsCollectionKey);
             if (recentsTree.isValid()) {
@@ -8704,6 +8891,7 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
             setLastSoundboardWidth((int)extraTree.getProperty(lastSoundboardWidthKey, (int)mLastSoundboardWidth));
             setLastSoundboardShown(extraTree.getProperty(lastSoundboardShownKey, mLastSoundboardShown));
             mCurrentUsername = extraTree.getProperty(lastUsernameKey, mCurrentUsername);
+            setRole(peerRoleFromString(extraTree.getProperty(roleStateKey, peerRoleToString(mRole.load())).toString()));
             mLangOverrideCode = extraTree.getProperty(langOverrideCodeKey, mLangOverrideCode);
             mUseUniversalFont = extraTree.getProperty(useUnivFontKey, mUseUniversalFont);
             setChatFontSizeOffset((int) extraTree.getProperty(chatFontSizeOffsetKey, (int)mChatFontSizeOffset));

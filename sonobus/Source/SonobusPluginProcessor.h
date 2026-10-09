@@ -120,6 +120,18 @@ public:
     SonobusAudioProcessor();
     ~SonobusAudioProcessor();
 
+    // Our role in the network: a VDI sends its system audio and receives the
+    // Console's mic; a Console listens to VDIs and talks back. Peers that do
+    // not advertise a role (stock SonoBus) are Unknown and stay blocked.
+    enum class PeerRole {
+        Unknown = 0,
+        VDI,
+        Console
+    };
+
+    static String peerRoleToString(PeerRole role);
+    static PeerRole peerRoleFromString(const String & str);
+
     enum AutoNetBufferMode {
         AutoNetBufferModeOff = 0,
         AutoNetBufferModeAutoIncreaseOnly,
@@ -317,6 +329,16 @@ public:
 
     bool setCurrentUsername(const String & name);
     String getCurrentUsername() const { return mCurrentUsername; }
+
+    // our role, advertised to peers in the peer-info JSON
+    PeerRole getRole() const { return mRole; }
+    void setRole(PeerRole role);
+
+    // remote peer role, learned from the peer-info JSON
+    PeerRole getRemotePeerRole(int index) const;
+
+    // debug dump of peer state, used by the F2 test harness (see tests/f2)
+    void dumpPeersToFile(const File & file);
 
     // peer stuff
     
@@ -994,6 +1016,11 @@ private:
     Atomic<bool>   mSyncMetToHost  { false };
     Atomic<bool>   mSyncMetStartToPlayback  { false };
     Atomic<bool>   mReconnectAfterServerLoss  { true };
+
+    // our advertised role (P1.1). Written from the message thread (CLI/config)
+    // and read when building peer-info JSON and applying the routing matrix, so
+    // it is atomic like the other scalar settings around it.
+    std::atomic<PeerRole> mRole { PeerRole::Console };
 
     Atomic<float>   mInputReverbLevel  { 1.0f };
     Atomic<float>   mInputReverbSize  { 0.15f };

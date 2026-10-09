@@ -126,6 +126,13 @@ public:
     bool doHeadless = false;
     String loadSetupFilename;
     String cmdlineArgUrl;
+    // P1.1 / F2: --role sets our advertised role; --dump-peers writes the peer
+    // table to a file for the test harness (empty means no dumping).
+    String cmdlineRole;
+    String dumpPeersFilename;
+    // whether the option appeared at all, so a missing value is reported
+    bool roleWasGiven = false;
+    bool dumppeersWasGiven = false;
 
     virtual StandalonePluginHolder* createHeadlessPlugin ()
     {
@@ -290,6 +297,50 @@ public:
         std::cout << std::endl;
     }
 
+    // JUCE's ArgumentList::removeValueForOption only reads the value of a LONG
+    // option when it is written as "--opt=value". With "--opt value" it removes
+    // the option token, returns nothing, and leaves the value behind as a stray
+    // positional argument. The help text advertises the space form, so handle
+    // the space form first and fall back to JUCE for the "=" form.
+    // `wasGiven` is set when the option appeared at all, so a missing value can
+    // be reported instead of silently ignored.
+    static String removeLongOptionValue(ArgumentList & arglist, const String & option,
+                                       bool * wasGiven = nullptr)
+    {
+        if (wasGiven != nullptr) *wasGiven = false;
+
+        for (int i = 0; i < arglist.arguments.size(); ++i) {
+            if (arglist.arguments.getReference(i).text == option) {
+                if (wasGiven != nullptr) *wasGiven = true;
+                if (i < arglist.arguments.size() - 1
+                    && !arglist.arguments.getReference(i + 1).isOption()) {
+                    auto result = arglist.arguments.getReference(i + 1).text;
+                    arglist.arguments.removeRange(i, 2);
+                    return result;
+                }
+                // bare option with no value
+                arglist.arguments.remove(i);
+                return {};
+            }
+        }
+
+        // "--opt=value"
+        auto eq = arglist.removeValueForOption(option);
+        if (wasGiven != nullptr && eq.isNotEmpty()) *wasGiven = true;
+        return eq;
+    }
+
+    // P1.1: apply --role to a freshly created processor. Called immediately
+    // after the plugin holder is built and before anything connects, so the
+    // first peer-info advertisement already carries the real role.
+    void applyCommandLineRole (AudioProcessor * proc)
+    {
+        if (cmdlineRole.isEmpty() || proc == nullptr) return;
+        if (auto * sonoproc = dynamic_cast<SonobusAudioProcessor*>(proc)) {
+            sonoproc->setRole(SonobusAudioProcessor::peerRoleFromString(cmdlineRole));
+        }
+    }
+
     void handleCommandLine()
     {
         ConsoleApplication app;
@@ -314,6 +365,12 @@ public:
 
         const String loadSetupSpec("-l|--load-setup");
         const String loadSetupSpecDesc("-l|--load-setup <setup-filename>");
+
+        const String roleSpec("--role");
+        const String roleSpecDesc("--role <vdi|console>");
+
+        const String dumpPeersSpec("--dump-peers");
+        const String dumpPeersSpecDesc("--dump-peers <filename>");
 
         
 
@@ -353,6 +410,18 @@ public:
         app.addCommand ({ headlessSpec, headlessSpecDesc,
             TRANS("If specified, no GUI will be used and the application will be run headless."),
             TRANS("You'll need to use other command-line options to connect to a group... eventually there will be an OSC remote control interface."),
+            nullptr
+        });
+
+        app.addCommand ({ roleSpec, roleSpecDesc,
+            TRANS("Specify the role for this peer: 'vdi' sends system audio and receives the Console mic, 'console' listens to VDIs and talks back (default: console)."),
+            {},
+            nullptr
+        });
+
+        app.addCommand ({ dumpPeersSpec, dumpPeersSpecDesc,
+            TRANS("Write a JSON snapshot of the remote peer table to the given file, refreshed about once per second. Used by the local test harness."),
+            {},
             nullptr
         });
 
@@ -413,6 +482,31 @@ public:
             loadSetupFilename = setupfile;
         }
 
+        auto role = removeLongOptionValue(arglist, roleSpec, &roleWasGiven);
+        if (roleWasGiven && role.isEmpty()) {
+            std::cerr << "Error: --role requires a value ('vdi' or 'console')" << std::endl;
+            doImmediateQuit = true;
+        }
+        else if (role.isNotEmpty()) {
+            auto r = role.trim().toLowerCase();
+            if (r == "vdi" || r == "console") {
+                cmdlineRole = r;
+            } else {
+                std::cerr << "Error: --role must be 'vdi' or 'console', got '"
+                          << role << "'" << std::endl;
+                doImmediateQuit = true;
+            }
+        }
+
+        auto dumppeers = removeLongOptionValue(arglist, dumpPeersSpec, &dumppeersWasGiven);
+        if (dumppeersWasGiven && dumppeers.isEmpty()) {
+            std::cerr << "Error: --dump-peers requires a filename" << std::endl;
+            doImmediateQuit = true;
+        }
+        else if (dumppeers.isNotEmpty()) {
+            dumpPeersFilename = dumppeers;
+        }
+
 
         if (arglist.removeOptionIfFound(headlessSpec)) {
 
@@ -445,6 +539,12 @@ public:
 
         if (!doHeadless) {
             mainWindow.reset (createWindow());
+
+            // P1.1: set the role before anything connects, so the very first
+            // peer-info we advertise carries the real role rather than the
+            // default. Peers use it to decide routing (P1.4), so a wrong first
+            // advertisement could briefly open or close the wrong path.
+            applyCommandLineRole(mainWindow->pluginHolder->processor.get());
 
 #if JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE
             Desktop::getInstance().setKioskModeComponent (mainWindow.get(), false);
@@ -517,6 +617,10 @@ public:
 
             pluginHolder.reset (createHeadlessPlugin());
 
+            // P1.1: role first, before connecting/joining, so our initial
+            // peer-info advertises the real role (see the windowed path above).
+            applyCommandLineRole(pluginHolder->processor.get());
+
             if (auto * sonoproc = dynamic_cast<SonobusAudioProcessor*>(pluginHolder->processor.get())) {
 
                 // apply command line connection stuff
@@ -564,6 +668,12 @@ public:
 
         }
 
+
+        // F2: start the peer-table dump timer when --dump-peers was given. The
+        // timer runs on the message thread; the dump itself takes the core lock.
+        if (dumpPeersFilename.isNotEmpty()) {
+            startTimer(1000);
+        }
 
 #if JUCE_MAC
         disableAppNap();
@@ -669,7 +779,23 @@ public:
         DBG("setting foreground service active");
         setAndroidForegroundServiceActive(true);
         stopTimer();
+        return;
 #endif
+
+        // F2: periodic peer-table dump for the test harness.
+        if (dumpPeersFilename.isNotEmpty()) {
+            SonobusAudioProcessor * dumpProc = nullptr;
+            if (mainWindow.get() != nullptr && mainWindow->pluginHolder != nullptr) {
+                dumpProc = dynamic_cast<SonobusAudioProcessor*>(mainWindow->pluginHolder->processor.get());
+            } else if (pluginHolder != nullptr) {
+                dumpProc = dynamic_cast<SonobusAudioProcessor*>(pluginHolder->processor.get());
+            }
+
+            if (dumpProc != nullptr) {
+                dumpProc->dumpPeersToFile(File::getCurrentWorkingDirectory()
+                                              .getChildFile(dumpPeersFilename));
+            }
+        }
     }
 
     void shutdown() override
@@ -678,6 +804,13 @@ public:
         if (mainWindow.get() != nullptr) {
             mainWindow->pluginHolder->savePluginState();
             mainWindow->pluginHolder->saveAudioDeviceState();
+        }
+        else if (pluginHolder != nullptr) {
+            // Headless mode also needs to persist plugin state, otherwise
+            // settings set from the command line (e.g. --role) are lost on
+            // exit, which the VDI agent relies on.
+            pluginHolder->savePluginState();
+            pluginHolder->saveAudioDeviceState();
         }
 
 #if JUCE_ANDROID
