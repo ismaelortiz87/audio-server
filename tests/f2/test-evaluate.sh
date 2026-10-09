@@ -136,6 +136,48 @@ all_blocked_dump() {
     write_dump "$dir" "$self" "$selfrole" ${specs[@]+"${specs[@]}"}
 }
 
+# agent_dump DIR SELF SELFROLE AGENT_INPUT AGENT_OUTPUT OTHER:ROLE ...
+# P1.7: a peer that routes by the matrix and reports agent health for the peers
+# it observes. `selfrole` decides selfAgent (only a VDI has one), and observed
+# peers get an agent object only when they are VDIs -- matching the real app.
+agent_dump() {
+    local dir="$1" self="$2" selfrole="$3" ain="$4" aout="$5"; shift 5
+    local specs=() spec oname orole send recv
+    for spec in "$@"; do
+        oname="${spec%%:*}"; orole="${spec##*:}"
+        send="$(matrix_allowed "$selfrole" "$orole")"
+        recv="$(matrix_allowed "$orole" "$selfrole")"
+        specs+=("$oname:$orole:$send:$recv")
+    done
+    mkdir -p "$dir"
+    python3 - "$dir/$self.json" "$self" "$selfrole" "$ain" "$aout" ${specs[@]+"${specs[@]}"} <<'PY'
+import json, sys
+path, self_name, self_role, ain, aout = sys.argv[1:6]
+peers = []
+for spec in sys.argv[6:]:
+    name, role, send, recv = spec.split(":")
+    entry = {
+        "name": name, "role": role, "hasRole": role != "unknown",
+        "connected": True,
+        "sendAllow": send == "true", "recvAllow": recv == "true",
+        "sendActive": True, "recvActive": False, "receivingAudio": False,
+    }
+    if role == "vdi":
+        entry["hasAgent"] = True
+        entry["agent"] = {"input": ain, "output": aout,
+                          "paused": False, "config_error": None}
+    else:
+        entry["hasAgent"] = False
+    peers.append(entry)
+doc = {"self": self_name, "selfRole": self_role, "peers": peers}
+if self_role == "vdi":
+    doc["selfAgent"] = {"input": ain, "output": aout,
+                        "paused": False, "config_error": None}
+with open(path, "w") as fh:
+    json.dump(doc, fh, indent=2)
+PY
+}
+
 echo "== evaluate.py unit tests =="
 echo
 
@@ -213,6 +255,79 @@ all_blocked_dump "$D" u1 console u2:unknown
 all_blocked_dump "$D" u2 console u1:unknown
 check_case blocked-unknown-ok 0 blocked-unknown
 assert_contains blocked-unknown-ok "PASS"
+
+# ---------------------------------------------------------------------------
+# 4b. P1.7 agent health.
+# ---------------------------------------------------------------------------
+# Correct health passes, and both sides are checked: the Console's view of the
+# VDI and the VDI's own selfAgent.
+D="$WORK/agent-ok"
+agent_dump "$D" c1 console missing ok v1:vdi
+agent_dump "$D" v1 vdi missing ok c1:console
+check_case agent-ok 0 agent-health
+assert_contains agent-ok "PASS"
+
+# A wrong input state must fail, in both the observed and the self direction.
+D="$WORK/agent-wrong-input"
+agent_dump "$D" c1 console ok ok v1:vdi
+agent_dump "$D" v1 vdi missing ok c1:console
+check_case agent-wrong-input 1 agent-health
+assert_contains agent-wrong-input 'agent.input: expected "missing", got "ok"'
+
+# A VDI that does not report its own health must fail too.
+D="$WORK/agent-missing-self"
+agent_dump "$D" c1 console missing ok v1:vdi
+write_dump "$D" v1 vdi c1:console:true:true
+check_case agent-missing-self 1 agent-health
+assert_contains agent-missing-self "selfAgent: missing"
+
+# "silent" is an accepted state and is asserted by the silent scenario.
+D="$WORK/agent-silent-ok"
+agent_dump "$D" c1 console silent ok v1:vdi
+agent_dump "$D" v1 vdi silent ok c1:console
+check_case agent-silent-ok 0 agent-silent
+assert_contains agent-silent-ok "PASS"
+
+# A malformed agent fails loudly even in a scenario that does not assert health,
+# because a present object is always type-checked.
+D="$WORK/agent-bad-enum"
+python3 - "$D" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+os.makedirs(d, exist_ok=True)
+def dump(name, role, other, orole, agent):
+    json.dump({"self": name, "selfRole": role, "peers": [
+        {"name": other, "role": orole, "hasRole": True, "connected": True,
+         "sendAllow": True, "recvAllow": True, "agent": agent, "hasAgent": True}]},
+        open(os.path.join(d, name + ".json"), "w"))
+bad = {"input": "bogus", "output": "ok", "paused": "yes", "config_error": 7}
+dump("c1", "console", "v1", "vdi", bad)
+dump("v1", "vdi", "c1", "console", bad)
+PY
+check_case agent-bad-enum 1 matrix-1v1
+assert_contains agent-bad-enum 'agent.input: expected one of'
+assert_contains agent-bad-enum "agent.paused: expected a boolean"
+assert_contains agent-bad-enum "agent.config_error: expected a string or null"
+
+# An agent object missing a contract key fails even when the scenario does not
+# assert that peer's health.
+D="$WORK/agent-missing-key"
+python3 - "$D" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+os.makedirs(d, exist_ok=True)
+def dump(name, role, other, orole):
+    json.dump({"self": name, "selfRole": role, "peers": [
+        {"name": other, "role": orole, "hasRole": True, "connected": True,
+         "sendAllow": True, "recvAllow": True, "hasAgent": True,
+         "agent": {"input": "ok", "output": "ok"}}]},
+        open(os.path.join(d, name + ".json"), "w"))
+dump("c1", "console", "v1", "vdi")
+dump("v1", "vdi", "c1", "console")
+PY
+check_case agent-missing-key 1 matrix-1v1
+assert_contains agent-missing-key "agent.paused: missing (contract field)"
+assert_contains agent-missing-key "agent.config_error: missing (contract field)"
 
 # ---------------------------------------------------------------------------
 # 5. wrong expectation: same-role peers claim they may send to each other.
@@ -473,6 +588,47 @@ else
     FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s exit %s\n' settle-recovers "$RC"
     printf '%s\n' "$OUT" | sed 's/^/       | /'
 fi
+
+# ---------------------------------------------------------------------------
+# 4c. P1.7 console kind: peers must see the kind each Console advertises.
+# ---------------------------------------------------------------------------
+kind_dump() {  # DIR SELF SELFROLE SELFKIND C1KIND C2KIND
+    local dir="$1" self="$2" selfrole="$3" selfkind="$4" k1="$5" k2="$6"
+    mkdir -p "$dir"
+    python3 - "$dir" "$self" "$selfrole" "$selfkind" "$k1" "$k2" <<'PY'
+import json, os, sys
+d, self_name, self_role, self_kind, k1, k2 = sys.argv[1:7]
+def allowed(s, r):
+    return s != r and "unknown" not in (s, r)
+roles = {"c1": "console", "c2": "console", "v1": "vdi"}
+kinds = {"c1": k1, "c2": k2, "v1": ""}
+peers = []
+for n, r in roles.items():
+    if n == self_name:
+        continue
+    peers.append({"name": n, "role": r, "hasRole": True, "connected": True,
+                  "kind": kinds[n],
+                  "sendAllow": allowed(self_role, r), "recvAllow": allowed(r, self_role),
+                  "hasAgent": False})
+doc = {"self": self_name, "selfRole": self_role, "peers": peers}
+if self_kind:
+    doc["selfKind"] = self_kind
+json.dump(doc, open(os.path.join(d, self_name + ".json"), "w"))
+PY
+}
+D="$WORK/kind-ok"
+kind_dump "$D" c1 console web "" mac
+kind_dump "$D" c2 console mac web ""
+kind_dump "$D" v1 vdi "" web mac
+check_case kind-ok 0 console-kind
+assert_contains kind-ok "PASS"
+
+D="$WORK/kind-wrong"
+kind_dump "$D" c1 console web "" mac
+kind_dump "$D" c2 console mac web ""
+kind_dump "$D" v1 vdi "" mac mac
+check_case kind-wrong 1 console-kind
+assert_contains kind-wrong 'v1 -> c1 kind: expected "web", got "mac"'
 
 # ---------------------------------------------------------------------------
 echo
