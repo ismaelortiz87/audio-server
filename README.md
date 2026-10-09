@@ -100,6 +100,13 @@ CONFIG=Release make -j4          # -> Builds/LinuxMakefile/build/aooserver
 ./build/aooserver -h             # -p port, -l logdir, -b blocklist
 ```
 
+## Design
+
+The palette agreed for the next appearance pass on the app lives in
+`docs/design/` — `maia-mission-control.md` (spec + where each token lands in the
+code) and `tokens.json` (machine-readable values). Design reference only,
+nothing is wired into code yet.
+
 ## Licensing
 
 Unchanged from upstream: SonoBus is GPLv3 (`sonobus/LICENSE` + `LICENSE_EXCEPTION`),
