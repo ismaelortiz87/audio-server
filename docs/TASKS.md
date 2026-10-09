@@ -74,8 +74,8 @@ Ordered so that every task appears after everything it depends on.
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | done | Claude (helper) |
-| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | todo | |
-| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | wip | Claude (subagent A, sonnet; continues the previous agent's WIP) |
+| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | wip | Claude (subagent F, opus) |
+| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | done | Claude (subagent A, sonnet; finished the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | wip | Claude (subagent B, sonnet) |
 | P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | todo | |
@@ -513,7 +513,22 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   card can show "VDI reports: …" (UX2).
 - **Done when:** F2 scenario: start a VDI peer with a missing input device;
   the Console peer's dump shows `input: missing`.
-- **Result:**
+- **Result:** A VDI adds `agent{input ok|missing|silent, output ok|missing,
+  paused, config_error}` to its peer info, re-sent from a 1 Hz message-thread
+  timer only on change. Silent = nothing above −60 dBFS for 10 min;
+  `processBlock` only stores an atomic peak. Consoles parse it onto the
+  RemotePeer; `--dump-peers` shows `peers[].agent`/`hasAgent`/`selfAgent`.
+  Consoles advertise `kind` (`mac`, `other`, or `web` via
+  `CROSSPOINT_CONSOLE_KIND`), shown as `peers[].kind`/`selfKind`. Re-sending
+  peer info doesn't re-apply the P1.4 matrix. Test-only hatches:
+  `SONOBUS_AGENT_INPUT/OUTPUT/SILENT_SECS`. F2: `agent-health`,
+  `agent-silent` (real detector, 2 s window), `console-kind`; counterfactual
+  verified. The wire format uses snake_case `config_error`, which **P4.2 maps
+  to `configError`**. Not done (optional): `inputNode`/`outputNode`/
+  `silentForMin`. `paused` stays false and `config_error` null until P2.3/P2.1
+  wire them. **Review note:** the subagent's commit also reverted unrelated
+  newer files; they were restored before merge. From now on every subagent
+  branch is checked with `git diff --stat main...branch` before merging.
 
 ### P1.5 — Per-VDI talk toggle
 - **Depends on:** P1.4 · **Size:** M (was S; see review notes)
