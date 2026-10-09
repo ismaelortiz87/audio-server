@@ -77,9 +77,9 @@ Ordered so that every task appears after everything it depends on.
 | P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | M | any | wip | Claude (subagent F, opus) |
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | done | Claude (subagent A, sonnet; finished the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
-| P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | wip | Claude (subagent B, sonnet) |
+| P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | done | Claude (subagent B, sonnet) |
 | P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | todo | |
-| P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | todo | |
+| P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
 | P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | todo | |
@@ -98,7 +98,7 @@ Ordered so that every task appears after everything it depends on.
 | P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | done | Claude |
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
-| P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | wip | Claude (subagent C, sonnet) |
+| P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | done | Claude (subagent C, sonnet) |
 | P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
@@ -111,7 +111,7 @@ Ordered so that every task appears after everything it depends on.
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | todo | |
-| P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | wip | Claude (subagent E, sonnet; standalone gateway first, engine hookup in P7.1) |
+| P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
@@ -659,7 +659,21 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   It must keep the file's comments and key order (edit in place, don't
   re-serialise everything) and write atomically (temp file + rename).
 - **Done when:** F2 can start peers from YAML files instead of flags.
-- **Result:**
+- **Result:** `--config` via JUCE-free `sonobus/Source/Config.{h,cpp}` (rapidyaml). Keys:
+  server, group, password, username, role, audio.{input_device, output_device,
+  sample_rate, buffer}, codec (opus|pcm), bitrate (an Opus preset), api.{port,
+  bind, token, allowed_origins}. Errors are line-numbered with a non-zero
+  exit; a missing device lists the available ones. **Precedence CLI > YAML >
+  setup > saved state:** the role is pinned with `setRoleAndLock()`, so
+  setState no longer restores it, and codec/audio apply after `--load-setup`.
+  Also fixed: the `--load-setup <file>` space form (JUCE ignored it).
+  `Config::save()` rewrites the device keys in place (comments, order, quotes,
+  CRLF kept), atomically, re-verified before writing; P2.6 calls
+  `setAudioDevices()` + `save()`. Example: `sonobus/vdi.example.yaml`. Tests:
+  config_test 157 checks; F2 `config-yaml`, `config-precedence`
+  (counterfactual verified). Merge note: the type is renamed
+  `YamlApiSection` (clashed with P4.1's `ApiConfig`), and the `api:` section is
+  wired into the control API. Linux PipeWire pinning is P2.11.
 
 ### P2.11 — Linux: pin devices to PipeWire nodes · M
 - **Depends on:** P2.1
@@ -897,7 +911,21 @@ the mobile `.jucer` source list (remove deleted files from it too).
   audio thread. The same HTTP listener serves the static UI files (the VDI
   agent UI, P2.6, and the Console UI in P6/P7).
 - **Done when:** `websocat ws://127.0.0.1:<port>` gets a hello message.
-- **Result:**
+- **Result:** HTTP/1.1 + RFC 6455 server in the app (`sonobus/Source/ApiServer.{h,cpp}`,
+  JUCE sockets, own framing, `ApiSha1.h` tested against the RFC vectors; no new
+  dependency). An accept thread plus one thread per connection, never the audio
+  thread; stop() closes with 1001 and joins. Flags `--api-port` (default 7070
+  console / 7071 vdi, 0 = off), `--api-bind` (127.0.0.1), `--api-token` (or
+  `CROSSPOINT_API_TOKEN`), `--api-allow-origin`, `--ui-dir`; YAML `api:` gives
+  defaults (wired at merge with P2.1). A non-loopback bind without a token
+  refuses to start. Origin check plus a loopback Host check (DNS rebinding).
+  `/api/v1/health`, static UI (`/` is index or agent by role), `/api/v1/ws`
+  (hello, auth 4401, 4400, placeholder state, `cmd` → `not_supported`). Hooks:
+  `setStateProvider`/`publishPatch` (P4.2), `broadcastTopic` (P4.3),
+  `setCommandHandler`/`setSessionClosedHandler` on the message thread (P4.4).
+  Headless now quits cleanly on SIGTERM/SIGINT (atomic flag + timer), which
+  covers the P2.5 signal requirement. Tests: `tests/api/p41.test.mjs` 20/20
+  (including the real console-ui client), sha1_test, F2 green.
 
 ### P4.2 — State snapshot + change events · M
 - **Depends on:** P4.1
@@ -1052,7 +1080,19 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   through the proxy).
 - **Done when:** browser hears engine output and engine receives browser mic;
   latency recorded in *Result*.
-- **Result:**
+- **Result:** `docker/web-console/gateway/` (trixie, headless PulseAudio, Python +
+  GStreamer webrtcbin + aiohttp). Stereo Opus downlink from
+  `engine_out.monitor`, mono uplink into null sink `engine_in` (the engine
+  records `engine_in.monitor`). `POST /rtc/offer` (non-trickle, one session),
+  `/rtc/stats|config|test|health`, fixed UDP range `RTC_UDP_MIN..MAX`
+  (40000–40019), `RTC_PUBLIC_IP` rewrite, optional TURN. Verified by
+  `test/e2e.mjs` with headless Chrome (440 Hz downlink level, 660 Hz uplink at
+  −9 dBFS with the right peak, 0 loss, RTT ~6 ms on loopback); re-run in
+  review. **Real latency still to measure on the VPN.** For P7.1: run the
+  engine in the same container as user `console`
+  (`XDG_RUNTIME_DIR=/tmp/runtime`); for P7.2: proxy `/rtc/*` (plain HTTP)
+  to 8090. Risks: no auth on `/rtc/offer` beyond VPN/proxy; Android
+  background audio untested.
 
 ### P7.2 — Serve UI + proxy API · S
 - **Depends on:** P7.1, P5.6
