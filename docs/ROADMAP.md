@@ -208,7 +208,7 @@ Local WebSocket + JSON API on the engine, used by every Console UI.
 | P4.2 | State snapshot + change events: connection, peers (name, role, latency, health), per-peer volume/pan/mute/solo/talk | todo |
 | P4.3 | Meters stream (~30 fps) | todo |
 | P4.4 | Commands: connect/disconnect, set volume/pan/mute/solo/talk, master volume, mic mute / push-to-talk, device selection | todo |
-| P4.5 | API schema documented in `docs/`, covering everything UX2 needs (written before P4.1) | todo |
+| P4.5 | API schema: `docs/control-api.md` v1, mock in `console-ui/src/api/mock.js` | done |
 
 **Done when:** a script can drive a full Console session without the GUI.
 
@@ -219,7 +219,7 @@ SonoBus editor. Every item needs design review by Claude before it's done.
 
 | ID | Item | Status |
 |---|---|---|
-| P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | todo |
+| P5.1 | Scaffold `console-ui/` (no build, no deps): Console + agent entry points, API client, mock engine, tests | done |
 | P5.2 | Mixer view per spec | todo |
 | P5.3 | Talk-back controls per spec | todo |
 | P5.4 | Connection / onboarding flow per spec | todo |

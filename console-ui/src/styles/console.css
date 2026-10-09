@@ -1,0 +1,143 @@
+/* Console UI. Spec: docs/design/spec.md §2–§3. Ported from
+   design/prototypes/console, colours from tokens only. */
+
+.app { container-type: inline-size; width: 100%; min-width: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+
+/* 3.1 top bar */
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--rail); border-bottom: 1px solid var(--line); min-height: 48px; }
+.brand { font-weight: 600; letter-spacing: .01em; }
+.conn { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 13px; min-width: 0; }
+.conn b { color: var(--ink); font-weight: 600; }
+
+/* 3.2 live band */
+.liveband { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--liveWash);
+  border-bottom: 2px solid var(--live); color: var(--liveInk); font-weight: 600; font-size: 13px; }
+.liveband.quiet { background: var(--panel); border-bottom-color: var(--line); color: var(--ink2); font-weight: 500; }
+.liveband.quiet .pill-live { display: none; }
+
+main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+/* 3.3 placement field */
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 10px 14px 12px; }
+.stagehead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.field { position: relative; height: 76px; margin: 0 6px; --pad: 56px; }
+.field .axis { position: absolute; left: var(--pad); right: var(--pad); top: 50%; height: 1px; background: var(--line); }
+.field .tick { position: absolute; top: calc(50% - 6px); width: 1px; height: 12px; background: var(--ink4); }
+.field .tick.c { height: 20px; top: calc(50% - 10px); background: var(--ink3); }
+.field .end { position: absolute; top: calc(50% - 9px); font-size: 11px; color: var(--ink3); font-weight: 600; }
+.puck { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px;
+  background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 4px 10px 4px 6px;
+  cursor: grab; touch-action: none; user-select: none; white-space: nowrap; font-size: 12px; font-weight: 600;
+  transition: left .18s ease, top .18s ease; }
+.puck.dragging { cursor: grabbing; transition: none; z-index: 3; border-color: var(--ink3); }
+.puck.dim { color: var(--ink3); } .puck.dim .swatch { opacity: .5; }
+.puck.muted { color: var(--ink4); text-decoration: line-through; } .puck.muted .swatch { opacity: .3; }
+.puck .mi { width: 12px; height: 12px; color: var(--live); display: none; }
+.puck.live .mi { display: block; }
+.puck.sel { outline: 2px solid var(--accentInk); outline-offset: 2px; }
+
+/* 3.4 notices */
+.notice { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line);
+  border-left: 3px solid var(--ink3); border-radius: var(--radius-panel); padding: 10px 12px; color: var(--ink2); font-size: 13px; }
+.notice .dot { margin-top: 6px; }
+.notice b { color: var(--ink); font-weight: 600; }
+.notice em { color: var(--ink3); font-style: normal; }
+
+/* 3.5 stations */
+.stations { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.station { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 14px;
+  display: flex; flex-direction: column; gap: 12px; transition: opacity .2s, border-color .2s; }
+.station.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.station.down { opacity: .7; }
+.shead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+.sname { font-weight: 650; font-size: 15px; letter-spacing: .01em; overflow-wrap: anywhere; }
+.badges { display: flex; gap: 4px; }
+.health { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; cursor: help;
+  flex-basis: 100%; padding-left: 18px; overflow: hidden; min-width: 0; }
+.health .num { color: var(--ink3); overflow: hidden; text-overflow: ellipsis; }
+.issue { border: 1px solid rgba(250,178,25,.45); border-left: 3px solid var(--warning); background: rgba(250,178,25,.07);
+  border-radius: 6px; padding: 6px 9px; font-size: 12px; color: var(--ink2); }
+.issue b { color: #ffd98a; font-weight: 650; }
+.activity { position: relative; }
+.activity canvas { width: 100%; height: var(--size-activityHeightDesktop); display: block; border-radius: 6px; background: var(--bg); }
+.activity .over { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink2); pointer-events: none; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .label { width: 64px; flex: none; }
+.row .val { width: 62px; text-align: right; color: var(--ink2); font-size: 12px; flex: none; }
+.pan { position: relative; flex: 1; height: 28px; display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+.pan button { background: none; border: 0; cursor: pointer; color: var(--ink3); font-size: 11px; font-weight: 700; border-radius: 6px; position: relative; z-index: 1; }
+.pan button:hover, .pan button[aria-checked="true"] { color: var(--ink); }
+.pan .thumb { position: absolute; top: 3px; bottom: 3px; width: calc(20% - 6px); background: var(--raised);
+  border: 1px solid var(--ink4); border-radius: 5px; transition: left .15s ease; }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.8fr; gap: 8px; }
+.tog { white-space: nowrap; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 8px 6px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--ink2);
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--size-controlMinDesktop); }
+.tog:hover { color: var(--ink); border-color: var(--ink4); }
+.tog svg { width: 14px; height: 14px; flex: none; }
+.tog.mute[aria-pressed="true"] { background: #2a2f35; color: var(--ink); border-color: var(--ink3); }
+.tog.solo[aria-pressed="true"] { background: var(--accentWash); color: var(--accentInk); border-color: var(--accent); }
+.tog.talk[data-state="live"] { background: var(--liveWash); color: var(--liveInk); border-color: var(--liveLine); }
+.tog.talk[data-state="live"] svg { color: var(--live); }
+.tog.talk[data-state="will"] { color: var(--ink); border-color: var(--ink3); }
+.tog.talk[data-state="off"] { color: var(--ink3); border-style: dashed; }
+.tog.talk[data-state="held"] { color: var(--ink3); border-style: dotted; background: none; cursor: default; }
+.skel { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius-panel); min-height: 220px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink3); font-size: 13px; padding: 16px; text-align: center; }
+.skel b { color: var(--ink2); }
+
+/* 3.6 you bar */
+.you { border-top: 1px solid var(--line); background: var(--rail); padding: 12px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mic { display: flex; align-items: center; gap: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel2);
+  padding: 8px 16px 8px 12px; cursor: pointer; min-height: var(--size-micButtonDesktop); font-weight: 700; font-size: 15px;
+  color: var(--ink2); user-select: none; -webkit-user-select: none; touch-action: none; min-width: 190px; text-align: left;
+  -webkit-touch-callout: none; }
+.mic svg { width: 22px; height: 22px; flex: none; }
+.mic .sub { display: block; font-weight: 500; font-size: 12px; color: var(--ink3); }
+.mic[data-state="hot"] { background: var(--live); border-color: var(--live); color: var(--onLive); }
+.mic[data-state="hot"] .sub { color: #4a0716; }
+.mic[data-state="open-idle"] { border-color: var(--ink4); color: var(--ink); }
+.micmeter { width: 120px; }
+.micmeter.hot > i { background: var(--live); }
+.targets { color: var(--ink2); font-size: 13px; }
+.targets b { color: var(--ink); }
+.master { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+.master .val { width: 62px; text-align: right; color: var(--ink2); font-size: 12px; }
+.hint { width: 100%; color: var(--ink4); font-size: 11px; }
+.hint kbd { color: var(--ink3); }
+
+/* 3.7 settings sheet */
+.scrim { position: absolute; inset: 0; background: #0009; z-index: 10; }
+.sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--raised);
+  border-left: 1px solid var(--line); z-index: 11; padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.sheet .head { display: flex; align-items: center; }
+.field2 { display: flex; flex-direction: column; gap: 4px; }
+.field2 > span { font-size: 12px; color: var(--ink3); }
+.field2 > div, .field2 > select { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; color: var(--ink); }
+.field2 small { color: var(--ink4); font-size: 11px; }
+.sheet details { border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; }
+.sheet summary { cursor: pointer; color: var(--ink2); font-weight: 600; }
+.remembered { display: flex; flex-direction: column; gap: 6px; }
+.remembered .r { display: flex; align-items: center; gap: 8px; color: var(--ink2); }
+
+/* phone (container ≤ 640px, tokens.breakpoints.phone) */
+@container (max-width: 640px) {
+  .top { padding: 10px 14px; }
+  .conn .grp { display: none; }
+  main { padding: 12px; gap: 12px; }
+  .field { height: 64px; --pad: 52px; }
+  .stations { grid-template-columns: 1fr; gap: 10px; }
+  .station { padding: 12px; gap: 10px; }
+  .activity canvas { height: var(--size-activityHeightPhone); }
+  .row .label { width: 52px; }
+  .tog { min-height: var(--size-touchMin); }
+  .tog kbd, .hint { display: none; }
+  .pan button { min-height: var(--size-touchMin); }
+  .pan { height: var(--size-touchMin); }
+  .you { padding: 10px 12px 14px; gap: 10px; }
+  .mic { width: 100%; justify-content: center; min-height: var(--size-micButtonPhone); order: -1; }
+  .micmeter { flex: 1; width: auto; }
+  .master { width: 100%; min-width: 0; }
+  .you .spacer { display: none; }
+}

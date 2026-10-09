@@ -1,0 +1,11 @@
+{
+  "name": "crosspoint-ui",
+  "private": true,
+  "type": "module",
+  "description": "Crosspoint Console and agent web UIs (no build step, no dependencies)",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "tokens": "node scripts/gen-tokens.mjs",
+    "serve": "node scripts/serve.mjs"
+  }
+}

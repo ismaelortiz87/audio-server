@@ -94,8 +94,8 @@ Ordered so that every task appears after everything it depends on.
 | P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
 | P3.9 | Own app identity: name, bundle id, settings folder (coexist with stock SonoBus) | — | S | any | done | Claude |
 | P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | todo | |
-| P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | todo | |
-| P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | todo | |
+| P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
+| P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | todo | |
 | P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
@@ -711,7 +711,16 @@ the mobile `.jucer` source list (remove deleted files from it too).
   something on that list, flag it rather than dropping it.
 - **Done when:** Claude has confirmed it covers the design; P5.1 can build
   mocks from it.
-- **Result:**
+- **Result:** `docs/control-api.md` v1. One WebSocket at `/api/v1/ws`
+  (hello → optional token auth → full `state` → JSON-pointer `patch` events
+  with `rev` and resync), opt-in `meters` (pre-fader stations, pre-gate mic,
+  dBFS), commands with `ack`/`result`, error codes, close codes, versioning.
+  Safety rules: push-to-talk is released when the holding client
+  disconnects; `hearsYou` is engine-computed; a non-loopback bind requires a
+  token and an Origin check. The executable reference is
+  `console-ui/src/api/mock.js` (13 protocol tests). Written before P1.4
+  landed: **when P1.4 merges, check §3.2 `hearsYou` and §7 against the real
+  routing code**; open points for P4.1/P4.2/P1.7 are listed in §7.
 
 ### P4.1 — Embedded WebSocket server · M
 - **Depends on:** P4.5
@@ -763,7 +772,25 @@ build against the spec. Implementers don't make design decisions (see
   meters) so P5.2–P5.5 can be built before the engine API exists.
 - **Done when:** the scaffold renders the prototype's screens on mock data;
   design review passed.
-- **Result:**
+- **Result:** `console-ui/` with no build step and no dependencies (plain ES
+  modules), with two entry points, Console (`index.html`) and agent
+  (`agent.html`). It has a shared API client (state/patch/resync, commands,
+  meters, reconnect), an in-page mock engine with all prototype scenarios,
+  CSS variables generated from `tokens.json` (`npm run tokens`), PWA
+  manifests and icons. Components are ported from the prototypes to spec §3/§6
+  and render from engine state only. Tests: `npm test` (13 unit/protocol
+  tests, mutation-checked: breaking the solo rule or the PTT release makes
+  them fail) and `scripts/smoke.mjs` (21 checks in real Chrome over the
+  DevTools protocol: solo narrowing, keyboard map, PTT via Space, placement,
+  agent picker, Undo). Bugs found and fixed along the way: ARIA booleans
+  written as empty attributes; "All 2 stations hear you" when stations were
+  down (the band now counts every known station; spec wording updated); a
+  stray slash in the right-to-left truncated config path; Undo offered back
+  to a missing device (now hidden; spec updated). Design review: self-review
+  against spec §9 with desktop and phone screenshots of Console
+  (everyday/twocalls/problem) and agent (nodevice/talking). **P5.2–P5.5** now
+  mean bringing each area to full spec detail and states against this
+  scaffold.
 
 ### P5.2 — Mixer view · M
 - **Depends on:** P5.1

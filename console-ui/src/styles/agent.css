@@ -1,0 +1,65 @@
+/* Agent localhost UI. Spec: docs/design/spec.md §6. Ported from
+   design/prototypes/vdi, colours from tokens only. */
+
+body { display: flex; justify-content: center; }
+.agent { width: 100%; max-width: 440px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.ident { display: flex; align-items: center; gap: 10px; }
+.ident .swatch { width: 12px; height: 12px; background: var(--ink4); }
+.ident .name { font-size: 20px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere; }
+.ident .role { margin-left: auto; font-size: 11px; color: var(--ink3); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 8px; white-space: nowrap; }
+
+.state { border-radius: var(--radius-panel); border: 1px solid var(--line); background: var(--panel); padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.state .dot { width: 12px; height: 12px; margin-top: 5px; }
+.state .big { font-size: 17px; font-weight: 700; }
+.state .sub { color: var(--ink2); margin-top: 2px; }
+.state .meta { color: var(--ink3); font-size: 12px; margin-top: 6px; }
+.state .meta code { font-family: var(--mono); color: var(--ink2); }
+.state .acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.state.warn { border-color: rgba(250,178,25,.45); }
+.state.crit { border-color: rgba(208,59,59,.6); }
+
+.sect { display: flex; flex-direction: column; gap: 8px; }
+.lrow { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; }
+.lrow .who { font-weight: 600; }
+.lrow .kind { color: var(--ink3); font-size: 12px; }
+.lrow .lat { color: var(--ink3); font-size: 12px; margin-left: auto; }
+.lrow.talking { border-color: var(--liveLine); background: var(--liveWash); }
+.pill-talk { background: var(--live); color: var(--onLive); font-weight: 800; font-size: 10px; letter-spacing: .08em; padding: 2px 6px; border-radius: 4px; }
+.empty { color: var(--ink3); background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius-control); padding: 10px; }
+
+.dev { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dev.bad { border-color: rgba(208,59,59,.6); }
+.devhead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.devhead .what { font-weight: 650; }
+.devhead .why { color: var(--ink3); font-size: 12px; }
+.devsel { display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 8px 10px; cursor: pointer; text-align: left; width: 100%; }
+.devsel:hover { border-color: var(--ink4); }
+.devsel .dn { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.devsel .dn.missing { color: #f0a2a2; text-decoration: line-through; }
+.devsel .chev { color: var(--ink3); font-size: 12px; }
+.meter.send > i { background: var(--accentInk); }
+.meter.send.local > i { background: var(--ink3); }
+.meter.voice > i { background: var(--live); }
+.devfoot { display: flex; align-items: center; gap: 8px; color: var(--ink3); font-size: 12px; }
+.devfoot .num { margin-left: auto; }
+.picker { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+.opt { display: grid; grid-template-columns: 16px 1fr 90px; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
+  cursor: pointer; border: 1px solid transparent; background: none; text-align: left; width: 100%; color: var(--ink); }
+.opt:hover { background: var(--panel2); }
+.opt[aria-checked="true"] { border-color: var(--accent); background: var(--accentWash); }
+.opt .radio { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink4); }
+.opt[aria-checked="true"] .radio { border-color: var(--accentInk); background: radial-gradient(var(--accentInk) 40%, transparent 45%); }
+.opt .on { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.opt .hint { display: block; color: var(--ink3); font-size: 11px; font-weight: 400; }
+.opt .meter { height: 4px; }
+.opt .tone { justify-self: end; }
+
+.toast { color: var(--accentInk); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.toast button { background: none; border: 0; color: var(--ink2); text-decoration: underline; cursor: pointer; padding: 0; font-size: 12px; }
+
+.foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.foot .path { color: var(--ink3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+  text-align: right; direction: rtl; }
+.btn[aria-pressed="true"] { background: rgba(250,178,25,.12); border-color: rgba(250,178,25,.5); color: #ffd98a; }

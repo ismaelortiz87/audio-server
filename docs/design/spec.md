@@ -105,8 +105,8 @@ A full-width strip under the top bar: the single loudest element.
 
 | Condition (engine state) | Style | Text |
 |---|---|---|
-| transmitting, all online stations hear me | live | `LIVE` pill + "All {n} stations hear you" |
-| transmitting, some hear me | live | `LIVE` + "{A and B} hear(s) you · {C} doesn't / {C and D} don't" |
+| transmitting, every known station hears me | live | `LIVE` pill + "All {n} stations hear you" |
+| transmitting, some hear me (the rest includes lost/offline stations) | live | `LIVE` + "{A and B} hear(s) you · {C} doesn't / {C and D} don't" |
 | transmitting, solo narrowing | live | `LIVE` + "Solo: only {A} hears you" |
 | transmitting, nobody hears me | quiet | "Mic open, but no station is set to hear you." |
 | open mode, mic off | quiet | "Mic off. No station hears you." |
@@ -121,7 +121,7 @@ Names use the short station name (without a `VDI-` prefix).
 ### 3.3 Placement field
 The stereo field as one horizontal track with 5 ticks (L, ½L, C, ½R, R; C
 taller). The ends are labelled `L` and `R` inside an inset (`--pad` 56 px
-desktop, 44 px phone) so pucks at ±1 are never clipped.
+desktop, 52 px phone) so pucks at ±1 are never clipped.
 
 **Puck** = pill with swatch + short name (+ live mic glyph when that station
 hears me). States: default · **selected** (2 px `accentInk` outline) ·
@@ -359,7 +359,8 @@ now." Hidden while reconnecting or in error.
   description and node hint. **Inputs show a live mini-meter per row**;
   **outputs show a "Test tone" button per row** (outputs can't be metered).
   Selecting switches live, saves to the YAML, closes the picker and shows
-  "✓ Saved to vdi.yaml · Undo" (Undo restores the previous device).
+  "✓ Saved to vdi.yaml · Undo" (Undo restores the previous device). No Undo
+  when the previous device was missing, since switching back to it would only fail.
 
 **Behaviour:** Pause affects sending only. Reload re-reads the YAML and shows
 errors in the state card. Everything here is also reflected on the Console
