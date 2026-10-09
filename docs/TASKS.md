@@ -68,11 +68,12 @@ Ordered so that every task appears after everything it depends on.
 | P0.3 | Wire VDI virtual devices, verify audio both ways | P0.1 | S | human | done | maelo |
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
+| F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | todo | |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
 | P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
-| P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | todo | |
+| P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | done | Claude (helper) |
 | P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | todo | |
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | wip | Claude (helper) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
@@ -462,12 +463,34 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   path; the mute counterfactuals used a temporary env-gated probe that was
   removed before committing, so F2 does not cover mute interaction.
 
+### F2.1 — F2 coverage gaps from the P1.4 review · S
+- **Depends on:** F2, P1.4
+- **Why:** P1.4 proved two mute-cache traps with a temporary probe that was
+  removed, and no scenario mixes known and unknown peers. Those protections
+  are currently unguarded.
+- **Do:** add scenarios: (1) `matrix-mixed`: 1 console + 1 vdi + 1
+  no-advert peer; expect console↔vdi open and everything touching the unknown
+  peer blocked. (2) `mute-held`: a console started with global send mute
+  (test-only env, kept in the instrumented build like the existing
+  `SONOBUS_NO_ROLE_*`) gets a VDI role: no audio while muted; after unmute,
+  console↔vdi opens and same-role/unknown peers stay blocked. (3) Repeated
+  mute→unmute cycles never open a blocked peer.
+- **Done when:** the new scenarios pass, and each fails against a build with
+  the corresponding P1.4 protection removed (counterfactual noted in Result).
+- **Result:**
+
 ### P1.6 — Role-less peers
 - **Depends on:** P1.4 · **Size:** S
 - **Do:** peers that never send a role (stock SonoBus) stay blocked; expose
   "unknown" role so UIs can show them greyed out. F2 scenario with one peer
   started without `--role` (or an env var forcing old behaviour).
 - **Done when:** F2 passes with an unknown peer present.
+- **Closed (Claude, 2026-10-09):** the engine half is done by P1.4 (unknown
+  peers stay blocked indefinitely; F2 `blocked-unknown`). The "shown as
+  unknown" half is now part of the control API (`unknownPeers` in
+  control-api §3.2, filled by P4.2 from `remoteRole`/`hasRemoteRole`, never
+  from `roleBlocked`) and is already rendered by `console-ui` (spec §3.4
+  notice). Nothing left in P1.
 - **Result:** *Partly satisfied by P1.4; remains open for the UI half.*
   The blocking half is done and tested: with P1.4, a peer that never sends a
   role keeps `roleBlocked` set indefinitely, so it can never be opened by any
@@ -492,17 +515,39 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
 - **Result:**
 
 ### P1.5 — Per-VDI talk toggle
-- **Depends on:** P1.4, **Q3** · **Size:** S
-- **Do:** on a Console, a per-peer `talk` flag (default per Q3 answer) that
+- **Depends on:** P1.4 · **Size:** M (was S; see review notes)
+- **Review notes (Claude, after P1.4, 2026-10-09). Read these first:**
+  1. **Implement talk, solo narrowing and mute as gains, not as stream
+     start/stop.** Don't use `setRemotePeerSendAllow`/`RecvAllow` or the
+     `*Active` setters for them. Those flags are now the routing matrix's
+     (P1.4); reusing them would hit exactly the cache traps P1.4 fixed, and a
+     role re-apply would override the user's choice. Gains are also
+     **instant**: toggling talk in the middle of a call must not restart an
+     AOO stream (re-handshake gap, dropouts). Concretely: a per-peer send gate
+     on the mic signal fed to that peer's source (silence when closed), and
+     per-peer playback gain for mute.
+  2. **Solo must dim, not cut.** Today `processBlock` forces other peers
+     silent when anything is soloed (`(anysoloed && !remote->soloed)` →
+     `usegain = 0`, `forceSilent`). Change that to multiply by
+     `soloDimDb` (default −18 dB, a setting), as spec §3.5 and the brief require.
+  3. **Expose the effective gate** as `hearsYou` (control-api §3.2:
+     `talk && online && micTransmitting && !(anySolo && !solo)`) in the F2
+     peer dump, and test against it, not against `receivingAudio`: with a
+     gain-based gate the stream stays up while silent.
+- **Do:** on a Console, a per-peer `talk` flag (default on) that
   gates Console → that VDI send. Keep it separate from the routing matrix so
   the matrix still wins (talk can't open a blocked path). **Solo narrows
   talk:** while any VDI is soloed, Console → VDI send goes only to soloed
   VDIs, whatever their talk flag says; the talk flags are kept and restored
   on un-solo. Solo also dims (not cuts) the other VDIs' playback by a
   configurable amount, default −18 dB.
-- **Done when:** F2 scenarios: (a) Console talking to VDI-A only → VDI-B
-  recv-audio false; (b) all talk on, VDI-A soloed → only VDI-A receives the
-  mic; un-solo → all receive again.
+- **Done when:** F2 scenarios on the dumped `hearsYou` (and, if feasible, a
+  measured send level per peer): (a) Console talking to VDI-A only → VDI-B
+  `hearsYou=false`; (b) all talk on, VDI-A soloed → only VDI-A hears;
+  un-solo → all hear again; (c) solo dims, doesn't cut: VDI-B's playback gain
+  is −18 dB while VDI-A is soloed. Needs a way to drive talk/solo in a
+  running headless peer: either P4.4 commands, or a test-only control (env or
+  CLI script) that's removed or kept out of release builds.
 - **Result:**
 
 ## P2 — VDI agent mode
@@ -836,6 +881,14 @@ the mobile `.jucer` source list (remove deleted files from it too).
 - **Depends on:** P4.1
 - **Do:** ~30 fps peak/RMS per peer + mic + master; client can subscribe or
   unsubscribe.
+  **Review note (Claude, 2026-10-09):** station meters must be **pre-fader**
+  (control-api §4, spec §3.5: a muted or dimmed call that starts talking must
+  still show activity). Today `recvMeterSource.measureBlock` runs *after* the
+  channel-group gain, mute and solo processing in `processBlock`, so muted or
+  dimmed stations would read silent. Add a second per-peer meter measured on
+  `workBuffer` **before** the gain stage, and keep the existing post-gain one
+  for anything that needs it. The mic meter is pre-gate (shows my level while
+  not transmitting).
 - **Result:**
 
 ### P4.4 — Commands · M
