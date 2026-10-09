@@ -78,7 +78,7 @@ Ordered so that every task appears after everything it depends on.
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | done | Claude (subagent A, sonnet; finished the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | done | Claude (subagent B, sonnet) |
-| P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | todo | |
+| P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | wip | Claude (subagent H, sonnet) |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
@@ -99,7 +99,7 @@ Ordered so that every task appears after everything it depends on.
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | done | Claude (subagent C, sonnet) |
-| P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
+| P4.2 | State snapshot + change events | P4.1 | M | any | wip | Claude (subagent I, sonnet) |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
 | P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
@@ -110,7 +110,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
-| P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | todo | |
+| P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | wip | Claude (subagent G, sonnet) |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
