@@ -180,6 +180,12 @@ set_target_properties(yaml_smoke PROPERTIES FOLDER "Targets")
 # END P2.2
 # ==============================================================================
 
+# P4.1: known-answer test for the SHA-1 used by the control API's WebSocket
+# handshake. cmake --build <builddir> --target sha1_test && <builddir>/sha1_test
+add_executable(sha1_test EXCLUDE_FROM_ALL tests/sha1_test.cpp)
+target_compile_features(sha1_test PRIVATE cxx_std_17)
+# END P4.1
+
 
 # `juce_add_plugin` adds a static library target with the name passed as the first argument
 # (AudioPluginExample here). This target is a normal CMake target, but has a lot of extra properties set
@@ -291,6 +297,9 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
 
     set(SourceFiles
         ${PlatSourceFiles}
+        Source/ApiServer.cpp
+        Source/ApiServer.h
+        Source/ApiSha1.h
         Source/AutoUpdater.cpp
         Source/AutoUpdater.h
         Source/AppIdentity.h
