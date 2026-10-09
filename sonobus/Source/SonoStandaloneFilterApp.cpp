@@ -58,6 +58,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "SonoLookAndFeel.h"
 
 #include "SonobusPluginEditor.h"
+#include "AppIdentity.h"
 
 #if JUCE_ANDROID
 #include "android/SonoBusActivity.h"
@@ -83,26 +84,18 @@ public:
 
         options.applicationName     = getApplicationName();
         options.filenameSuffix      = ".settings";
-        options.osxLibrarySubFolder = "Application Support/SonoBus";
+        options.osxLibrarySubFolder = "Application Support/" APP_ID_SETTINGS_DIR;
        #if JUCE_LINUX
-        options.folderName          = "~/.config/sonobus";
+        options.folderName          = "~/.config/" APP_ID_LINUX_DIR;
        #else
         options.folderName          = "";
        #endif
 
         appProperties.setStorageParameters (options);
 
-#if JUCE_LINUX
-        // we moved linux settings location in 1.3.19, one time change
-        File oldsettings("~/.config/SonoBus.settings");
-        if (oldsettings.exists()) {
-            File newsettings = options.getDefaultFile();
-            if (!newsettings.getParentDirectory().exists()) {
-                newsettings.getParentDirectory().createDirectory();
-                oldsettings.moveFileTo(newsettings);
-            }
-        }
-#endif
+        // P3.9: upstream's one-time move of ~/.config/SonoBus.settings is gone
+        // on purpose. That file belongs to stock SonoBus, and moving it would
+        // break the user's stock install.
     }
 
     ~SonobusStandaloneFilterApp()

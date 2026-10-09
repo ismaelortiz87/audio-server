@@ -5,6 +5,7 @@
 
 #include "SonobusPluginProcessor.h"
 #include "SonobusPluginEditor.h"
+#include "AppIdentity.h"
 
 #include "RunCumulantor.h"
 
@@ -804,11 +805,11 @@ mState (*this, &mUndoManager, "SonoBusAoO",
     
     // use this to match our main app support dir
     PropertiesFile::Options options;
-    options.applicationName     = "SonoBus";
+    options.applicationName     = APP_ID_SETTINGS_DIR;
     options.filenameSuffix      = ".xml";
-    options.osxLibrarySubFolder = "Application Support/SonoBus";
+    options.osxLibrarySubFolder = "Application Support/" APP_ID_SETTINGS_DIR;
    #if JUCE_LINUX
-    options.folderName          = "~/.config/sonobus";
+    options.folderName          = "~/.config/" APP_ID_LINUX_DIR;
    #else
     options.folderName          = "";
    #endif
@@ -831,7 +832,7 @@ mState (*this, &mUndoManager, "SonoBusAoO",
     // LEAVE EMPTY by default
 #else
     auto parentDir = File::getSpecialLocation (File::userMusicDirectory);
-    parentDir = parentDir.getChildFile("SonoBus");
+    parentDir = parentDir.getChildFile(APP_ID_SETTINGS_DIR);
     mDefaultRecordDir = URL(parentDir);
     mLastBrowseDir = mDefaultRecordDir.getLocalFile().getFullPathName();
 #endif
@@ -926,6 +927,12 @@ SonobusAudioProcessor::~SonobusAudioProcessor()
 
 void SonobusAudioProcessor::moveOldMisplacedFiles()
 {
+    // P3.9: disabled. This recovered files from an old upstream bug's
+    // "dummy" folder. On Windows that is %APPDATA%\dummy, which stock SonoBus
+    // may also use, so running it here could move another app's files. A new
+    // app has nothing to migrate.
+    return;
+
     // old dummy mistake location
     PropertiesFile::Options dummyoptions;
     dummyoptions.applicationName     = "dummy";

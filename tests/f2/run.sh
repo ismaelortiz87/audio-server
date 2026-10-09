@@ -55,7 +55,8 @@ INVOCATION_DIR="$(pwd)"
 
 # The default binaries are the worktree's own build outputs. They may not exist
 # yet; the build check below reports that clearly.
-DEFAULT_APP="$WORKTREE_ROOT/build/desktop-release/SonoBus_artefacts/Release/Standalone/SonoBus.app/Contents/MacOS/SonoBus"
+# P3.9: the app is built as "Crosspoint" (CMake APP_NAME); the target dir keeps the SonoBus name.
+DEFAULT_APP="$WORKTREE_ROOT/build/desktop-release/SonoBus_artefacts/Release/Standalone/Crosspoint.app/Contents/MacOS/Crosspoint"
 DEFAULT_SERVER="$WORKTREE_ROOT/build/aooserver-release/aooserver"
 
 SCENARIO="mesh-stock"

@@ -80,11 +80,11 @@ echo
 echo "Built ($CONFIG):"
 if [ "$BUILD_APP" = 1 ]; then
     if [ "$(uname)" = Darwin ]; then
-        app=$(find "$APP_DIR" -maxdepth 5 -name 'SonoBus.app' -type d -path '*Standalone*' | head -1)
+        app=$(find "$APP_DIR" -maxdepth 5 -name '*.app' -type d -path '*Standalone*' | head -1)
         echo "  app:    $app"
-        echo "          binary: $app/Contents/MacOS/SonoBus"
+        echo "          binary: $app/Contents/MacOS/$(basename "$app" .app)"
     else
-        echo "  app:    $(find "$APP_DIR" -maxdepth 5 -type f -iname sonobus -perm -u+x | head -1)"
+        echo "  app:    $(find "$APP_DIR/SonoBus_artefacts" -maxdepth 4 -type f -path '*Standalone*' -perm -u+x | head -1)"
     fi
 fi
 [ "$BUILD_SERVER" = 1 ] && echo "  server: $SRV_DIR/aooserver"

@@ -38,7 +38,7 @@ tests/f2/test-evaluate.sh
 | Flag | Meaning |
 | --- | --- |
 | `--scenario NAME` | Scenario from `scenarios.json` (default `mesh-stock`). |
-| `--app PATH` | SonoBus binary, or the stub. Default: the worktree's `build/desktop-release/.../Standalone/SonoBus`. |
+| `--app PATH` | SonoBus binary, or the stub. Default: the worktree's `build/desktop-release/.../Standalone/Crosspoint.app` (P3.9 renamed the app). |
 | `--server PATH` | `aooserver` binary. Default: `build/aooserver-release/aooserver`. |
 | `--count N` | Launch only the first N peers of the scenario. |
 | `--peers a,b` | Evaluate only this subset (must be a subset of the scenario's peers). |

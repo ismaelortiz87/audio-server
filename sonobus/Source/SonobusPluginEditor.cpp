@@ -18,6 +18,7 @@
 #include "ChatView.h"
 #include "SoundboardView.h"
 #include "AutoUpdater.h"
+#include "AppIdentity.h"
 #include "LatencyMatchView.h"
 #include "SuggestNewGroupView.h"
 #include "SonoCallOutBox.h"
@@ -46,7 +47,7 @@ enum {
     PeerLayoutRadioGroupId = 1
 };
 
-#define SONOBUS_SCHEME "sonobus"
+#define SONOBUS_SCHEME APP_ID_URL_SCHEME
 
 using namespace SonoAudio;
 
@@ -346,7 +347,7 @@ SonobusAudioProcessorEditor::SonobusAudioProcessorEditor (SonobusAudioProcessor&
         currConnectionInfo.userName = lastusername;
     }
 
-    mTitleLabel = std::make_unique<Label>("title", TRANS("SonoBus"));
+    mTitleLabel = std::make_unique<Label>("title", JucePlugin_Name);
     mTitleLabel->setFont(20);
     mTitleLabel->setAccessible(false);
     mTitleLabel->setColour(Label::textColourId, Colour(0xff47b0f8));
@@ -1958,10 +1959,14 @@ void SonobusAudioProcessorEditor::timerCallback(int timerid)
     else if (timerid == CheckForNewVersionTimerId) {
         if (getShouldCheckForNewVersionValue) {
             Value * val = getShouldCheckForNewVersionValue();
+#if APP_ID_ENABLE_UPDATE_CHECK
             if (val && (bool)val->getValue()) {
                 DBG("Checking for new version");
                 LatestVersionCheckerAndUpdater::getInstance()->checkForNewVersion (false);
             }
+#else
+            ignoreUnused(val); // P3.9: upstream's updater would install stock SonoBus
+#endif
         }
         stopTimer(CheckForNewVersionTimerId);
     }
@@ -5882,7 +5887,9 @@ bool SonobusAudioProcessorEditor::perform (const InvocationInfo& info) {
 
             break;
         case SonobusCommands::CheckForNewVersion:   
+#if APP_ID_ENABLE_UPDATE_CHECK
             LatestVersionCheckerAndUpdater::getInstance()->checkForNewVersion (true); 
+#endif
             break;
 
         case SonobusCommands::CopyGroupLink:

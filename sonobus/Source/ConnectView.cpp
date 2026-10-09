@@ -2,6 +2,7 @@
 // Copyright (C) 2021 Jesse Chappell
 
 #include "ConnectView.h"
+#include "AppIdentity.h"
 
 #include "RandomSentenceGenerator.h"
 
@@ -886,7 +887,7 @@ bool ConnectView::copyInfoToClipboard(bool singleURL, String * retmessage)
     }
 
     String urlstr1;
-    urlstr1 << String("sonobus://") << hostport << String("/");
+    urlstr1 << String(APP_ID_URL_SCHEME "://") << hostport << String("/");
     URL url(urlstr1);
     URL url2("http://go.sonobus.net/sblaunch");
 
@@ -911,11 +912,13 @@ bool ConnectView::copyInfoToClipboard(bool singleURL, String * retmessage)
         //message += "\n\n";
 
         //message += TRANS("Or share this link:") + "\n";
-        message += url2.toString(true);
+        // P3.9: share our own scheme link. url2 (go.sonobus.net/sblaunch) is
+        // upstream's web launcher, which opens stock SonoBus instead.
+        message += url.toString(true);
         message += "\n";
 
         if (singleURL) {
-            message = url2.toString(true);
+            message = url.toString(true);
         }
         SystemClipboard::copyTextToClipboard(message);
 
@@ -1322,7 +1325,7 @@ bool ConnectView::attemptToPasteConnectionFromClipboard()
 
     if (clip.isNotEmpty()) {
         // look for sonobus URL anywhere in it
-        String urlpart = clip.fromFirstOccurrenceOf("sonobus://", true, true);
+        String urlpart = clip.fromFirstOccurrenceOf(APP_ID_URL_SCHEME "://", true, true);
         if (urlpart.isNotEmpty()) {
             // find the end (whitespace) and strip it out
             urlpart = urlpart.upToFirstOccurrenceOf("\n", false, true).trim();
@@ -1388,7 +1391,7 @@ bool ConnectView::handleSonobusURL(const URL & url)
 
     }
 
-    if (url.getScheme() == "sonobus") {
+    if (url.getScheme() == APP_ID_URL_SCHEME) {
         // use domain part as host:port
         String hostpart = url.getDomain();
         currConnectionInfo.serverHost =  hostpart.upToFirstOccurrenceOf(":", false, true);

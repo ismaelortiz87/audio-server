@@ -38,6 +38,16 @@ endif()
 
 project(SonoBus VERSION 1.7.2)
 
+# App identity (P3.9). This fork must run side by side with stock SonoBus, so it
+# has its own name, bundle id, settings folder, link scheme and plugin codes.
+# Change them here only: Source/AppIdentity.h reads them via APP_ID_* defines.
+set (APP_NAME        "Crosspoint")
+set (APP_BUNDLE_ID   "io.lagreca.app.crosspoint")
+set (APP_COMPANY     "lagreca")
+set (APP_URL_SCHEME  "crosspoint")
+set (APP_LINUX_DIR   "crosspoint")
+set (APP_MFR_CODE    "Lagr")
+
 set(BUILDVERSION 80)
 
 
@@ -123,10 +133,10 @@ set (MacPList "<plist version=\"1.0\">
 <array>
      <dict>
          <key>CFBundleURLName</key>
-         <string>net.sonobus</string>
+         <string>${APP_BUNDLE_ID}</string>
          <key>CFBundleURLSchemes</key>
          <array>
-              <string>sonobus</string>
+              <string>${APP_URL_SCHEME}</string>
          </array>
       </dict>
    </array>
@@ -155,8 +165,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         NEEDS_MIDI_INPUT TRUE
         NEEDS_MIDI_OUTPUT TRUE
         EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-        COMPANY_NAME "Sonosaurus"
-        BUNDLE_ID "com.Sonosaurus.SonoBus"
+        COMPANY_NAME "${APP_COMPANY}"
+        BUNDLE_ID "${APP_BUNDLE_ID}"
         MICROPHONE_PERMISSION_ENABLED TRUE
         
         ICON_BIG "images/sonobus_icon_mac_1024.png"
@@ -166,7 +176,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         VST3_CATEGORIES "${vst3cats}"
         AAX_CATEGORY "AAX_ePlugInCategory_None"
 
-	LV2URI "https://sonobus.net/lv2/sonobus"
+	LV2URI "https://crosspoint.app.lagreca.io/lv2/${plugincode}"
 	
         # mac settings
         HARDENED_RUNTIME_ENABLED TRUE
@@ -176,10 +186,10 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         
         
         # other settings...
-        PLUGIN_MANUFACTURER_CODE Sono
+        PLUGIN_MANUFACTURER_CODE ${APP_MFR_CODE}
         PLUGIN_CODE ${plugincode}
         FORMATS ${formats}
-        DESCRIPTION "SonoBus - Network Audio"
+        DESCRIPTION "${APP_NAME} - VDI remote audio"
         PRODUCT_NAME "${product_name}")
 
     juce_generate_juce_header("${target_name}")
@@ -196,7 +206,11 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         $<$<CONFIG:Debug>:LOGLEVEL=2>
         USE_CODEC_OPUS=1
         AOO_TIMEFILTER_CHECK=0
-        AOO_STATIC)
+        AOO_STATIC
+        APP_ID_SETTINGS_DIR="${APP_NAME}"
+        APP_ID_LINUX_DIR="${APP_LINUX_DIR}"
+        APP_ID_URL_SCHEME="${APP_URL_SCHEME}"
+        APP_ID_ENABLE_UPDATE_CHECK=0)
 
     set(PlatSourceFiles
         Source/CrossPlatformUtils.h
@@ -242,6 +256,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         ${PlatSourceFiles}
         Source/AutoUpdater.cpp
         Source/AutoUpdater.h
+        Source/AppIdentity.h
         Source/BeatToggleGrid.cpp
         Source/BeatToggleGrid.h
         Source/ChannelGroup.cpp
@@ -621,11 +636,11 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
 endfunction()
 
 # most of the targets
-sono_add_custom_plugin_target(SonoBus SonoBus "${FormatsToBuild}" FALSE  "NBus")
+sono_add_custom_plugin_target(SonoBus "${APP_NAME}" "${FormatsToBuild}" FALSE  "Xpnt")
 
 # Mobile targets
 #sono_add_custom_plugin_target(SonoBusMobile "AUv3 Standalone" FALSE "NBus")
 
 # add VSTi target
-sono_add_custom_plugin_target(SonoBusInst "SonoBusInstrument" "VST3" TRUE  "IBus")
+sono_add_custom_plugin_target(SonoBusInst "${APP_NAME}Instrument" "VST3" TRUE  "Xpni")
 
