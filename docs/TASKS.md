@@ -75,9 +75,10 @@ Ordered so that every task appears after everything it depends on.
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | done | Claude (helper) |
 | P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | todo | |
-| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | wip | Claude (helper) |
+| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | wip | Claude (subagent A, sonnet; continues the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
-| P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | todo | |
+| P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | wip | Claude (subagent B, sonnet) |
+| P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | todo | |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | todo | |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
@@ -94,10 +95,10 @@ Ordered so that every task appears after everything it depends on.
 | P3.7 | Trim effects to what UX2 specifies | P3.5, UX2 | S | any | todo | |
 | P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
 | P3.9 | Own app identity: name, bundle id, settings folder (coexist with stock SonoBus) | — | S | any | done | Claude |
-| P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | todo | |
+| P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | wip | Claude |
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
-| P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | todo | |
+| P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | wip | Claude (subagent C, sonnet) |
 | P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
@@ -643,6 +644,22 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   It must keep the file's comments and key order (edit in place, don't
   re-serialise everything) and write atomically (temp file + rename).
 - **Done when:** F2 can start peers from YAML files instead of flags.
+- **Result:**
+
+### P2.11 — Linux: pin devices to PipeWire nodes · M
+- **Depends on:** P2.1
+- **Split out of P2.1 (Claude, 2026-10-09)** so P2.1 can be finished and
+  verified on macOS. Implements the D12 / P2.1 "Linux / PipeWire device
+  addressing" note: on Linux, `audio.input_device` / `audio.output_device`
+  name PipeWire nodes; the agent generates an ALSA config defining
+  `crosspoint_in` / `crosspoint_out` PCMs of `type pipewire` pinned to those
+  nodes and opens them through JUCE's ALSA backend. It validates the node
+  names (`pw-cli ls Node` / `pactl list short sources|sinks`) and lists the
+  valid ones on error.
+- **Done when:** in a `debian:trixie` container with PipeWire running and two
+  null sinks, the agent captures from the configured monitor and plays into
+  the configured sink (measured with `pw-record`/levels), and a wrong node
+  name produces the listed-valid-nodes error.
 - **Result:**
 
 ### P2.7 — Example YAML + docs
