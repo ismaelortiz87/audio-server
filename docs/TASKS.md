@@ -111,7 +111,7 @@ Ordered so that every task appears after everything it depends on.
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | todo | |
-| P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | todo | |
+| P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | wip | Claude (subagent E, sonnet; standalone gateway first, engine hookup in P7.1) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
