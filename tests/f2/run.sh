@@ -20,6 +20,8 @@
 #                       Peers get --role <role> from the scenario; the stub gets
 #                       --fake-role instead.
 #   --server PATH       aooserver binary. Default: build/aooserver-release/aooserver
+#   --server-addr H:P   use an already-running server (e.g. a container) instead
+#                       of starting a local one; skips the aooserver build check
 #   --count N           only launch the first N peers of the scenario
 #   --peers a,b         evaluate only these peers (subset of the scenario)
 #   --timeout SEC       settle timeout in seconds (default 30)
@@ -62,6 +64,8 @@ DEFAULT_SERVER="$WORKTREE_ROOT/build/aooserver-release/aooserver"
 SCENARIO="mesh-stock"
 APP=""
 SERVER=""
+SERVER_ADDR=""
+SERVER_HOST="127.0.0.1"
 COUNT=""
 PEER_FILTER=""
 TIMEOUT=30
@@ -100,6 +104,7 @@ while [ $# -gt 0 ]; do
         --scenario)   SCENARIO="${2:?}"; shift 2 ;;
         --app)        APP="${2:?}"; shift 2 ;;
         --server)     SERVER="${2:?}"; shift 2 ;;
+        --server-addr) SERVER_ADDR="${2:?}"; shift 2 ;;
         --count)      COUNT="${2:?}"; shift 2 ;;
         --peers)      PEER_FILTER="${2:?}"; shift 2 ;;
         --timeout)    TIMEOUT="${2:?}"; shift 2 ;;
@@ -385,7 +390,7 @@ build_check() {
         printf 'at the fake stub:  %s --app %s/fake-peer.sh\n' "$0" "$SCRIPT_DIR" >&2
         rc=1
     fi
-    if [ ! -x "$SERVER" ]; then
+    if [ -z "$SERVER_ADDR" ] && [ ! -x "$SERVER" ]; then
         printf 'ERROR: aooserver binary not found or not executable:\n  %s\n' "$SERVER" >&2
         printf 'Build it with scripts/build-desktop.sh --server-only.\n' >&2
         rc=1
@@ -425,7 +430,7 @@ mkdir -p "$DUMP_DIR" "$SERVER_LOG_DIR"
 log "scenario : $SCENARIO ($ROUTING, group=$GROUP)"
 [ -n "$DESC" ] && log "desc     : $DESC"
 log "app      : $APP"
-log "server   : $SERVER"
+if [ -n "$SERVER_ADDR" ]; then log "server   : external $SERVER_ADDR"; else log "server   : $SERVER"; fi
 log "run dir  : $RUN_DIR"
 if [ "$VERBOSE" = 1 ]; then
     for i in "${!PEER_NAMES[@]}"; do
@@ -433,6 +438,14 @@ if [ "$VERBOSE" = 1 ]; then
     done
 fi
 
+if [ -n "$SERVER_ADDR" ]; then
+    case "$SERVER_ADDR" in
+        *:*) SERVER_HOST="${SERVER_ADDR%:*}"; PORT="${SERVER_ADDR##*:}" ;;
+        *) die "--server-addr must be HOST:PORT" ;;
+    esac
+    case "$PORT" in ''|*[!0-9]*) die "--server-addr port must be numeric" ;; esac
+    log "port     : $PORT (external server $SERVER_HOST)"
+else
 # ---------------------------------------------------------------------------
 # pick a free port (the server binds TCP and UDP on the same port)
 # ---------------------------------------------------------------------------
@@ -499,6 +512,8 @@ wait_for_server() {
 }
 wait_for_server || fail "server failed to start"
 
+fi
+
 # ---------------------------------------------------------------------------
 # start the peers
 # ---------------------------------------------------------------------------
@@ -532,7 +547,7 @@ for i in "${!PEER_NAMES[@]}"; do
     home_dir="$peer_dir/home"
     mkdir -p "$home_dir"
 
-    cmd=( "$APP" -q -c "127.0.0.1:$PORT" -g "$GROUP" -n "$name" --dump-peers "$DUMP_DIR/$name.json" )
+    cmd=( "$APP" -q -c "$SERVER_HOST:$PORT" -g "$GROUP" -n "$name" --dump-peers "$DUMP_DIR/$name.json" )
     # --role is the real app's flag. "default" means the scenario did not
     # specify one, so the flag is omitted and the app uses its own default
     # (console). The stub accepts --role too, but for a stub run it gets

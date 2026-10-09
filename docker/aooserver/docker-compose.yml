@@ -1,0 +1,26 @@
+# Self-hosted AOO connection server (P8.1). Run from this directory:
+#   docker compose up -d --build
+services:
+  aooserver:
+    build:
+      context: ../../aooserver
+      dockerfile: ../docker/aooserver/Dockerfile
+    image: crosspoint-aooserver:latest
+    container_name: crosspoint-aooserver
+    restart: unless-stopped
+    environment:
+      AOO_PORT: "10998"
+      # AOO_BLOCKLIST: /etc/aooserver/blocklist.txt   # also uncomment the mount below
+    ports:
+      # TCP (login/groups) and UDP (hole punching / pings) on the same port.
+      # To listen only on the VPN interface, bind to its address instead:
+      #   - "10.x.y.z:10998:10998/tcp"
+      #   - "10.x.y.z:10998:10998/udp"
+      - "10998:10998/tcp"
+      - "10998:10998/udp"
+    volumes:
+      - aooserver-logs:/var/log/aooserver
+      # - ./blocklist.txt:/etc/aooserver/blocklist.txt:ro
+
+volumes:
+  aooserver-logs:
