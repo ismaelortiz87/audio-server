@@ -1,0 +1,94 @@
+{
+  "_doc": [
+    "Scenario definitions for the tests/f2 multi-peer harness.",
+    "",
+    "Each scenario has:",
+    "  description : human readable summary",
+    "  group       : AOO group name all peers join",
+    "  routing     : the TARGET routing model ('mesh' or 'matrix')",
+    "  expect      : what the harness compares against TODAY (default: routing).",
+    "                Use 'all-blocked' while a target model is not implemented,",
+    "                and explain it in 'pending'.",
+    "  pending     : optional note explaining why expect differs from routing",
+    "  env         : optional env vars for every peer in the scenario",
+    "  peers       : list of { name, role, advertise?, env? }",
+    "",
+    "Peer role semantics (verified against the real built app):",
+    "  role: null      -> no --role flag; the real app defaults to 'console'.",
+    "  role: 'console' -> pass --role console (selfRole 'console').",
+    "  role: 'vdi'     -> pass --role vdi (selfRole 'vdi').",
+    "  advertise:false -> set SONOBUS_NO_ROLE_ADVERT=1: the peer's own selfRole",
+    "                     stays its default, but other peers observe 'unknown'",
+    "                     with hasRole=false. This is the stock-SonoBus case.",
+    "",
+    "Verified ground truth (real binaries, see README 'Verified behaviour'):",
+    "  3 role-less peers + SONOBUS_NO_ROLE_BLOCK=1 -> full mesh, all flags true.",
+    "  role-less peer + SONOBUS_NO_ROLE_ADVERT=1   -> observed role 'unknown',",
+    "                                                 both directions blocked.",
+    "  console + vdi (no env)                      -> both directions blocked,",
+    "                                                 because P1.4 is not yet",
+    "                                                 implemented (P1.3 blocks)",
+    "                                                 every new peer by default."
+  ],
+  "scenarios": {
+    "mesh-stock": {
+      "description": "Pre-roles stock behaviour: three peers with no advertised role and open routing. Passes against the real app today.",
+      "group": "f2-mesh-stock",
+      "routing": "mesh",
+      "expect": "mesh",
+      "env": {
+        "SONOBUS_NO_ROLE_BLOCK": "1"
+      },
+      "peers": [
+        { "name": "p1", "role": null },
+        { "name": "p2", "role": null },
+        { "name": "p3", "role": null }
+      ]
+    },
+    "matrix-1v1": {
+      "description": "One console and one vdi. Targets the routing matrix, but the real app blocks every new peer until P1.4 lands, so this run expects all-blocked and reports the target separately.",
+      "group": "f2-matrix-1v1",
+      "routing": "matrix",
+      "expect": "all-blocked",
+      "pending": "P1.4 (apply the routing matrix to open console<->vdi paths) is not implemented; P1.3 blocks all new peers.",
+      "peers": [
+        { "name": "c1", "role": "console" },
+        { "name": "v1", "role": "vdi" }
+      ]
+    },
+    "matrix-2v2": {
+      "description": "Two consoles and two vdis. Targets the routing matrix (cross-role allowed, same-role blocked); today every direction is blocked pending P1.4.",
+      "group": "f2-matrix-2v2",
+      "routing": "matrix",
+      "expect": "all-blocked",
+      "pending": "P1.4 is not implemented; P1.3 blocks all new peers. With --expect matrix this scenario shows the target model is not yet satisfied.",
+      "peers": [
+        { "name": "c1", "role": "console" },
+        { "name": "c2", "role": "console" },
+        { "name": "v1", "role": "vdi" },
+        { "name": "v2", "role": "vdi" }
+      ]
+    },
+    "blocked-unknown": {
+      "description": "Two peers that advertise no role at all (stock SonoBus behaviour). The matrix blocks every direction when either side is unknown, so this passes against the real app today.",
+      "group": "f2-blocked-unknown",
+      "routing": "matrix",
+      "expect": "all-blocked",
+      "peers": [
+        { "name": "u1", "role": null, "advertise": false },
+        { "name": "u2", "role": null, "advertise": false }
+      ]
+    },
+    "matrix-target-check": {
+      "description": "Same peers as matrix-1v1 but compared against the TARGET matrix model. Expected to fail until P1.4 lands; useful to see exactly which paths are still closed.",
+      "group": "f2-matrix-1v1",
+      "routing": "matrix",
+      "expect": "matrix",
+      "pending": "This scenario intentionally asserts the P1.4 target; it should fail until P1.4 is implemented.",
+      "peers": [
+        { "name": "c1", "role": "console" },
+        { "name": "v1", "role": "vdi" }
+      ]
+    }
+  }
+}
