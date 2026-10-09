@@ -144,6 +144,43 @@ set (MacPList "<plist version=\"1.0\">
 </plist>")
 
 
+# ==============================================================================
+# BEGIN P2.2 -- vendored YAML parser (rapidyaml, desktop only)
+#
+# Self-contained block: adds nothing to the app's behaviour while unused. See
+# deps/rapidyaml/README.md. P2.1 consumes this via target_link_libraries(... yaml_parser).
+#
+# The amalgamated header needs exactly ONE TU to define RYML_SINGLE_HDR_DEFINE_NOW
+# and emit the implementation, so that lives in the small static lib `sono_yaml`;
+# `yaml_parser` stays a pure INTERFACE target carrying only the include directory.
+# Kept out of the Android/mobile project (mobile/Builds/Android has its own build).
+# ==============================================================================
+add_library(yaml_parser INTERFACE)
+target_include_directories(yaml_parser INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/deps/rapidyaml")
+
+add_library(sono_yaml STATIC deps/rapidyaml/ryml_impl.cpp)
+target_link_libraries(sono_yaml PUBLIC yaml_parser)
+target_compile_features(sono_yaml PUBLIC cxx_std_17)
+# POSITION_INDEPENDENT_CODE is required, not optional: the default Linux format
+# set is VST3 + Standalone + LV2, so this archive gets linked into shared
+# modules. Without it the Linux VST3/LV2 link fails with ~32 "recompile with
+# -fPIC" / "dangerous relocation" errors the moment anything actually calls the
+# parser (i.e. as soon as P2.1 lands) -- it only passes today because the
+# archive is still unreferenced and the linker discards it. Portable CMake
+# property, so it is correct on macOS too (where PIC is already the default).
+set_target_properties(sono_yaml PROPERTIES FOLDER "Targets" POSITION_INDEPENDENT_CODE ON)
+
+# Trivial-parse proof: build with
+#   cmake --build <builddir> --target yaml_smoke && <builddir>/yaml_smoke
+# Not part of the app's runtime path.
+add_executable(yaml_smoke EXCLUDE_FROM_ALL tests/yaml_smoke.cpp)
+target_link_libraries(yaml_smoke PRIVATE sono_yaml)
+target_compile_features(yaml_smoke PRIVATE cxx_std_17)
+set_target_properties(yaml_smoke PROPERTIES FOLDER "Targets")
+# END P2.2
+# ==============================================================================
+
+
 # `juce_add_plugin` adds a static library target with the name passed as the first argument
 # (AudioPluginExample here). This target is a normal CMake target, but has a lot of extra properties set
 # up by default. As well as this shared code static library, this function adds targets for each of
@@ -632,6 +669,10 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
             juce::juce_recommended_lto_flags
         #   juce::juce_recommended_warning_flags
         )
+
+    # P2.2: vendored YAML parser (rapidyaml) -- see the block above and
+    # deps/rapidyaml/README.md. Gives the app target `#include <ryml_all.hpp>`.
+    target_link_libraries("${target_name}" PRIVATE sono_yaml)
             
 endfunction()
 
