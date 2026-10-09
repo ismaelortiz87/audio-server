@@ -59,6 +59,8 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
 #include "SonobusPluginEditor.h"
 #include "AppIdentity.h"
+#include "ApiServer.h"   // P4.1
+#include <csignal>
 
 #if JUCE_ANDROID
 #include "android/SonoBusActivity.h"
@@ -126,6 +128,31 @@ public:
     // whether the option appeared at all, so a missing value is reported
     bool roleWasGiven = false;
     bool dumppeersWasGiven = false;
+
+    // P4.1: control API (HTTP + WebSocket). CLI only for now; P2.1 can fill
+    // apiConfig from the YAML `api:` section in applyApiOptions() below
+    // before the CLI values are applied, so the CLI keeps winning.
+    crosspoint::ApiConfig apiConfig;
+    bool apiPortWasGiven = false;
+    bool apiOptionError = false;   // an invalid API option: quit with a non-zero status
+    std::unique_ptr<crosspoint::ApiServer> apiServer;
+
+    // SIGTERM/SIGINT in headless mode request a normal quit, so shutdown()
+    // runs (settings saved, API sockets closed). The handler only sets a flag;
+    // a message-thread timer does the quit.
+    static std::atomic<bool>& quitSignalFlag() { static std::atomic<bool> f { false }; return f; }
+    struct QuitSignalWatcher : public Timer
+    {
+        void timerCallback() override
+        {
+            if (quitSignalFlag().load())
+            {
+                stopTimer();
+                if (auto* app = JUCEApplicationBase::getInstance())
+                    app->systemRequestedQuit();
+            }
+        }
+    } quitSignalWatcher;
 
     virtual StandalonePluginHolder* createHeadlessPlugin ()
     {
@@ -334,6 +361,100 @@ public:
         }
     }
 
+    // P4.1: parse the control API options, validate them, and fill apiConfig.
+    // Errors set doImmediateQuit (nothing has started yet, so refusing here is clean).
+    void applyApiOptions (ArgumentList & arglist)
+    {
+        // P2.1 hook: load defaults from the YAML `api:` section into apiConfig here.
+        const bool isVdi = cmdlineRole == "vdi";
+        apiConfig.role = isVdi ? "vdi" : "console";
+        apiConfig.appName = "Crosspoint";
+        apiConfig.version = JucePlugin_VersionString;
+        apiConfig.port = isVdi ? 7071 : 7070;
+        apiConfig.features.clear();
+        apiConfig.selfName = cmdlineConnInfo.userName.isNotEmpty() ? cmdlineConnInfo.userName
+                                                                   : SystemStats::getComputerName();
+
+        bool given = false;
+        auto portStr = removeLongOptionValue(arglist, "--api-port", &given);
+        if (given) {
+            apiPortWasGiven = true;
+            if (portStr.isEmpty() || !portStr.containsOnly("0123456789") || portStr.getIntValue() > 65535) {
+                std::cerr << "Error: --api-port needs a number from 0 to 65535 (0 disables the API)" << std::endl;
+                doImmediateQuit = true;
+            } else {
+                apiConfig.port = portStr.getIntValue();
+            }
+        }
+
+        auto bind = removeLongOptionValue(arglist, "--api-bind", &given);
+        if (given) {
+            if (bind.trim().isEmpty()) {
+                std::cerr << "Error: --api-bind requires an address" << std::endl;
+                doImmediateQuit = true;
+            } else {
+                apiConfig.bindAddress = bind.trim();
+            }
+        }
+
+        auto token = removeLongOptionValue(arglist, "--api-token", &given);
+        if (given && token.isEmpty()) {
+            std::cerr << "Error: --api-token requires a value" << std::endl;
+            doImmediateQuit = true;
+        }
+        if (token.isEmpty())
+            token = SystemStats::getEnvironmentVariable("CROSSPOINT_API_TOKEN", {});
+        apiConfig.token = token;
+
+        for (;;) {
+            auto origin = removeLongOptionValue(arglist, "--api-allow-origin", &given);
+            if (!given) break;
+            if (origin.isEmpty()) {
+                std::cerr << "Error: --api-allow-origin requires a value" << std::endl;
+                doImmediateQuit = true;
+                break;
+            }
+            apiConfig.allowedOrigins.add(origin);
+        }
+
+        auto uidir = removeLongOptionValue(arglist, "--ui-dir", &given);
+        if (given) {
+            File dir = File::getCurrentWorkingDirectory().getChildFile(uidir);
+            if (uidir.isEmpty() || !dir.isDirectory()) {
+                std::cerr << "Error: --ui-dir '" << uidir << "' is not a directory" << std::endl;
+                doImmediateQuit = true;
+            } else {
+                apiConfig.uiDir = dir;
+            }
+        }
+
+        // Never expose the control API beyond loopback without a token.
+        if (apiConfig.port > 0 && !apiConfig.isLoopbackBind() && apiConfig.token.isEmpty()) {
+            std::cerr << "Error: --api-bind " << apiConfig.bindAddress
+                      << " is not a loopback address; refusing to start without --api-token" << std::endl;
+            doImmediateQuit = true;
+        }
+        if (doImmediateQuit) apiOptionError = true;
+    }
+
+    // P4.1: start the control API. An explicit --api-port that cannot be bound is
+    // fatal; a busy default port only logs, so several apps can share a machine.
+    // Returns false when the app should quit.
+    bool startApiServer()
+    {
+        if (apiConfig.port <= 0) return true;
+
+        apiServer = std::make_unique<crosspoint::ApiServer>(apiConfig);
+        auto r = apiServer->start();
+        if (r.wasOk()) {
+            std::cerr << "Control API listening on http://" << apiConfig.bindAddress << ":" << apiConfig.port << "/" << std::endl;
+            return true;
+        }
+        apiServer.reset();
+        std::cerr << (apiPortWasGiven ? "Error: " : "Warning: control API disabled: ") << r.getErrorMessage() << std::endl;
+        return !apiPortWasGiven;
+    }
+
     void handleCommandLine()
     {
         ConsoleApplication app;
@@ -418,6 +539,18 @@ public:
             nullptr
         });
 
+        // P4.1: control API options (see applyApiOptions)
+        app.addCommand ({ "--api-port", "--api-port <n>",
+            TRANS("Port for the control API and web UI (HTTP + WebSocket). Default 7070 for a console, 7071 for a VDI; 0 disables it."), {}, nullptr });
+        app.addCommand ({ "--api-bind", "--api-bind <address>",
+            TRANS("Address the control API listens on (default 127.0.0.1). A non-loopback address requires --api-token."), {}, nullptr });
+        app.addCommand ({ "--api-token", "--api-token <secret>",
+            TRANS("Shared secret clients must send in their first WebSocket message. Can also be given in the CROSSPOINT_API_TOKEN environment variable."), {}, nullptr });
+        app.addCommand ({ "--api-allow-origin", "--api-allow-origin <origin>",
+            TRANS("Extra browser origin allowed to open the WebSocket, e.g. https://crosspoint.example.com. Repeatable."), {}, nullptr });
+        app.addCommand ({ "--ui-dir", "--ui-dir <path>",
+            TRANS("Folder of web UI files served at / (for example the repo's console-ui folder)."), {}, nullptr });
+
 
 
         if (arglist.removeOptionIfFound(versionSpec)) {
@@ -500,12 +633,15 @@ public:
             dumpPeersFilename = dumppeers;
         }
 
+        applyApiOptions (arglist);   // P4.1
 
         if (arglist.removeOptionIfFound(headlessSpec)) {
 
             doHeadless = true;
 
-            if (!doInitialConnect) {
+            // P4.1: a headless app with the control API on can be driven over it,
+            // so it does not need a group on the command line.
+            if (!doInitialConnect && !(apiPortWasGiven && apiConfig.port > 0)) {
                 std::cout << TRANS("Error: you need to specify a group to connect to for headless operation right now... eventually there will be an OSC interface.") << std::endl;
                 doImmediateQuit = true;
             }
@@ -525,9 +661,27 @@ public:
         handleCommandLine();
 
         if (doImmediateQuit) {
+            if (apiOptionError) setApplicationReturnValue (2);   // P4.1
             quit();
             return;
         };
+
+       #if ! JUCE_WINDOWS && ! JUCE_ANDROID
+        if (doHeadless) {
+            // P4.1: let SIGTERM/SIGINT take the normal quit path (see QuitSignalWatcher).
+            // Installed before the API starts listening so a signal can never beat it.
+            auto onQuitSignal = [] (int) { quitSignalFlag().store (true); };
+            std::signal (SIGTERM, onQuitSignal);
+            std::signal (SIGINT, onQuitSignal);
+            quitSignalWatcher.startTimer (200);
+        }
+       #endif
+
+        if (!startApiServer()) {   // P4.1
+            setApplicationReturnValue (2);
+            quit();
+            return;
+        }
 
 
         if (!doHeadless) {
@@ -609,6 +763,7 @@ public:
             // headless mode
 
             pluginHolder.reset (createHeadlessPlugin());
+
 
             // P1.1: role first, before connecting/joining, so our initial
             // peer-info advertises the real role (see the windowed path above).
@@ -794,6 +949,8 @@ public:
     void shutdown() override
     {
         //DBG("shutdown");
+        quitSignalWatcher.stopTimer();
+        apiServer.reset();   // P4.1: closes sockets and joins the API threads first
         if (mainWindow.get() != nullptr) {
             mainWindow->pluginHolder->savePluginState();
             mainWindow->pluginHolder->saveAudioDeviceState();
