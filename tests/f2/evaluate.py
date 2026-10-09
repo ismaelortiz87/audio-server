@@ -73,6 +73,16 @@ OPTIONAL_ENTRY_FIELDS = ("sendActive", "recvActive", "receivingAudio")
 # Recognised extras written by the real app; never required, only type-checked.
 EXTRA_ENTRY_FIELDS = ("hasRole",)
 
+# P1.7: VDI agent health, reported by a VDI peer inside an "agent" object and
+# parsed by the Console into the peer entry. `hasAgent` says whether this peer
+# sent an agent object at all -- a Console never does -- so "no agent" is not
+# confused with "agent reports ok".
+AGENT_STATES = {
+    "input": ("ok", "missing", "silent"),
+    "output": ("ok", "missing"),
+}
+AGENT_KEYS = ("input", "output", "paused", "config_error")
+
 # `connected` is a stream-level flag, not a routing property. Observed against
 # the real app it is asymmetric and unstable (e.g. c1 sees c2 disconnected while
 # c2 sees c1 connected, and the set changes between runs) because it tracks AOO
@@ -200,12 +210,61 @@ def scenario_peers(scen, name):
         elif env.get("SONOBUS_NO_ROLE_ADVERT", "") not in ("", "0", "false", "no"):
             advertise = False
 
+        # P1.7: optional expected agent health for this peer. A peer with no
+        # "agent" in the scenario is not asserted (Consoles have none), but when
+        # present every listed key is checked, so a malformed or missing object
+        # fails loudly rather than being ignored.
+        agent = scenario_agent(entry, where)
+
         out[pname] = {
             "effective": effective,
             "observed": effective if advertise else UNKNOWN,
             "advertise": advertise,
             "env": env,
+            "agent": agent,
+            "kind": scenario_kind(entry, where),
         }
+    return out
+
+
+def scenario_kind(entry, where):
+    """P1.7: optional expected Console kind ('mac'|'web'|'other') for a peer."""
+    kind = entry.get("kind")
+    if kind is not None and kind not in ("mac", "web", "other"):
+        raise UsageError("%s: kind must be mac, web or other, got %r" % (where, kind))
+    return kind
+
+
+def scenario_agent(entry, where):
+    """Validate an optional per-peer 'agent' expectation.
+
+    Shape: {"input": "ok"|"missing"|"silent", "output": "ok"|"missing",
+            "paused": bool, "config_error": str|null}
+    Only the keys given are asserted. Returns None when the peer declares none.
+    """
+    raw = entry.get("agent")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise UsageError("%s: agent must be an object" % where)
+
+    out = {}
+    for key, value in raw.items():
+        if key not in AGENT_KEYS:
+            raise UsageError("%s: agent key %r is not one of %s"
+                             % (where, key, ", ".join(AGENT_KEYS)))
+        if key in AGENT_STATES:
+            if not isinstance(value, str) or value not in AGENT_STATES[key]:
+                raise UsageError("%s: agent.%s must be one of %s, got %r"
+                                 % (where, key, ", ".join(AGENT_STATES[key]), value))
+        elif key == "paused":
+            if not isinstance(value, bool):
+                raise UsageError("%s: agent.paused must be a boolean, got %r" % (where, value))
+        elif key == "config_error":
+            if value is not None and not isinstance(value, str):
+                raise UsageError("%s: agent.config_error must be a string or null, got %r"
+                                 % (where, value))
+        out[key] = value
     return out
 
 
@@ -310,6 +369,34 @@ def check_dump(peer_name, doc, peers, expect, strict_fields, require_connected=F
         elif got != own_role:
             findings.append("selfRole: expected %s, got %s" % (_fmt(own_role), _fmt(got)))
 
+    # -- this peer's own agent health (P1.7) ------------------------------
+    # A VDI reports its own health under "selfAgent"; a Console omits the key.
+    # When the scenario declares agent health for this peer, the peer's own dump
+    # must agree with it -- otherwise only the *other* peers would be checked and
+    # a VDI could silently misreport itself.
+    self_expected = spec.get("agent")
+    self_agent = doc.get("selfAgent")
+    if self_expected is not None:
+        if self_agent is None:
+            findings.append("selfAgent: missing (expected %s)" % _fmt(self_expected))
+        elif not isinstance(self_agent, dict):
+            findings.append("selfAgent: expected an object, got %s" % _type_name(self_agent))
+        else:
+            for key, want in self_expected.items():
+                if key not in self_agent:
+                    findings.append("selfAgent.%s: missing (expected %s)"
+                                    % (key, _fmt(want)))
+                elif self_agent[key] != want:
+                    findings.append("selfAgent.%s: expected %s, got %s"
+                                    % (key, _fmt(want), _fmt(self_agent[key])))
+    elif self_agent is not None and not isinstance(self_agent, dict):
+        findings.append("selfAgent: expected an object, got %s" % _type_name(self_agent))
+
+    # -- own kind (P1.7): only a Console with a declared kind is asserted ----
+    if spec.get("kind") is not None and doc.get("selfKind") != spec["kind"]:
+        findings.append("selfKind: expected %s, got %s"
+                        % (_fmt(spec["kind"]), _fmt(doc.get("selfKind"))))
+
     # -- peer entries -----------------------------------------------------
     entries = doc.get("peers")
     if entries is None:
@@ -412,7 +499,79 @@ def check_dump(peer_name, doc, peers, expect, strict_fields, require_connected=F
                                    _fmt(other_observed != UNKNOWN),
                                    _fmt(other_observed), _fmt(entry[field])))
 
+        findings.extend(check_agent(peer_name, other, entry, peers[other].get("agent")))
+        want_kind = peers[other].get("kind")
+        if want_kind is not None and entry.get("kind") != want_kind:
+            findings.append("%s -> %s kind: expected %s, got %s"
+                            % (peer_name, other, _fmt(want_kind), _fmt(entry.get("kind"))))
+
     return findings, True
+
+
+def check_agent(peer_name, other, entry, expected):
+    """P1.7: check a peer entry's agent health object.
+
+    Two jobs:
+      * always type-check the object when the peer sent one, so a malformed
+        agent fails loudly even in scenarios that do not assert health;
+      * assert the scenario's expected keys for this peer when it declares any.
+    """
+    findings = []
+    prefix = "%s -> %s agent" % (peer_name, other)
+
+    raw = entry.get("agent")
+    has_agent = entry.get("hasAgent")
+
+    if has_agent is not None and not isinstance(has_agent, bool):
+        findings.append("%s hasAgent: expected a boolean, got %s"
+                        % (prefix, _type_name(has_agent)))
+
+    if raw is None:
+        if expected is not None:
+            findings.append("%s: missing (this peer reports health, expected %s)"
+                            % (prefix, _fmt(expected)))
+        return findings
+
+    if not isinstance(raw, dict):
+        findings.append("%s: expected an object, got %s" % (prefix, _type_name(raw)))
+        return findings
+
+    # An agent object that is present must be well formed, asserted or not.
+    for key in AGENT_KEYS:
+        if key not in raw:
+            findings.append("%s.%s: missing (contract field)" % (prefix, key))
+
+    for key, permitted in AGENT_STATES.items():
+        if key not in raw:
+            continue
+        value = raw[key]
+        if not isinstance(value, str) or value not in permitted:
+            findings.append("%s.%s: expected one of %s, got %s"
+                            % (prefix, key, _fmt(list(permitted)), _fmt(value)))
+
+    if "paused" in raw and not isinstance(raw["paused"], bool):
+        findings.append("%s.paused: expected a boolean, got %s"
+                        % (prefix, _type_name(raw["paused"])))
+
+    if "config_error" in raw and raw["config_error"] is not None \
+            and not isinstance(raw["config_error"], str):
+        findings.append("%s.config_error: expected a string or null, got %s"
+                        % (prefix, _type_name(raw["config_error"])))
+
+    # The scenario's declared expectations for this peer.
+    for key, want in (expected or {}).items():
+        if key not in raw:
+            findings.append("%s.%s: missing (expected %s)" % (prefix, key, _fmt(want)))
+        elif raw[key] != want:
+            findings.append("%s.%s: expected %s, got %s"
+                            % (prefix, key, _fmt(want), _fmt(raw[key])))
+
+    # If a peer declares health, its own dump should agree that it has an agent.
+    if expected is not None and has_agent is False:
+        findings.append("%s hasAgent: expected true for a peer that reports health, got false"
+                        % prefix)
+
+    return findings
 
 
 def evaluate_dir(dumps_dir, peers, expect, strict_fields, require_connected=False):

@@ -21,12 +21,15 @@
 #   FAKE_PEER_FAULT=empty-dump       always leave an empty (mid-rewrite) dump
 #   FAKE_PEER_FAULT=bad-send-allow   answer sendAllow=true for every peer
 #   FAKE_PEER_FAULT=self-role-unknown  advertise selfRole "unknown" regardless
+#   FAKE_PEER_FAULT=bad-agent        report agent input "ok" despite the
+#                                    scenario forcing "missing" (P1.7 proof that
+#                                    the health assertion can fail end to end)
 #
 # Exits 0 on SIGTERM/SIGINT, removing its dump first.
 set -euo pipefail
 
 usage() {
-    sed -n '2,26p' "$0"
+    sed -n '2,27p' "$0"
     exit "${1:-0}"
 }
 
@@ -104,6 +107,17 @@ case "${SONOBUS_NO_ROLE_BLOCK:-}" in
     *) NO_ROLE_BLOCK=0 ;;
 esac
 
+# P1.7: the stub emulates a VDI agent's health the same way the real app does,
+# honouring the same SONOBUS_AGENT_* hatches so a scenario's env block drives
+# both producers identically. Only a VDI reports an agent, matching the app.
+AGENT_INPUT="${SONOBUS_AGENT_INPUT:-ok}"
+case "$AGENT_INPUT" in ok|missing|silent) ;; *) AGENT_INPUT="missing" ;; esac
+AGENT_OUTPUT="${SONOBUS_AGENT_OUTPUT:-ok}"
+case "$AGENT_OUTPUT" in ok|missing) ;; *) AGENT_OUTPUT="missing" ;; esac
+if [ "$FAULT" = "bad-agent" ]; then
+    AGENT_INPUT="ok"
+fi
+
 # Stagger discovery so peers really do appear over time, like the real thing.
 # The value is derived from the peer name so a run is deterministic.
 if [ -z "$DELAY" ]; then
@@ -167,6 +181,19 @@ read_role() {
     esac
 }
 
+# P1.7: read the agent health another peer advertises about itself, the way the
+# real app parses it out of that peer's peer-info. Emits "input output" or
+# "none" when the peer advertises no agent (a Console, or stock SonoBus).
+read_agent() {
+    local file="$1" line="" i="" o=""
+    [ -s "$file" ] || { printf 'none'; return; }
+    line="$(sed -n 's/.*"selfAgent"[[:space:]]*:[[:space:]]*{\([^}]*\)}.*/\1/p' "$file" 2>/dev/null | head -1)"
+    [ -n "$line" ] || { printf 'none'; return; }
+    i="$(printf '%s' "$line" | sed -n 's/.*"input"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p')"
+    o="$(printf '%s' "$line" | sed -n 's/.*"output"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p')"
+    printf '%s %s' "${i:-ok}" "${o:-ok}"
+}
+
 write_dump() {
     local now elapsed self_role entry name other_role r s send recv first
     now=$(date +%s)
@@ -198,8 +225,19 @@ write_dump() {
 
         [ $first -eq 1 ] || peers_json="$peers_json,"
         first=0
+        # P1.7: report the agent the OTHER peer advertises about itself, exactly
+        # as the real app parses it from that peer's peer-info. A peer with no
+        # agent (a Console) gets hasAgent=false and no agent object, so "no
+        # agent" is never confused with "agent reports ok".
+        other_agent="$(read_agent "$entry")"
+        if [ "$other_agent" != "none" ]; then
+            oi="${other_agent%% *}"; oo="${other_agent##* }"
+            peer_agent=", \"hasAgent\": true, \"agent\": { \"input\": \"$oi\", \"output\": \"$oo\", \"paused\": false, \"config_error\": null }"
+        else
+            peer_agent=", \"hasAgent\": false"
+        fi
         peers_json="$peers_json
-    { \"name\": \"$name\", \"role\": \"$other_role\", \"connected\": true, \"sendAllow\": $(json_bool "$send"), \"recvAllow\": $(json_bool "$recv"), \"sendActive\": true, \"recvActive\": false, \"receivingAudio\": false }"
+    { \"name\": \"$name\", \"role\": \"$other_role\", \"connected\": true, \"sendAllow\": $(json_bool "$send"), \"recvAllow\": $(json_bool "$recv"), \"sendActive\": true, \"recvActive\": false, \"receivingAudio\": false$peer_agent }"
     done
 
     # Atomic publish: write a temp file in the same directory, then rename.
@@ -207,6 +245,10 @@ write_dump() {
         printf '{\n'
         printf '  "self": "%s",\n' "$USERNAME"
         printf '  "selfRole": "%s",\n' "$self_role"
+        # P1.7: our own health, only as a VDI, matching the app's dump.
+        if [ "$self_role" = "vdi" ]; then
+            printf '  "selfAgent": { "input": "%s", "output": "%s", "paused": false, "config_error": null },\n' "$AGENT_INPUT" "$AGENT_OUTPUT"
+        fi
         if [ -n "$peers_json" ]; then
             printf '  "peers": [%s\n  ]\n' "$peers_json"
         else

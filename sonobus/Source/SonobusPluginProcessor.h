@@ -132,6 +132,26 @@ public:
     static String peerRoleToString(PeerRole role);
     static PeerRole peerRoleFromString(const String & str);
 
+    // P1.7: health a VDI agent reports about itself in the peer-info JSON, so a
+    // Console can eventually show "VDI reports: ..." (UX2/D11). These are the
+    // *wire* values; the strings match the JSON exactly.
+    struct AgentHealth {
+        // "ok" | "missing" | "silent"
+        String input { "ok" };
+        // "ok" | "missing"
+        String output { "ok" };
+        // No pause concept exists in the engine yet (there is only soundboard
+        // file play/pause), so this is always false today. Kept on the wire so
+        // the field exists for the Console UI and for whoever adds pausing.
+        // TODO(P2.3+): report a real pause state once the VDI can be paused.
+        bool paused = false;
+        // No YAML config loader exists yet (that is P2.1), so there is nothing
+        // that can fail to load and this is always null today. A String that is
+        // empty is serialised as JSON null (see agentConfigErrorVar()).
+        // TODO(P2.1): surface real config load/validation errors here.
+        String configError;
+    };
+
     enum AutoNetBufferMode {
         AutoNetBufferModeOff = 0,
         AutoNetBufferModeAutoIncreaseOnly,
@@ -1177,7 +1197,47 @@ private:
     };
 
     ServerReconnectTimer mReconnectTimer;
-    
+
+    // P1.7: evaluates the VDI agent's own input-silence state. It must NOT run
+    // on the audio thread (reading the meter sources and the wall clock there
+    // is unsafe), so processBlock only stores a peak atomically and this timer
+    // decides "silent" and re-sends peer info when the state changes.
+    class AgentHealthTimer : public Timer
+    {
+    public:
+        AgentHealthTimer(SonobusAudioProcessor & proc) : processor(proc) {
+        }
+
+        void timerCallback() override;
+
+        SonobusAudioProcessor & processor;
+    };
+
+    AgentHealthTimer mAgentHealthTimer { *this };
+
+    // Peak (linear) of the most recent input block, captured on the audio thread
+    // and read by the health timer. -1 means "no block has been measured yet".
+    std::atomic<float> mAgentInputPeak { -1.0f };
+    // Wall-clock ms at which the input was last above the silence threshold. It
+    // is seeded on the first measured block, so an input that is silent from the
+    // very start still becomes "silent" after the window -- otherwise a baseline
+    // of 0 would mean "never audible" reported as "ok" forever.
+    std::atomic<double> mAgentLastAudibleMs { 0.0 };
+    // Last health we sent, so the timer can tell when it changed and re-send.
+    AgentHealth mAgentLastSentHealth;
+    bool mAgentHealthEverSent = false;
+
+    // P1.7: compute the health this VDI agent should report right now.
+    AgentHealth computeAgentHealth() const;
+    // P1.7: the current health as a juce::var object (or void when we are not a
+    // VDI, since only VDI peers attach it).
+    juce::var agentHealthVar() const;
+    // P1.7: input peak in dBFS from the atomics above; -infinity when unknown.
+    float getAgentInputPeakDb() const;
+    // P1.7: true when the engine has no usable input channels at all.
+    bool hasUsableInputDevice() const;
+    bool hasUsableOutputDevice() const;
+
     CriticalSection  mRemotesLock;
 
     std::map<String,AooPublicGroupInfo> mPublicGroupInfos;

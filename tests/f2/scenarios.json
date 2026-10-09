@@ -87,6 +87,82 @@
         { "name": "c1", "role": "console" },
         { "name": "v1", "role": "vdi" }
       ]
+    },
+    "agent-health": {
+      "description": "One console + one VDI whose agent reports a missing input device. P1.7: the VDI attaches an 'agent' object to its peer-info JSON, and the Console must parse it, so c1's dump for v1 shows input 'missing'. The VDI's own dump reports the same health under selfAgent.",
+      "group": "f2-agent-health",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console"
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "env": {
+            "SONOBUS_AGENT_INPUT": "missing"
+          },
+          "agent": {
+            "input": "missing",
+            "output": "ok",
+            "paused": false,
+            "config_error": null
+          }
+        }
+      ]
+    },
+    "agent-silent": {
+      "description": "P1.7 silence detection on the REAL path: a VDI with no input override and a 2 s silence window (default is 10 min). Headless peers feed silence, so the real detector must flip input to 'silent'.",
+      "group": "f2-agent-silent",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console"
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "env": {
+            "SONOBUS_AGENT_SILENT_SECS": "2"
+          },
+          "agent": {
+            "input": "silent",
+            "output": "ok"
+          }
+        }
+      ]
+    },
+    "console-kind": {
+      "description": "P1.7 / control-api 7: Consoles advertise their kind next to role. c1 is a web Console, c2 a mac Console (both via CROSSPOINT_CONSOLE_KIND); every peer sees the right kind.",
+      "group": "f2-console-kind",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console",
+          "kind": "web",
+          "env": {
+            "CROSSPOINT_CONSOLE_KIND": "web"
+          }
+        },
+        {
+          "name": "c2",
+          "role": "console",
+          "kind": "mac",
+          "env": {
+            "CROSSPOINT_CONSOLE_KIND": "mac"
+          }
+        },
+        {
+          "name": "v1",
+          "role": "vdi"
+        }
+      ]
     }
   }
 }

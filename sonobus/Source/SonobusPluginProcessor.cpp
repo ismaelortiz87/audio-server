@@ -7,6 +7,8 @@
 #include "SonobusPluginEditor.h"
 #include "AppIdentity.h"
 
+#include <limits>
+
 #include "RunCumulantor.h"
 
 
@@ -107,6 +109,63 @@ static bool disableRoleAdvertising()
 {
     static bool flag = envFlagSet("SONOBUS_NO_ROLE_ADVERT");
     return flag;
+}
+
+// P1.7 test hatches. Headless peers on a dev machine always have a working
+// input and output device, so the failure states a VDI agent must be able to
+// report ("no usable input", "no usable output") are otherwise unreachable in
+// F2. These overrides exist ONLY for tests; the defaults stay real, and the
+// real detection below is what runs when neither is set.
+//
+//   SONOBUS_AGENT_INPUT=ok|missing|silent
+//   SONOBUS_AGENT_OUTPUT=ok|missing
+//   SONOBUS_AGENT_SILENT_SECS=<seconds>   silence window (default 600 = 10 min)
+//
+// The silence window override exists so a test can observe "silent" without
+// waiting the full default ten minutes.
+static String agentInputOverride()
+{
+    static String v = SystemStats::getEnvironmentVariable("SONOBUS_AGENT_INPUT", "").trim().toLowerCase();
+    if (v == "ok" || v == "missing" || v == "silent") return v;
+    return {};
+}
+
+static String agentOutputOverride()
+{
+    static String v = SystemStats::getEnvironmentVariable("SONOBUS_AGENT_OUTPUT", "").trim().toLowerCase();
+    if (v == "ok" || v == "missing") return v;
+    return {};
+}
+
+// 0 (or unset/invalid) means "use the real default", i.e. 10 minutes.
+static int agentSilentSecondsOverride()
+{
+    static int v = [] {
+        auto s = SystemStats::getEnvironmentVariable("SONOBUS_AGENT_SILENT_SECS", "").trim();
+        if (s.isEmpty()) return 0;
+        const int n = s.getIntValue();
+        return n > 0 ? n : 0;
+    }();
+    return v;
+}
+
+// P1.7 / control-api section 7: what kind of Console this is, advertised in its
+// peer info next to "role" so a VDI agent can show "Console - Mac". Values:
+// "mac" (default on macOS), "web" (the headless Console serving the web UI; set
+// CROSSPOINT_CONSOLE_KIND=web), "other" (default elsewhere). Anything else
+// given in the env is ignored. Only a Console advertises it.
+static String consoleKindString()
+{
+    static String v = [] {
+        auto e = SystemStats::getEnvironmentVariable("CROSSPOINT_CONSOLE_KIND", "").trim().toLowerCase();
+        if (e == "mac" || e == "web" || e == "other") return e;
+#if JUCE_MAC
+        return String("mac");
+#else
+        return String("other");
+#endif
+    }();
+    return v;
 }
 
 // P1.4: the routing matrix from docs/ROADMAP.md -- may `sender` send to
@@ -439,6 +498,9 @@ struct SonobusAudioProcessor::RemotePeer {
     // role learned from the peer-info JSON (P1.2). Unknown until it arrives,
     // and stays Unknown for stock SonoBus peers.
     PeerRole remoteRole = PeerRole::Unknown;
+    // P1.7: Console kind ("mac" | "web" | "other") from its peer info; empty
+    // when the peer did not advertise one (VDIs, stock SonoBus).
+    String remoteKind;
     // set once we have seen any peer-info update from this peer
     bool hasRemoteRole = false;
     // P1.3: true until the peer's role is known. While set, the peer cannot be
@@ -446,6 +508,15 @@ struct SonobusAudioProcessor::RemotePeer {
     // P1.4). Without this, the global mute/unmute handlers re-open peers via
     // setRemotePeerSendActive/RecvActive, which force the allow flags back on.
     bool roleBlocked = false;
+
+    // P1.7: health reported by this peer's VDI agent, parsed from the "agent"
+    // object in its peer-info JSON. Only VDI peers send it, and a peer that
+    // sends no "agent" (a Console, or stock SonoBus) simply leaves these at
+    // their defaults -- "absent" is NOT an error. hasRemoteAgent records whether
+    // we have ever seen the object, so the Console UI can tell "no agent to
+    // report on" apart from "agent reports everything ok".
+    AgentHealth remoteAgent;
+    bool hasRemoteAgent = false;
 
     std::unique_ptr<AudioFormatWriter::ThreadedWriter> fileWriter;
 
@@ -1133,13 +1204,23 @@ void SonobusAudioProcessor::initializeAoo(int udpPort)
     if (mAooClient) {
         mClientThread->startThread();
     }
-    
+
+    // P1.7: evaluate this VDI agent's own health on the message thread and
+    // re-send peer info when it changes. 1 Hz is far more than enough for a
+    // state that only flips on a device disappearing or after minutes of
+    // silence, and it is cheap.
+    mAgentHealthTimer.startTimer(1000);
+
 }
 
 void SonobusAudioProcessor::cleanupAoo()
 {
     disconnectFromServer();
-    
+
+    // P1.7: the health timer re-sends peer info, so it must stop before the
+    // peers and the send machinery go away.
+    mAgentHealthTimer.stopTimer();
+
     DBG("waiting on recv thread to die");
     mRecvThread->stopThread(400);
     DBG("waiting on send thread to die");
@@ -3256,6 +3337,47 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
         peer->remoteIsRecording = isrec;
     }
 
+    // P1.7: health reported by a VDI peer's agent. Only VDI peers send this; a
+    // Console sends no "agent" key, and neither does stock SonoBus. Absence is
+    // NOT an error and must not clear previously reported health (a later
+    // message simply without the key does not mean "healthy"), so the fields
+    // keep their last known values and only hasRemoteAgent records that we have
+    // seen the object at least once.
+    if (auto * agent = infodata.getProperty("agent", var()).getDynamicObject()) {
+        auto readEnum = [agent](const char * key, const String & fallback,
+                                const StringArray & permitted) {
+            if (!agent->hasProperty(key)) return fallback;
+            auto v = agent->getProperty(key).toString().trim().toLowerCase();
+            // An unrecognised value is a protocol error, not silently "ok":
+            // report it as missing, which is the safe, attention-drawing state.
+            return permitted.contains(v) ? v : String("missing");
+        };
+
+        peer->remoteAgent.input = readEnum("input", peer->remoteAgent.input,
+                                           StringArray { "ok", "missing", "silent" });
+        peer->remoteAgent.output = readEnum("output", peer->remoteAgent.output,
+                                            StringArray { "ok", "missing" });
+
+        // "paused" must be a real boolean when present; a wrong type is treated
+        // as false rather than left stale.
+        if (agent->hasProperty("paused")) {
+            auto pv = agent->getProperty("paused");
+            peer->remoteAgent.paused = pv.isBool() ? (bool) pv : false;
+        }
+
+        // "config_error" is a string or JSON null. null/absent means "no error".
+        if (agent->hasProperty("config_error")) {
+            auto ce = agent->getProperty("config_error");
+            peer->remoteAgent.configError = (ce.isString() ? ce.toString() : String());
+        }
+
+        peer->hasRemoteAgent = true;
+
+        DBG("peerinfo: agent in=" << peer->remoteAgent.input
+            << " out=" << peer->remoteAgent.output
+            << " paused=" << (int) peer->remoteAgent.paused);
+    }
+
     // P1.2: role advertised by the remote peer. Absent for stock SonoBus
     // peers, which must remain Unknown (and therefore blocked, P1.6).
     bool roleChanged = false;
@@ -3267,6 +3389,13 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
             roleChanged = true;
         }
         peer->hasRemoteRole = true;
+    }
+
+    // P1.7: Console kind. Unknown values are normalised to "other"; absence
+    // keeps the last value (like agent health, absence is not a reset).
+    if (infodata.hasProperty("kind")) {
+        auto k = infodata.getProperty("kind", "").toString().trim().toLowerCase();
+        peer->remoteKind = (k == "mac" || k == "web") ? k : String("other");
     }
 
     peer->hasRemoteInfo = true;
@@ -3287,6 +3416,135 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
     }
 }
 
+// ---------------------------------------------------------------------------
+// P1.7: this peer's own VDI agent health.
+// ---------------------------------------------------------------------------
+
+// Threshold for "silent": no signal above -60 dBFS for the silence window.
+static constexpr float AGENT_SILENCE_DBFS = -60.0f;
+// Default window before "no signal" becomes "silent" (card: N minutes, default 10).
+static constexpr int AGENT_SILENCE_DEFAULT_SECS = 600;
+
+float SonobusAudioProcessor::getAgentInputPeakDb() const
+{
+    const float peak = mAgentInputPeak.load();
+    if (peak < 0.0f) return -std::numeric_limits<float>::infinity();
+    return Decibels::gainToDecibels(peak, -std::numeric_limits<float>::infinity());
+}
+
+bool SonobusAudioProcessor::hasUsableInputDevice() const
+{
+    // "Usable" means the engine actually has input channels to read from. A bus
+    // layout with no inputs (or a device that failed to open) is the real
+    // device-missing case; headless peers here do have 2 input channels, so this
+    // is a genuine signal rather than a stub.
+    if (getMainBusNumInputChannels() <= 0) return false;
+    return mInputChannelGroupCount > 0 && getActiveSendChannelCount() > 0;
+}
+
+bool SonobusAudioProcessor::hasUsableOutputDevice() const
+{
+    return getMainBusNumOutputChannels() > 0;
+}
+
+SonobusAudioProcessor::AgentHealth SonobusAudioProcessor::computeAgentHealth() const
+{
+    AgentHealth h;
+
+    // Tests can force each state; otherwise derive it from real engine state.
+    auto inOverride = agentInputOverride();
+    if (inOverride.isNotEmpty()) {
+        h.input = inOverride;
+    }
+    else if (!hasUsableInputDevice()) {
+        h.input = "missing";
+    }
+    else {
+        const float peakDb = getAgentInputPeakDb();
+        const int windowSecs = agentSilentSecondsOverride() > 0
+                                 ? agentSilentSecondsOverride()
+                                 : AGENT_SILENCE_DEFAULT_SECS;
+        const double lastAudible = mAgentLastAudibleMs.load();
+        const bool measured = peakDb > -std::numeric_limits<float>::infinity();
+        const bool belowThreshold = measured && peakDb <= AGENT_SILENCE_DBFS;
+
+        // "silent" requires BOTH that we have measured at least one block and
+        // that nothing has exceeded the threshold for the whole window. Before
+        // the first measurement we cannot claim silence, so we say "ok" rather
+        // than alarming on startup.
+        if (belowThreshold && lastAudible > 0.0
+            && (Time::getMillisecondCounterHiRes() - lastAudible) >= windowSecs * 1000.0) {
+            h.input = "silent";
+        }
+        else if (!measured) {
+            // No audio callback has run yet (e.g. headless before the device
+            // starts). Do not claim silence we have not observed.
+            h.input = "ok";
+        }
+    }
+
+    auto outOverride = agentOutputOverride();
+    if (outOverride.isNotEmpty()) {
+        h.output = outOverride;
+    }
+    else {
+        h.output = hasUsableOutputDevice() ? "ok" : "missing";
+    }
+
+    // No pause concept exists in the engine yet (see AgentHealth in the header).
+    h.paused = false;
+    // No config loader exists yet (P2.1).
+    h.configError = String();
+
+    return h;
+}
+
+juce::var SonobusAudioProcessor::agentHealthVar() const
+{
+    const auto h = computeAgentHealth();
+
+    DynamicObject::Ptr agent = new DynamicObject();
+    // Short fixed keys keep the serialised peer-info far below the ~3996 byte
+    // AOO_MAXPACKETSIZE guard, which drops an oversized message silently.
+    agent->setProperty("input", h.input);
+    agent->setProperty("output", h.output);
+    agent->setProperty("paused", h.paused);
+    // An empty String would serialise as "", so emit a real JSON null when there
+    // is no error. var() is void and JSON::toString writes void as null.
+    agent->setProperty("config_error", h.configError.isEmpty() ? var() : var(h.configError));
+
+    return var(agent.get());
+}
+
+void SonobusAudioProcessor::AgentHealthTimer::timerCallback()
+{
+    // Runs on the message thread: reading the wall clock and deciding "silent"
+    // is only safe here, which is why processBlock just stores a peak.
+    if (processor.getRole() != PeerRole::VDI) return;
+
+    const auto now = processor.computeAgentHealth();
+    const auto & last = processor.mAgentLastSentHealth;
+
+    const bool changed = !processor.mAgentHealthEverSent
+                      || now.input != last.input
+                      || now.output != last.output
+                      || now.paused != last.paused
+                      || now.configError != last.configError;
+
+    if (!changed) return;
+
+    processor.mAgentLastSentHealth = now;
+    processor.mAgentHealthEverSent = true;
+
+    DBG("P1.7 agent health changed, re-sending peer info: in="
+        << now.input << " out=" << now.output);
+
+    // Re-send to every peer; this is the "re-sent on every change" requirement.
+    // sendRemotePeerInfoUpdate takes mCoreLock itself, so it must not be called
+    // with that lock held here -- and it is not.
+    processor.sendRemotePeerInfoUpdate(-1, nullptr);
+}
+
 void SonobusAudioProcessor::sendRemotePeerInfoUpdate(int index, RemotePeer * topeer)
 {
     // send our info to this remote peer
@@ -3303,6 +3561,21 @@ void SonobusAudioProcessor::sendRemotePeerInfoUpdate(int index, RemotePeer * top
     // which P1.6 uses to test unknown-peer handling.
     if (!disableRoleAdvertising()) {
         info->setProperty("role", peerRoleToString(mRole.load()));
+    }
+
+    // P1.7: only a VDI has an agent to report on. A Console sends no "agent" key
+    // at all, and the receiving side treats absence as "nothing to report"
+    // rather than as an error. The object uses short fixed keys so it stays far
+    // inside AOO_MAXPACKETSIZE -- an oversized peer-info is silently dropped by
+    // the guard below, which would look exactly like a role or health
+    // regression, so the size is checked rather than assumed.
+    if (mRole.load() == PeerRole::VDI) {
+        info->setProperty("agent", agentHealthVar());
+    }
+
+    // P1.7: a Console also says what kind of Console it is (see consoleKindString).
+    if (mRole.load() == PeerRole::Console && !disableRoleAdvertising()) {
+        info->setProperty("kind", consoleKindString());
     }
 
     // nettype TODO
@@ -6195,6 +6468,9 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
 
     root->setProperty("self", getCurrentUsername());
     root->setProperty("selfRole", peerRoleToString(mRole.load()));
+    if (mRole.load() == PeerRole::Console) {
+        root->setProperty("selfKind", consoleKindString());
+    }
 
     Array<var> peers;
 
@@ -6213,6 +6489,8 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
             // which is what P1.6 needs the harness to see.
             p->setProperty("role", peerRoleToString(peer->remoteRole));
             p->setProperty("hasRole", peer->hasRemoteRole);
+            // P1.7: Console kind; "" when the peer did not advertise one.
+            p->setProperty("kind", peer->remoteKind);
             p->setProperty("connected", peer->connected);
             p->setProperty("sendAllow", peer->sendAllow);
             p->setProperty("recvAllow", peer->recvAllow);
@@ -6221,11 +6499,35 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
             // recvActive already implies the allow flag and a live stream, so
             // this is the "audio is actually arriving" signal F2 checks.
             p->setProperty("receivingAudio", peer->recvActive && peer->recvAllow);
+
+            // P1.7: the health this peer's VDI agent reports about itself.
+            // "hasAgent" distinguishes "this peer has no agent to report on"
+            // (a Console) from "the agent reports everything ok", which would
+            // otherwise look identical. config_error is null when there is none.
+            {
+                DynamicObject::Ptr ag = new DynamicObject();
+                ag->setProperty("input", peer->remoteAgent.input);
+                ag->setProperty("output", peer->remoteAgent.output);
+                ag->setProperty("paused", peer->remoteAgent.paused);
+                ag->setProperty("config_error",
+                                peer->remoteAgent.configError.isEmpty()
+                                    ? var() : var(peer->remoteAgent.configError));
+                p->setProperty("agent", var(ag.get()));
+                p->setProperty("hasAgent", peer->hasRemoteAgent);
+            }
+
             peers.add(var(p.get()));
         }
     }
 
     root->setProperty("peers", peers);
+
+    // P1.7: our OWN agent health, so the F2 VDI scenario can assert that a VDI
+    // reports its own state and not only what others see of it. Only a VDI has
+    // an agent; a Console omits the key entirely, matching the wire format.
+    if (mRole.load() == PeerRole::VDI) {
+        root->setProperty("selfAgent", agentHealthVar());
+    }
 
     // Write to a temp file and rename so a reader never sees a partial file.
     auto tmp = file.getSiblingFile(file.getFileName() + ".tmp");
@@ -7847,6 +8149,28 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
 
     // meter input pre everything
     inputMeterSource.measureBlock (buffer, 0, numSamples);
+
+    // P1.7: capture the raw input peak on the audio thread so the message-thread
+    // health timer can decide "silent" without touching meters or the clock
+    // here. Only atomics are written, so this stays realtime safe.
+    {
+        float blockPeak = 0.0f;
+        const int nch = jmin(buffer.getNumChannels(), jmax(1, mainBusInputChannels));
+        for (int ch = 0; ch < nch; ++ch) {
+            blockPeak = jmax(blockPeak, buffer.getMagnitude(ch, 0, numSamples));
+        }
+        mAgentInputPeak.store(blockPeak);
+        // Seed the "last audible" clock on the first measured block (0.0 means
+        // "not measured yet"), so an input that is silent from startup still
+        // crosses into "silent" once the window elapses rather than sitting at
+        // "ok" forever behind a zero baseline.
+        if (blockPeak > Decibels::decibelsToGain(AGENT_SILENCE_DBFS)) {
+            mAgentLastAudibleMs.store(Time::getMillisecondCounterHiRes());
+        }
+        else if (mAgentLastAudibleMs.load() <= 0.0) {
+            mAgentLastAudibleMs.store(Time::getMillisecondCounterHiRes());
+        }
+    }
 
 
     inputPostBuffer.clear(0, numSamples);
