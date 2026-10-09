@@ -31,11 +31,20 @@ export function boot(role, mount) {
     document.body.append(overlay);
   };
 
+  // Can't reach the engine (off VPN, container down): say so plainly instead
+  // of an endless spinner, and keep retrying underneath (spec §3.1).
+  let unreachableTimer = null;
+  const unreachable = () => show("Can't reach the Console server",
+    'Check that you are on the VPN and that the Crosspoint server is running. Retrying…');
+
   const client = new Client(open, {
     expectRole: role,
     token: q.get('token') ?? undefined,
     onStatus(s, detail) {
-      if (s === 'ready') { overlay?.remove(); overlay = null; }
+      if (s === 'ready') { clearTimeout(unreachableTimer); unreachableTimer = null; overlay?.remove(); overlay = null; }
+      if ((s === 'reconnecting' || s === 'connecting') && !unreachableTimer && !overlay) {
+        unreachableTimer = setTimeout(() => { unreachableTimer = null; if (client.status !== 'ready') unreachable(); }, 4000);
+      }
       if (s === 'wrong-role') {
         show('This is a different Crosspoint app',
           detail.role === 'vdi' ? 'This engine is a VDI agent. Open /agent.html instead.' : 'This engine is a Console. Open / instead.');
@@ -48,6 +57,12 @@ export function boot(role, mount) {
   });
 
   document.addEventListener('visibilitychange', () => client.setHidden(document.hidden));
+
+  // PWA (P7.7): installable shell on secure origins (https, or localhost).
+  if ('serviceWorker' in navigator && isSecureContext && location.protocol !== 'file:' && mockName === null) {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('[crosspoint] service worker not registered:', e.message));
+  }
+
   Object.assign(globalThis, { __crosspoint: client });
   mount(client);
   client.start();

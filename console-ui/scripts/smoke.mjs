@@ -120,6 +120,19 @@ s = await st();
 check(s.connection.state === 'connected' && s.connection.group === 'ops2', 'connecting from the form uses the typed group');
 check((await js(`document.querySelector('.conn').textContent`)).includes('Connected'), 'top bar shows Connected');
 
+// PWA (P7.7) and the unreachable-engine state: the dev server has no engine,
+// so the real (non-mock) page must say so, and Chrome must consider it installable.
+await open(`${UI}/`);
+await sleep(5000);
+check(await js(`document.querySelector('.overlay h1')?.textContent === "Can't reach the Console server"`), 'no engine → "Can\'t reach the Console server"');
+check(await js(`navigator.serviceWorker.getRegistration().then(r => !!r)`), 'service worker registered on localhost');
+const inst = (await send('Page.getInstallabilityErrors')).result?.installabilityErrors ?? ['(no result)'];
+check(inst.length === 0, `installable as a PWA${inst.length ? ': ' + JSON.stringify(inst) : ''}`);
+const man = (await send('Page.getAppManifest')).result;
+check(!!man?.url && !(man.errors ?? []).length, 'manifest parsed without errors');
+errors.length = 0; // the page legitimately logs WebSocket failures here
+await js(`navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister())))`);
+
 // ---------------------------------------------------------------- agent
 await open(`${UI}/agent.html?mock=nodevice`);
 check((await st())?.input?.status === 'missing', 'agent loads the missing-device state');
