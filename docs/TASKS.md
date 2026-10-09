@@ -74,7 +74,7 @@ Ordered so that every task appears after everything it depends on.
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | done | Claude (helper) |
-| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | wip | Claude (subagent F, opus) |
+| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | M | any | wip | Claude (subagent F, opus) |
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | done | Claude (subagent A, sonnet; finished the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | wip | Claude (subagent B, sonnet) |
@@ -1091,6 +1091,13 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 - **Also measure on Android:** does audio (both directions) keep flowing with
   the screen off or the app in the background? Record it in *Result*. If it
   fails, that's the trigger to revive P9.2 (D9).
+- **Progress (Claude, 2026-10-09):** the client side is done in `console-ui`:
+  `sw.js` (shell-only cache, `/api/` and `/rtc/` never cached), manifests and
+  icons, registration on secure origins, and the "Can't reach the Console
+  server" state. Verified on localhost: SW registered,
+  `Page.getInstallabilityErrors` empty, manifest has no errors. **Left:** serve
+  it from the container behind the proxy (P7.2/P7.4) and the on-phone checks
+  (install, background audio, iOS).
 - **Result:**
 
 ## P9 — Later
