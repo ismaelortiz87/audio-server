@@ -2,3 +2,6 @@ build/
 build*/
 *.o
 *.d
+
+# Claude Code subagent worktrees
+.claude/worktrees/
