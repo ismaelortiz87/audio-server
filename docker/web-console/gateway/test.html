@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>RTC gateway test</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font:14px system-ui;margin:16px;background:#111;color:#ddd}button{font:inherit;padding:6px 12px}
+#bar{height:14px;background:#333;margin:8px 0}#fill{height:100%;width:0;background:#4c8}</style></head>
+<body>
+<h3>Crosspoint RTC gateway test</h3>
+<button id="go">Connect</button> <button id="stop">Disconnect</button>
+<div id="bar"><div id="fill"></div></div>
+<pre id="log"></pre>
+<audio id="a" autoplay></audio>
+<script>
+window.__level = 0; window.__micLevel = 0;       // smoothed RMS of remote audio, 0..1
+window.__state = 'idle';
+const $ = id => document.getElementById(id), logEl = $('log');
+const log = m => { logEl.textContent += m + '\n'; };
+let pc, ctx;
+async function connect() {
+  if (pc) pc.close();
+  const cfg = await (await fetch('config')).json().catch(() => ({iceServers: []}));
+  pc = new RTCPeerConnection({iceServers: cfg.iceServers || []});
+  pc.onconnectionstatechange = () => { window.__state = pc.connectionState; log('state ' + pc.connectionState); };
+  let mic;
+  try { mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}}); }
+  catch (e) { log('no mic: ' + e); }
+  if (mic) { // local mic level, for diagnosing capture problems
+    const mc = new AudioContext(), ma = mc.createAnalyser(); ma.fftSize = 1024;
+    mc.createMediaStreamSource(mic).connect(ma); const mb = new Float32Array(1024);
+    setInterval(() => { ma.getFloatTimeDomainData(mb); let s = 0; for (const v of mb) s += v * v; window.__micLevel = Math.sqrt(s / 1024); }, 50);
+    log('mic ' + JSON.stringify(mic.getAudioTracks()[0].getSettings()));
+  }
+  if (mic) mic.getTracks().forEach(t => pc.addTrack(t, mic)); else pc.addTransceiver('audio', {direction: 'recvonly'});
+  pc.ontrack = ev => {
+    const stream = ev.streams[0] || new MediaStream([ev.track]);
+    $('a').srcObject = stream;
+    ctx = new AudioContext({latencyHint: 'interactive'});
+    const an = ctx.createAnalyser(); an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let s = 0; for (const v of buf) s += v * v;
+      window.__level = Math.sqrt(s / buf.length);
+      $('fill').style.width = Math.min(100, window.__level * 300) + '%';
+    }, 20);
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(r => { // non-trickle: wait for gathering
+    if (pc.iceGatheringState === 'complete') return r();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
+    setTimeout(r, 2000);
+  });
+  const res = await fetch('offer', {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({type: 'offer', sdp: pc.localDescription.sdp})});
+  if (!res.ok) { log('offer failed ' + await res.text()); return; }
+  await pc.setRemoteDescription(await res.json());
+  log('answer applied');
+}
+$('go').onclick = () => connect().catch(e => log('error ' + e));
+$('stop').onclick = () => { if (pc) pc.close(); fetch('close', {method: 'POST'}); };
+window.__connect = connect;
+window.__pc = () => pc;
+</script></body></html>
