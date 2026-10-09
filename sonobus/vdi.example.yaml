@@ -1,0 +1,36 @@
+# Crosspoint agent configuration for a VDI -- pass it with:
+#
+#   Crosspoint --headless --config vdi.yaml
+#
+# Every key is optional. Precedence, highest first:
+#   command-line options  >  this file  >  --load-setup file  >  saved app state
+# Unknown keys, wrong types and malformed YAML stop the app with a message and a
+# non-zero exit code. Comments and key order in this file are preserved when the
+# agent writes the chosen audio devices back (audio.input_device/output_device).
+
+server: console.example.net:10998   # connection server, host or host:port
+group: studio-a
+password: "change-me"               # group password; leave out for none
+username: vdi-01                    # name shown to the other peers
+role: vdi                           # vdi | console
+
+audio:
+  # Device NAMES as listed by the audio system (macOS/Windows/ALSA). A name that
+  # is not found makes startup fail and lists the available devices.
+  # On Linux/PipeWire these will name PipeWire nodes (task P2.11, not yet
+  # implemented: for now the ALSA PCM names JUCE lists are used).
+  input_device: "Loopback Monitor"
+  output_device: "Virtual Mic"
+  sample_rate: 48000
+  buffer: 256                       # samples
+
+codec: opus                         # opus | pcm (pcm = 16 bit)
+bitrate: 128000                     # Opus bits/s per channel: 16000 24000 48000 64000 96000 128000 160000 256000
+
+# Reserved for the control API (P4.1). Validated, but nothing listens yet.
+# api:
+#   port: 9000
+#   bind: 127.0.0.1
+#   token: "generate-me"
+#   allowed_origins:
+#     - http://localhost:5173

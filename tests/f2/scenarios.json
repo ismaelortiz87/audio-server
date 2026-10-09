@@ -163,6 +163,29 @@
           "role": "vdi"
         }
       ]
+    },
+    "config-yaml": {
+      "description": "P2.1: one console and one vdi started ONLY from YAML files (server, group, username and role all come from --config; no -c/-g/-n/--role on the command line).",
+      "group": "f2-config-yaml",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        { "name": "c1", "role": "console", "cli_flags": false, "cli_role": null,
+          "config": { "server": "%HOST%:%PORT%", "group": "%GROUP%", "username": "%NAME%", "role": "console" } },
+        { "name": "v1", "role": "vdi", "cli_flags": false, "cli_role": null,
+          "config": { "server": "%HOST%:%PORT%", "group": "%GROUP%", "username": "%NAME%", "role": "vdi" } }
+      ]
+    },
+    "config-precedence": {
+      "description": "P2.1: --role vdi on the command line beats a YAML that says console AND a --load-setup file saved as console (CLI > YAML > setup file > saved state). Expect selfRole vdi; c1 is a plain console peer.",
+      "group": "f2-config-precedence",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        { "name": "c1", "role": "console" },
+        { "name": "v1", "role": "vdi", "cli_role": "vdi", "setup_role": "console",
+          "config": { "role": "console" } }
+      ]
     }
   }
 }

@@ -178,6 +178,15 @@ target_link_libraries(yaml_smoke PRIVATE sono_yaml)
 target_compile_features(yaml_smoke PRIVATE cxx_std_17)
 set_target_properties(yaml_smoke PROPERTIES FOLDER "Targets")
 # END P2.2
+
+# P2.1 -- Config (--config loader) unit test. Config.cpp is JUCE-free, so it is
+# compiled straight into the test. Build and run with
+#   cmake --build <builddir> --target config_test && <builddir>/config_test
+add_executable(config_test EXCLUDE_FROM_ALL tests/config_test.cpp Source/Config.cpp)
+target_link_libraries(config_test PRIVATE sono_yaml)
+target_include_directories(config_test PRIVATE Source)
+target_compile_features(config_test PRIVATE cxx_std_17)
+set_target_properties(config_test PROPERTIES FOLDER "Targets")
 # ==============================================================================
 
 
@@ -351,6 +360,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         Source/SonoMultiStateDrawableButton.h
         Source/SonoPlaybackProgressButton.cpp
         Source/SonoPlaybackProgressButton.h
+        Source/Config.cpp
+        Source/Config.h
         Source/SonoStandaloneFilterApp.cpp
         Source/SonoStandaloneFilterWindow.h
         Source/SonoTextButton.cpp
