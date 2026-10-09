@@ -108,6 +108,15 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
 .hint kbd { color: var(--ink3); }
 
 /* 3.7 settings sheet */
+.connform { display: flex; flex-direction: column; gap: 10px; }
+.field2 input, .field2 select { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; color: var(--ink); min-width: 0; }
+.field2 > .readonly { background: none; border: 0; padding: 2px 0; color: var(--ink2); }
+.field2 input:disabled { color: var(--ink2); background: var(--panel2); }
+.formrow { display: flex; gap: 8px; }
+.connerr { color: #f0a2a2; font-size: 12px; border-left: 3px solid var(--critical); padding-left: 8px; }
+.sheet .adv { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.hdetail { font-size: 11px; color: var(--ink3); padding-left: 18px; margin-top: -6px; }
+.health:hover { color: var(--ink); }
 .scrim { position: absolute; inset: 0; background: #0009; z-index: 10; }
 .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--raised);
   border-left: 1px solid var(--line); z-index: 11; padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }

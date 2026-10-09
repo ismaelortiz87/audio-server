@@ -103,10 +103,10 @@ Ordered so that every task appears after everything it depends on.
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
 | P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
-| P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | todo | |
-| P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | todo | |
-| P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | todo | |
-| P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | todo | |
+| P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | done | Claude |
+| P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | done | Claude |
+| P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
+| P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
@@ -117,7 +117,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
-| P8.1 | Dockerfile for `aooserver/` | F1 | S | any | deferred | |
+| P8.1 | Dockerfile for `aooserver/` | F1 | S | any | wip | Claude (subagent D, sonnet) |
 | P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | deferred | |
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | deferred | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | deferred | |
@@ -972,6 +972,20 @@ build against the spec. Implementers don't make design decisions (see
 ### P5.5 — Phone layout · S
 - **Depends on:** P5.2, P5.3
 - **Do:** the UX4 phone breakpoints and touch behaviour.
+- **Result (P5.2–P5.5, Claude, 2026-10-09):** brought `console-ui` to full spec
+  detail against the mock. Mixer: health line tap/Enter toggles inline link
+  details (spec §5: no hover-only info). Talk-back: unchanged from P5.1 and
+  re-verified. Connection: the failed state offers **[Settings]** in the top
+  bar; the settings sheet has an editable server/group/password/name form with
+  Connect/Disconnect and the failure reason inline, mic/output pickers and a
+  solo-dim picker (−12/−18/−24/−30 dB). Fields are built once, so typing
+  survives patches. Focus moves into the sheet on open and back to the gear on
+  close; Escape works from inside fields. Phone: verified at 390 px for all
+  scenarios and the settings sheet. Review tooling: `scripts/screenshots.mjs`
+  renders 23 shots (7 Console scenarios × desktop/phone, settings
+  desktop/phone, 7 agent states) into an index page; `?open=settings` deep link.
+  Tests: 13 unit tests plus 30 browser smoke checks pass. **Left for P5.6:**
+  wiring to the real engine once P4.2–P4.4 exist.
 - **Result:**
 
 ### P5.6 — Wire to the real API · M

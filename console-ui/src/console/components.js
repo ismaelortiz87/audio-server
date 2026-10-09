@@ -17,9 +17,11 @@ const soloHeld = (st, s) => anySolo(st) && !s.solo;
 // --------------------------------------------------------------- 3.1 top bar
 export function topBar(ctx) {
   const conn = h('span.conn');
-  const el = h('header.top', h('span.brand', 'Crosspoint'), conn, h('span.spacer'),
-    h('button.iconbtn', { 'aria-label': 'Settings', title: 'Settings', onclick: () => ctx.openSettings() }));
-  el.lastChild.innerHTML = ICONS.gear;
+  const fix = h('button.btn.small', { hidden: true, onclick: () => ctx.openSettings() }, 'Settings');
+  const gear = h('button.iconbtn', { 'aria-label': 'Settings', title: 'Settings', onclick: () => ctx.openSettings() });
+  gear.innerHTML = ICONS.gear;
+  ctx.settingsButton = gear;
+  const el = h('header.top', h('span.brand', 'Crosspoint'), conn, fix, h('span.spacer'), gear);
   return {
     el,
     update(st) {
@@ -31,6 +33,7 @@ export function topBar(ctx) {
       else if (c.state === 'failed') html = `<span class="dot crit"></span>${esc(c.reason ?? 'Not connected')}`;
       else html = `<span class="dot good"></span><span>Connected</span><span class="grp">· ${esc(c.group)} · ${up} of ${known} stations</span>`;
       setHTML(conn, html);
+      fix.hidden = c.state !== 'failed';
     },
   };
 }
@@ -203,6 +206,11 @@ export function stations(ctx) {
 function stationCard(ctx, id) {
   const send = cmd => args => ctx.client.fire(cmd, { station: id, ...args });
   const sw = h('span.swatch'), name = h('span.sname'), badges = h('span.badges'), health = h('span.health');
+  const details = h('div.hdetail.num', { hidden: true });
+  health.setAttribute('role', 'button'); health.tabIndex = 0;
+  const toggleDetails = () => { ctx.ui.details[id] = !ctx.ui.details[id]; ctx.render(); };
+  health.addEventListener('click', toggleDetails);
+  health.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleDetails(); } });
   const issue = h('div.issue', { hidden: true });
   const canvas = h('canvas'), over = h('div.over');
   const activity = h('div.activity', canvas, over);
@@ -232,7 +240,7 @@ function stationCard(ctx, id) {
 
   const el = h('article.station', { onpointerdown: () => ctx.select(id) },
     h('div.shead', sw, name, badges, health),
-    issue, activity,
+    details, issue, activity,
     h('div.row', h('span.label', 'Place'), panGroup, panVal),
     h('div.row', h('span.label', 'Level'), level, levelVal),
     h('div.actions', mute, solo, talk));
@@ -270,6 +278,10 @@ function stationCard(ctx, id) {
         tip = `Latency ${s.latencyMs} ms · loss ${s.lossPct}% · buffer ${s.jitterBufferMs} ms`;
       }
       setHTML(health, hHtml); setAttr(health, 'title', tip);
+      setAttr(health, 'aria-expanded', !!ui.details[id]);
+      setAttr(health, 'aria-label', `${s.name} link details`);
+      details.hidden = !ui.details[id];
+      if (ui.details[id]) setText(details, tip);
 
       // VDI self-report (P1.7)
       const msg = agentIssue(s.agent);
@@ -382,37 +394,84 @@ export function youBar(ctx) {
 
 // --------------------------------------------------------------- 3.7 settings
 export function settingsSheet(ctx) {
+  // Built once; values are refreshed from state only when a field isn't being
+  // edited, so typing survives incoming patches (spec §3.7).
+  const field = (label, control, note) => h('label.field2', h('span', label), control, note ?? null);
+  const input = (type, attrs = {}) => h('input', { type, autocomplete: 'off', spellcheck: 'false', ...attrs });
+  const server = input('text', { placeholder: 'host:port' });
+  const group = input('text');
+  const password = input('password', { placeholder: 'Saved' });
+  const name = input('text');
+  const connErr = h('div.connerr', { role: 'alert', hidden: true });
+  const connectBtn = h('button.btn.primary', { type: 'submit' });
+  const form = h('form.connform', { onsubmit: e => { e.preventDefault(); submit(); } },
+    field('Server', server), field('Group', group), field('Password', password, h('small.pwnote')),
+    field('Your name', name), connErr, h('div.formrow', connectBtn));
+
+  const micSel = h('select', { onchange: () => ctx.client.fire('devices.setInput', { id: micSel.value }) });
+  const outSel = h('select', { onchange: () => ctx.client.fire('devices.setOutput', { id: outSel.value }) });
+  const dimSel = h('select', { onchange: () => ctx.client.fire('settings.set', { soloDimDb: Number(dimSel.value) }) },
+    [-12, -18, -24, -30].map(v => h('option', { value: v }, `−${Math.abs(v)} dB`)));
+  const ptt = h('div.num.readonly'); const pttField = field('Push-to-talk key (works in other apps)', ptt);
+  const codec = h('div'), buffer = h('div');
+  const remembered = h('div.remembered'); const rememberedField = field('Remembered stations', remembered);
+
+  const closeBtn = h('button.iconbtn', { 'aria-label': 'Close settings', onclick: () => ctx.closeSettings() }, '✕');
   const scrim = h('div.scrim', { onclick: () => ctx.closeSettings() });
-  const body = h('div');
   const sheet = h('aside.sheet', { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'true' },
-    h('div.head', h('b', 'Settings'), h('span.spacer'), h('button.iconbtn', { 'aria-label': 'Close', onclick: () => ctx.closeSettings() }, '✕')),
-    body);
+    h('div.head', h('b', 'Settings'), h('span.spacer'), closeBtn),
+    h('span.label', 'Connection'), form,
+    h('span.label', 'Audio'),
+    field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), pttField,
+    h('details', h('summary', 'Advanced'), h('div.adv', field('Codec', codec), field('Network buffer', buffer))),
+    rememberedField);
   const el = h('div', { style: { display: 'contents' } }, scrim, sheet);
+
+  let st = null, wasOpen = false;
+  function submit() {
+    const c = st.connection;
+    if (c.state === 'connected') { ctx.client.fire('connection.disconnect'); return; }
+    const args = { server: server.value.trim(), group: group.value.trim(), name: name.value.trim() };
+    if (password.value) args.password = password.value;
+    ctx.client.cmd('connection.connect', args).then(() => { password.value = ''; }).catch(e => {
+      connErr.hidden = false; setText(connErr, e.message || "Couldn't connect.");
+    });
+  }
+  const editing = el2 => document.activeElement === el2;
+  const setVal = (el2, v) => { if (!editing(el2) && el2.value !== v) el2.value = v; };
+  const options = (sel, list, cur) => {
+    const html = list.map(d => `<option value="${esc(d.id)}"${d.name === cur ? ' selected' : ''}>${esc(d.name)}</option>`).join('');
+    if (sel._html !== html) { sel.innerHTML = html; sel._html = html; }
+  };
+
   return {
     el,
-    update(st, ui) {
+    update(state, ui) {
+      st = state;
       scrim.hidden = sheet.hidden = !ui.settingsOpen;
+      if (ui.settingsOpen && !wasOpen) queueMicrotask(() => (st.connection.state === 'connected' ? closeBtn : server).focus());
+      if (!ui.settingsOpen && wasOpen) ctx.focusSettingsButton();
+      wasOpen = ui.settingsOpen;
       if (!ui.settingsOpen) return;
       const c = st.connection, s = st.settings;
+      const connected = c.state === 'connected';
+      for (const f of [server, group, password, name]) f.disabled = connected;
+      setVal(server, c.server ?? ''); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');
+      setText(form.querySelector('.pwnote'), c.passwordSaved ? 'A password is saved. Leave empty to keep it.' : 'No password saved.');
+      setText(connectBtn, connected ? 'Disconnect' : c.state === 'connecting' || c.state === 'reconnecting' ? 'Connecting…' : 'Connect');
+      connectBtn.classList.toggle('primary', !connected);
+      connErr.hidden = !(c.state === 'failed' && c.reason);
+      if (c.state === 'failed' && c.reason) setText(connErr, c.reason);
+      options(micSel, st.devices.inputs, st.mic.device);
+      options(outSel, st.devices.outputs, st.output.device);
+      setVal(dimSel, String(s.soloDimDb));
+      pttField.hidden = !s.pttHotkey; setText(ptt, s.pttHotkey ?? '');
+      setText(codec, `${s.codec === 'opus' ? 'Opus' : s.codec} · ${s.bitrateKbps} kbps`);
+      setHTML(buffer, `${s.networkBuffer.mode === 'auto' ? 'Auto' : 'Fixed'} (currently <span class="num">${s.networkBuffer.currentMs} ms</span>)`);
       const offline = ordered(st).filter(x => x.presence === 'offline');
-      const html = `
-        <div class="field2"><span>Server</span><div class="num">${esc(c.server)}</div></div>
-        <div class="field2"><span>Group</span><div>${esc(c.group)}</div><small>${c.passwordSaved ? 'Password saved' : 'No password'}</small></div>
-        <div class="field2"><span>Your name</span><div>${esc(st.self.name)}</div></div>
-        <div class="field2"><span>Microphone</span><div>${esc(st.mic.device)}</div></div>
-        <div class="field2"><span>Output</span><div>${esc(st.output.device)}</div></div>
-        <div class="field2"><span>Solo dims others by</span><div class="num">${dbText(s.soloDimDb)}</div></div>
-        ${s.pttHotkey ? `<div class="field2"><span>Push-to-talk key (works in other apps)</span><div class="num">${esc(s.pttHotkey)}</div></div>` : ''}
-        <details><summary>Advanced</summary><div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-          <div class="field2"><span>Codec</span><div>${esc(s.codec === 'opus' ? 'Opus' : s.codec)} · ${s.bitrateKbps} kbps</div></div>
-          <div class="field2"><span>Network buffer</span><div>${s.networkBuffer.mode === 'auto' ? 'Auto' : 'Fixed'} (currently <span class="num">${s.networkBuffer.currentMs} ms</span>)</div></div>
-        </div></details>
-        ${offline.length ? `<div class="field2"><span>Remembered stations</span><div class="remembered">${offline.map(o =>
-          `<div class="r"><span class="swatch" style="background:${STATION_VAR(o.colorIndex)}"></span>${esc(o.name)}<span class="spacer"></span><button class="btn small" data-forget="${esc(o.id)}">Forget</button></div>`).join('')}</div></div>` : ''}
-        <button class="btn" data-disconnect style="align-self:flex-start">${c.state === 'connected' ? 'Disconnect' : 'Connect'}</button>`;
-      setHTML(body, html);
-      body.querySelectorAll('[data-forget]').forEach(b => { b.onclick = () => ctx.client.fire('station.forget', { station: b.dataset.forget }); });
-      body.querySelector('[data-disconnect]').onclick = () => ctx.client.fire(c.state === 'connected' ? 'connection.disconnect' : 'connection.connect');
+      rememberedField.hidden = !offline.length;
+      setHTML(remembered, offline.map(o => `<div class="r"><span class="swatch" style="background:${STATION_VAR(o.colorIndex)}"></span>${esc(o.name)}<span class="spacer"></span><button class="btn small" type="button" data-forget="${esc(o.id)}">Forget</button></div>`).join(''));
+      remembered.querySelectorAll('[data-forget]').forEach(b => { b.onclick = () => ctx.client.fire('station.forget', { station: b.dataset.forget }); });
     },
   };
 }

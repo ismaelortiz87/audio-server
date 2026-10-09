@@ -89,6 +89,37 @@ await js(`document.querySelector('.stations .station:nth-child(3) .pan button:nt
 await sleep(150);
 check((await st()).stations['VDI-QA-11'].pan === -1, 'clicking L on the placement control pans hard left');
 
+// settings, health details, connection flow (P5.2-P5.4)
+await open(`${UI}/?mock=everyday`);
+await js(`document.querySelector('.station .health').click()`);
+await sleep(100);
+check(await js(`!document.querySelector('.station .hdetail').hidden && document.querySelector('.station .hdetail').textContent.includes('Latency')`), 'tapping the health line shows link details');
+await js(`document.querySelector('.top .iconbtn').click()`);
+await sleep(150);
+check(await js(`!document.querySelector('.sheet').hidden`), 'gear opens settings');
+await js(`(() => { const s = [...document.querySelectorAll('.sheet select')][2]; s.value = '-24'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(150);
+check((await st()).settings.soloDimDb === -24, 'solo dim amount is editable');
+await js(`(() => { const s = document.querySelector('.sheet select'); s.value = 'airpods-mic'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(150);
+check((await st()).mic.device === 'AirPods Pro', 'microphone can be changed');
+await js(`document.querySelector('.sheet .iconbtn').focus()`);
+await key('Escape', 'Escape'); await sleep(150);
+check(await js(`document.querySelector('.sheet').hidden && document.activeElement === document.querySelector('.top .iconbtn')`), 'Escape closes settings and returns focus to the gear');
+
+await open(`${UI}/?mock=failed`);
+check(await js(`!document.querySelector('.top .btn.small').hidden`), 'failed state offers a Settings button');
+await js(`document.querySelector('.top .btn.small').click()`);
+await sleep(150);
+await js(`(() => { const [srv, grp, pw, nm] = document.querySelectorAll('.connform input'); grp.value = 'ops2'; pw.value = 'wrong'; document.querySelector('.connform button').click(); })()`);
+await sleep(200);
+check(await js(`!document.querySelector('.connerr').hidden && document.querySelector('.connerr').textContent.includes('Wrong group password')`), 'a bad password shows the reason in the form');
+await js(`(() => { const pw = document.querySelectorAll('.connform input')[2]; pw.value = 's3cret'; document.querySelector('.connform button').click(); })()`);
+await sleep(200);
+s = await st();
+check(s.connection.state === 'connected' && s.connection.group === 'ops2', 'connecting from the form uses the typed group');
+check((await js(`document.querySelector('.conn').textContent`)).includes('Connected'), 'top bar shows Connected');
+
 // ---------------------------------------------------------------- agent
 await open(`${UI}/agent.html?mock=nodevice`);
 check((await st())?.input?.status === 'missing', 'agent loads the missing-device state');

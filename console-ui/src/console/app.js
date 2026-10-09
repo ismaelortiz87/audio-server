@@ -8,7 +8,7 @@ import { ActivityHub } from './activity.js';
 import { topBar, liveBand, placement, notices, stations, youBar, settingsSheet, ordered } from './components.js';
 
 boot('console', client => {
-  const ui = { selected: null, dragPan: null, settingsOpen: false };
+  const ui = { selected: null, dragPan: null, settingsOpen: false, details: {} };
   let state = null;
   let pttDown = false;
 
@@ -20,6 +20,7 @@ boot('console', client => {
     select(id) { if (ui.selected !== id) { ui.selected = id; ctx.render(); } },
     openSettings() { ui.settingsOpen = true; ctx.render(); },
     closeSettings() { ui.settingsOpen = false; ctx.render(); },
+    focusSettingsButton() { ctx.settingsButton?.focus(); },
     nudge(id, dir) {
       const s = state.stations[id]; if (!s) return;
       const next = dir > 0 ? AUDIO.panSnaps.find(x => x > s.pan + 1e-6) ?? 1 : [...AUDIO.panSnaps].reverse().find(x => x < s.pan - 1e-6) ?? -1;
@@ -50,6 +51,8 @@ boot('console', client => {
     for (const p of Object.values(parts)) p.update(st, ui);
   }
 
+  // ?open=settings opens the sheet on load (review screenshots, deep links).
+  if (new URLSearchParams(location.search).get('open') === 'settings') ui.settingsOpen = true;
   client.store.subscribe(st => { state = st; render(st); });
   client.subscribe('meters');
   addEventListener('resize', () => ctx.render());
@@ -57,8 +60,8 @@ boot('console', client => {
   // spec §4.2 keyboard map
   addEventListener('keydown', e => {
     if (!state || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.target instanceof HTMLElement && e.target.matches('input, select, textarea')) return;
     if (e.key === 'Escape' && ui.settingsOpen) { ctx.closeSettings(); return; }
+    if (e.target instanceof HTMLElement && e.target.matches('input, select, textarea')) return;
     if (e.key === ' ' && state.mic.mode === 'ptt') { e.preventDefault(); if (!e.repeat) ctx.ptt(true); return; }
     if (e.key === '`') { if (state.mic.mode === 'open') client.fire('mic.setOn', { on: !state.mic.on }); return; }
     const list = ordered(state);

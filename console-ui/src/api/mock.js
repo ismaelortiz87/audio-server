@@ -178,9 +178,19 @@ export class MockEngine {
     const num = (v, name) => { if (typeof v !== 'number' || Number.isNaN(v)) throw err('bad_request', `${name} must be a number`); return v; };
     const bool = (v, name) => { if (typeof v !== 'boolean') throw err('bad_request', `${name} must be true or false`); return v; };
     switch (cmd) {
-      case 'connection.connect':
-        this.change(st => { st.connection.state = 'connected'; st.connection.reason = null; });
+      case 'connection.connect': {
+        for (const k of ['server', 'group', 'password', 'name']) if (k in a && typeof a[k] !== 'string') throw err('bad_request', `${k} must be a string`);
+        if (a.group === '') throw err('bad_request', 'Group is required');
+        if (a.password === 'wrong') { this.change(st => { st.connection.state = 'failed'; st.connection.reason = 'Wrong group password'; }); throw err('busy', 'Wrong group password'); }
+        this.change(st => {
+          if (a.server) st.connection.server = a.server;
+          if (a.group) st.connection.group = a.group;
+          if (a.name) st.self.name = a.name;
+          if (a.password) st.connection.passwordSaved = true;
+          st.connection.state = 'connected'; st.connection.reason = null;
+        });
         return;
+      }
       case 'connection.disconnect':
         this.change(st => { st.connection.state = 'failed'; st.connection.reason = 'Disconnected'; });
         return;
