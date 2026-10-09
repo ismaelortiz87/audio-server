@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recording prototype</title>
+<!-- Tokens come from the real UI (generated from docs/design/tokens.json). -->
+<link rel="stylesheet" href="../../../console-ui/src/styles/tokens.css">
+<link rel="stylesheet" href="../../../console-ui/src/styles/base.css">
+<style>
+/* Design prototype for docs/design/recording.md (P10.3). Static, mock data. */
+body { overflow: auto; }
+.harness { position: fixed; right: 12px; bottom: 12px; z-index: 50; display: flex; gap: 8px; align-items: center;
+  background: #000c; border: 1px dashed #555; border-radius: 8px; padding: 6px 8px; font-size: 12px; color: #bbb; }
+.harness select { background: #1a1a1a; border: 1px solid #444; border-radius: 6px; color: #ddd; padding: 3px 6px; font-size: 12px; }
+
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--rail); border-bottom: 1px solid var(--line); min-height: 48px; }
+.brand { font-weight: 600; }
+.conn { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 13px; }
+.views button { min-width: 84px; }
+
+/* REC: no new hue. Filled ink circle + "REC" + time (recording.md §2). */
+.rec { display: inline-flex; align-items: center; gap: 6px; background: var(--raised); border: 1px solid var(--ink3); color: var(--ink);
+  border-radius: 999px; padding: 2px 9px 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; cursor: pointer; }
+.rec i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); animation: pulse 2.4s ease-in-out infinite; }
+.rec .num { font-weight: 600; letter-spacing: 0; }
+
+main { padding: 16px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); max-width: 1100px; }
+.station { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.shead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+.sname { font-weight: 650; font-size: 15px; }
+.health { flex-basis: 100%; padding-left: 18px; font-size: 12px; color: var(--ink2); display: flex; gap: 6px; align-items: center; }
+.health .num { color: var(--ink3); }
+.wave { height: 56px; border-radius: 6px; background: var(--bg); position: relative; overflow: hidden; }
+.wave b { position: absolute; bottom: 50%; width: 3px; border-radius: 1px; transform: translateY(50%); }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.6fr auto; gap: 8px; }
+.tog { white-space: nowrap; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; font-weight: 600; font-size: 13px; color: var(--ink2);
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; cursor: pointer; }
+.tog.talk { background: var(--liveWash); color: var(--liveInk); border-color: var(--liveLine); }
+.tog.record.on { color: var(--ink); border-color: var(--ink3); background: var(--raised); }
+.tog .sq { width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
+.tog .ci { width: 9px; height: 9px; background: currentColor; border-radius: 50%; }
+.toast { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; display: flex; gap: 12px; align-items: center; font-size: 13px; color: var(--ink2); }
+
+/* consent dialog */
+.scrim { position: fixed; inset: 0; background: #000a; display: grid; place-items: center; z-index: 20; padding: 16px; }
+.dialog { width: min(420px, 100%); background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.dialog h2 { margin: 0; font-size: 17px; }
+.dialog p { margin: 0; color: var(--ink2); }
+.dialog .row { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog label { color: var(--ink2); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+
+/* sessions */
+.sessions { display: grid; grid-template-columns: 360px 1fr; min-height: calc(100vh - 49px); }
+.list { border-right: 1px solid var(--line); background: var(--rail); overflow: auto; }
+.day { padding: 14px 16px 6px; }
+.srow { display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line2); cursor: pointer; }
+.srow:hover { background: var(--panel2); }
+.srow.sel { background: var(--accentWash); box-shadow: inset 3px 0 0 var(--accent); }
+.srow .nm { font-weight: 600; }
+.srow .meta { grid-column: 2 / 4; color: var(--ink3); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.chip { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.chip.ready { color: var(--accentInk); }
+.chip.work { color: var(--ink3); animation: pulse 1.6s ease-in-out infinite; }
+.chip.fail { color: var(--ink2); display: inline-flex; gap: 6px; align-items: center; }
+.detail { padding: 18px 22px; overflow: auto; display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
+.dhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dhead h1 { margin: 0; font-size: 18px; }
+.dhead .meta { color: var(--ink3); font-size: 12px; flex-basis: 100%; padding-left: 20px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 14px 16px; }
+.card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink3); }
+.card p, .card li { color: var(--ink2); }
+.card ul { margin: 0 0 12px; padding-left: 18px; }
+.card .acts li::marker { content: '☐  '; color: var(--ink3); }
+.foot { color: var(--ink4); font-size: 11px; }
+.turn { display: grid; grid-template-columns: 56px 140px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line2); font-size: 13px; }
+.turn .t { color: var(--ink3); font-family: var(--mono); font-size: 12px; cursor: pointer; }
+.turn .who { display: flex; gap: 6px; align-items: center; font-weight: 600; color: var(--ink); }
+.turn .who svg { width: 12px; height: 12px; color: var(--live); }
+.turn .say { color: var(--ink2); }
+.player { display: flex; gap: 10px; align-items: center; }
+.player .bar { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; }
+.player .bar i { position: absolute; inset: 0 70% 0 0; background: var(--ink3); border-radius: 2px; }
+.search { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--ink); width: 220px; }
+.retention { color: var(--ink3); font-size: 12px; }
+@media (max-width: 760px) { .sessions { grid-template-columns: 1fr; } .list { display: none; } .turn { grid-template-columns: 48px 1fr; } .turn .say { grid-column: 1 / 3; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="harness">Prototype
+  <select id="view">
+    <option value="console">Console · recording</option>
+    <option value="consent">Consent reminder</option>
+    <option value="sessions">Sessions · recap</option>
+  </select>
+</div>
+<script>
+const MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const topBar = active => `<header class="top"><span class="brand">Crosspoint</span>
+  <span class="conn"><span class="dot good"></span>Connected · ops · 2 of 2 stations</span>
+  <span class="rec" title="2 stations are recording · open Sessions"><i></i>REC 2 <span class="num">12:04</span></span>
+  <span class="spacer"></span>
+  <div class="seg views"><button aria-pressed="${active === 'console'}">Console</button><button aria-pressed="${active === 'sessions'}">Sessions</button></div></header>`;
+const wave = color => `<div class="wave">${Array.from({ length: 70 }, (_, i) => `<b style="left:${i * 4 + 4}px;height:${6 + Math.abs(Math.sin(i * .37) * 34 + Math.sin(i * 1.3) * 8)}px;background:${color};opacity:.9"></b>`).join('')}</div>`;
+const card = (name, color, rec, health = 'Clear') => `<article class="station">
+  <div class="shead"><span class="swatch" style="background:${color}"></span><span class="sname">${name}</span>
+    ${rec ? `<span class="rec"><i></i>REC <span class="num">${rec}</span></span>` : ''}
+    <span class="health"><span class="dot good"></span>${health} <span class="num">32 ms</span></span></div>
+  ${wave(color)}
+  <div class="actions"><button class="tog">Mute</button><button class="tog">Solo</button><button class="tog talk">${MIC.replace('<svg', '<svg width="14" height="14"')} Hears you</button>
+    <button class="tog record ${rec ? 'on' : ''}">${rec ? `<span class="sq"></span>Stop <span class="num">${rec}</span>` : '<span class="ci"></span>Record'}</button></div>
+</article>`;
+
+const views = {
+  console: () => topBar('console') + `<main>${card('VDI-ACCT-07', 'var(--s1)', '12:04')}${card('VDI-DEV-02', 'var(--s2)', '3:41')}${card('VDI-QA-11', 'var(--s3)', null)}</main>
+    <div class="toast">✓ Saved VDI-OPS-04 · Transcribing… <button class="btn small">Open</button></div>`,
+  consent: () => topBar('console') + `<main>${card('VDI-ACCT-07', 'var(--s1)', null)}${card('VDI-DEV-02', 'var(--s2)', null)}</main>
+    <div class="scrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="ct">
+      <h2 id="ct">Recording a call?</h2>
+      <p>Make sure everyone on the call has agreed to be recorded. Recording without consent is illegal in many places.</p>
+      <p style="font-size:12px;color:var(--ink3)">This recording will include VDI-ACCT-07 and your voice while it hears you.</p>
+      <label><input type="checkbox"> Don't remind me again today</label>
+      <div class="row"><button class="btn" autofocus>Cancel</button><button class="btn primary">Start recording</button></div>
+    </div></div>`,
+  sessions: () => topBar('sessions') + `<div class="sessions">
+    <nav class="list" aria-label="Sessions">
+      <div class="day label">Today</div>
+      ${row('VDI-ACCT-07', 'var(--s1)', '09:12–09:58', '46:10', '<span class="rec"><i></i>REC</span>', false)}
+      ${row('VDI-OPS-04', 'var(--s4)', '08:30–08:52', '22:03', '<span class="chip work">Transcribing…</span>', false)}
+      ${row('VDI-DEV-02', 'var(--s2)', '08:00–08:27', '27:45', '<span class="chip ready">Recap ready</span>', true)}
+      <div class="day label">Yesterday</div>
+      ${row('VDI-QA-11', 'var(--s3)', '16:05–16:31', '26:12', '<span class="chip ready">Recap ready</span>', false)}
+      ${row('VDI-ACCT-07', 'var(--s1)', '11:00–11:40', '40:02', '<span class="chip fail"><span class="dot crit"></span>Failed: provider timeout</span><button class="btn small">Retry</button>', false)}
+    </nav>
+    <section class="detail">
+      <div class="dhead"><span class="swatch" style="background:var(--s2)"></span><h1>VDI-DEV-02</h1><span class="spacer"></span>
+        <button class="btn small">Copy recap</button><button class="btn small">Export</button><button class="btn small">Delete…</button>
+        <div class="meta num">Today 08:00–08:27 · 27:45 · includes my voice</div></div>
+      <div class="card"><h3>Summary</h3><p>Release planning for the billing service. The team agreed to cut 4.2 on Thursday once the migration
+        dry-run passes; the flaky payments test is blocking and gets a dedicated fix.</p>
+        <h3>Decisions</h3><ul><li>Release 4.2 on Thursday, behind the <code>new-ledger</code> flag.</li><li>Payments test suite moves to the nightly run until fixed.</li></ul>
+        <h3>Action items</h3><ul class="acts"><li><b>Me</b>: run the migration dry-run on staging by Wednesday noon.</li><li><b>Speaker 2</b>: fix the payments test flake.</li><li>Send the release notes draft to support.</li></ul>
+        <h3>Open questions</h3><ul><li>Do we need a data backfill for accounts created before March?</li></ul>
+        <div class="foot">Recap by your configured model · generated 08:31</div></div>
+      <div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><h3 style="margin:0">Transcript</h3><span class="spacer"></span><input class="search" placeholder="Search transcript"></div>
+        ${turn('00:12', '<span class="swatch" style="background:var(--s2)"></span>VDI-DEV-02', 'Morning. Can everyone hear me? Okay, let\'s go through the release.')}
+        ${turn('00:20', MIC + 'Me', 'Yes, go ahead. I have the migration status when you need it.')}
+        ${turn('01:05', '<span class="swatch" style="background:var(--s2)"></span>Speaker 2', 'The payments suite failed twice again last night, same timeout.')}
+        ${turn('01:31', MIC + 'Me', 'Then let\'s pull it from the release gate and run it nightly.')}
+        <div class="player" style="margin-top:12px"><button class="btn small">▶</button><span class="num" style="color:var(--ink3);font-size:12px">01:31 / 27:45</span><div class="bar"><i></i></div>
+          <div class="seg"><button aria-pressed="true">Station</button><button aria-pressed="true">Me</button></div></div></div>
+      <div class="retention">Audio is deleted after 30 days. The recap and transcript are kept.</div>
+    </section></div>`,
+};
+function row(name, color, time, dur, chip, sel) {
+  return `<div class="srow ${sel ? 'sel' : ''}"><span class="swatch" style="background:${color}"></span><span class="nm">${name}</span>${chip.includes('Retry') ? `<span>${chip.split('<button')[0]}</span>` : chip}
+    <span class="meta num">${time} · ${dur}${chip.includes('Retry') ? '<button class="btn small">Retry</button>' : ''}</span></div>`;
+}
+function turn(t, who, say) { return `<div class="turn"><span class="t">${t}</span><span class="who">${who}</span><span class="say">${say}</span></div>`; }
+const q = new URLSearchParams(location.search);
+const sel = document.getElementById('view');
+sel.value = views[q.get('view')] ? q.get('view') : 'console';
+const render = () => { document.getElementById('root').innerHTML = views[sel.value](); };
+sel.onchange = render; render();
+</script>
+</body>
+</html>

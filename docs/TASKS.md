@@ -126,7 +126,7 @@ Ordered so that every task appears after everything it depends on.
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
-| P10.3 | UX addendum: recording + recaps | UX4 | M | design | deferred | Claude |
+| P10.3 | UX addendum: recording + recaps | UX4 | M | design | done | Claude |
 | P10.6 | Storage, retention, privacy (Q7, Q8) | P10.1 | S | any | deferred | |
 | P10.4 | Transcription pipeline (external ASR) | P10.2, P10.6, Q7 | L | any | deferred | |
 | P10.5 | Meeting recap generation (external model) | P10.4 | M | any | deferred | |
@@ -1147,7 +1147,15 @@ starts until it's moved out of `deferred`.
 - **Do:** design record controls (per station and global, session-record
   mode), a recording indicator as unmistakable as LIVE but distinct from it,
   a consent reminder, and screens to browse sessions, transcripts and recaps.
-- **Result:**
+- **Result:** `docs/design/recording.md` + prototype
+  `design/prototypes/recording/` (`?view=console|consent|sessions`). Key
+  decisions: one Settings choice "Recordings include: station only / station
+  + my voice to it" (default + my voice); **REC gets no new hue**, so it's an
+  `ink` circle + "REC" + time (a validated search only offered forbidden
+  cyan or weak pastels); per-station Record button and R shortcut; a daily
+  consent reminder (alertdialog, Cancel default); a Sessions view (day list,
+  status chips, recap/transcript/audio with per-side mute, export, delete,
+  retention line); API additions listed in §5 (additive to control-api v1).
 
 ### P10.6 — Storage, retention, privacy · S · deferred
 - **Depends on:** P10.1, answers to Q7/Q8
