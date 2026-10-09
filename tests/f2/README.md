@@ -116,6 +116,16 @@ shows `UserJoin` + `GroupJoin`.
   `selfRole` is still its real role, but other peers observe `"unknown"` with
   `hasRole: false`. Implemented via `SONOBUS_NO_ROLE_ADVERT=1`.
 - **`env`** may be set per scenario and per peer.
+- **`config`** (P2.1): an object written as the peer's `config.yaml` and passed
+  with `--config`. `%HOST% %PORT% %GROUP% %NAME%` are substituted. `role` stays
+  the *expected* effective role.
+- **`cli_flags: false`**: omit `-c/-g/-n`, so identity comes from the YAML only.
+- **`cli_role`**: the `--role` flag for this peer (`null` = none). Absent = the
+  legacy rule (pass `role` unless it is null).
+- **`setup_role`**: write a minimal `--load-setup` file whose saved state says
+  `Role: <setup_role>`, to prove the CLI/YAML outrank a setup file.
+  (`peerprep.py` does the file generation.) Scenarios `config-yaml` and
+  `config-precedence` use these.
 
 ### Routing models
 

@@ -62,6 +62,14 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "ApiServer.h"   // P4.1
 #include <csignal>
 
+// P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
+#if !(JUCE_IOS || JUCE_ANDROID)
+ #define CROSSPOINT_HAS_CONFIG 1
+ #include "Config.h"
+#else
+ #define CROSSPOINT_HAS_CONFIG 0
+#endif
+
 #if JUCE_ANDROID
 #include "android/SonoBusActivity.h"
 
@@ -128,6 +136,16 @@ public:
     // whether the option appeared at all, so a missing value is reported
     bool roleWasGiven = false;
     bool dumppeersWasGiven = false;
+    bool configWasGiven = false;
+
+#if CROSSPOINT_HAS_CONFIG
+    // P2.1: the YAML as loaded (its path is what Config::save() writes back to,
+    // for agent.setInput/setOutput in P2.6) and the merged CLI > YAML result,
+    // which also carries the audio/codec keys the CLI has no flags for.
+    crosspoint::Config yamlConfig;
+    crosspoint::Config effectiveConfig;
+    bool haveConfig = false;
+#endif
 
     // P4.1: control API (HTTP + WebSocket). CLI only for now; P2.1 can fill
     // apiConfig from the YAML `api:` section in applyApiOptions() below
@@ -357,7 +375,9 @@ public:
     {
         if (cmdlineRole.isEmpty() || proc == nullptr) return;
         if (auto * sonoproc = dynamic_cast<SonobusAudioProcessor*>(proc)) {
-            sonoproc->setRole(SonobusAudioProcessor::peerRoleFromString(cmdlineRole));
+            // P2.1: locked, so neither --load-setup nor the saved state can
+            // override it afterwards (CLI > YAML > setup file > saved state).
+            sonoproc->setRoleAndLock(SonobusAudioProcessor::peerRoleFromString(cmdlineRole));
         }
     }
 
@@ -365,12 +385,21 @@ public:
     // Errors set doImmediateQuit (nothing has started yet, so refusing here is clean).
     void applyApiOptions (ArgumentList & arglist)
     {
-        // P2.1 hook: load defaults from the YAML `api:` section into apiConfig here.
         const bool isVdi = cmdlineRole == "vdi";
         apiConfig.role = isVdi ? "vdi" : "console";
         apiConfig.appName = "Crosspoint";
         apiConfig.version = JucePlugin_VersionString;
         apiConfig.port = isVdi ? 7071 : 7070;
+#if CROSSPOINT_HAS_CONFIG
+        // YAML `api:` (P2.1) gives the defaults; the --api-* flags below still win.
+        if (haveConfig) {
+            const auto & ya = effectiveConfig.api;
+            if (ya.port) { apiConfig.port = *ya.port; apiPortWasGiven = true; }
+            if (ya.bind) apiConfig.bindAddress = String(*ya.bind);
+            if (ya.token) apiConfig.token = String(*ya.token);
+            if (ya.allowedOrigins) for (auto & o : *ya.allowedOrigins) apiConfig.allowedOrigins.add(String(o));
+        }
+#endif
         apiConfig.features.clear();
         apiConfig.selfName = cmdlineConnInfo.userName.isNotEmpty() ? cmdlineConnInfo.userName
                                                                    : SystemStats::getComputerName();
@@ -404,7 +433,8 @@ public:
         }
         if (token.isEmpty())
             token = SystemStats::getEnvironmentVariable("CROSSPOINT_API_TOKEN", {});
-        apiConfig.token = token;
+        if (token.isNotEmpty() || apiConfig.token.isEmpty())   // YAML api.token stays unless overridden
+            apiConfig.token = token;
 
         for (;;) {
             auto origin = removeLongOptionValue(arglist, "--api-allow-origin", &given);
@@ -455,6 +485,204 @@ public:
         return !apiPortWasGiven;
     }
 
+#if CROSSPOINT_HAS_CONFIG
+    //==========================================================================
+    // P2.1: --config
+
+    // Reads --config, merges it under the values given on the command line and
+    // stores the result in the cmdline* members. Returns false (after printing
+    // why) if the file is unreadable, malformed or invalid.
+    bool loadConfigFile (const String & path, const crosspoint::Config & cli)
+    {
+        File f = File::getCurrentWorkingDirectory().getChildFile(path);
+        std::string err;
+        if (!crosspoint::Config::load(f.getFullPathName().toStdString(), yamlConfig, err)) {
+            std::cerr << "Error in --config: " << err << std::endl;
+            return false;
+        }
+        haveConfig = true;
+        effectiveConfig = crosspoint::Config::merge(cli, yamlConfig);
+        const auto & eff = effectiveConfig;
+
+        // Only YAML-sourced values are applied here: whatever the command line
+        // gave has already been applied (and, being highest priority, stays).
+        if (!cli.server && eff.server) {
+            std::string host, e2;
+            int port = 0;
+            crosspoint::Config::splitServer(*eff.server, host, port, e2); // validated at load
+            cmdlineConnInfo.serverHost = host;
+            cmdlineConnInfo.serverPort = port > 0 ? port : DEFAULT_SERVER_PORT;
+            copyInfo = true;
+        }
+        if (!cli.group && eff.group) {
+            cmdlineConnInfo.groupName = String(*eff.group).trim();
+            doInitialConnect = true;
+            copyInfo = true;
+        }
+        if (!cli.password && eff.password) {
+            cmdlineConnInfo.groupPassword = String(*eff.password);
+            copyInfo = true;
+        }
+        if (!cli.username && eff.username) {
+            cmdlineConnInfo.userName = String(*eff.username).trim();
+            copyInfo = true;
+        }
+        if (eff.role) {
+            cmdlineRole = String(*eff.role); // the CLI role, if any, already won the merge
+        }
+        return true;
+    }
+
+    // Applies the keys that need the running processor / audio device manager:
+    // codec, bitrate and audio.*. Must run AFTER --load-setup, so that YAML
+    // outranks the setup file. Returns false after printing why.
+    bool applyConfigRuntime (SonobusAudioProcessor * proc, AudioDeviceManager * dm)
+    {
+        if (!haveConfig || proc == nullptr) return true;
+        const auto & cfg = effectiveConfig;
+
+        // --- codec / bitrate ---
+        if (cfg.codec || cfg.bitrate) {
+            const bool wantPcm = cfg.codec && *cfg.codec == "pcm";
+            int found = -1;
+            String bitrates;
+            for (int i = 0; i < proc->getNumberAudioCodecFormats(); ++i) {
+                SonobusAudioProcessor::AudioCodecFormatInfo info;
+                if (!proc->getAudioCodeFormatInfo(i, info)) continue;
+                if (wantPcm) {
+                    if (info.codec == SonobusAudioProcessor::CodecPCM && info.bitdepth == 2) { found = i; break; } // 16 bit
+                } else if (info.codec == SonobusAudioProcessor::CodecOpus) {
+                    bitrates << (bitrates.isEmpty() ? "" : ", ") << info.bitrate;
+                    if (cfg.bitrate && info.bitrate == *cfg.bitrate) found = i;
+                }
+            }
+            if (!wantPcm && !cfg.bitrate) {
+                // codec: opus without a bitrate keeps an Opus default as it is
+                SonobusAudioProcessor::AudioCodecFormatInfo cur;
+                if (proc->getAudioCodeFormatInfo(proc->getDefaultAudioCodecFormat(), cur)
+                    && cur.codec == SonobusAudioProcessor::CodecOpus) {
+                    found = proc->getDefaultAudioCodecFormat();
+                }
+            }
+            if (found < 0 && !wantPcm && !cfg.bitrate) {
+                for (int i = 0; i < proc->getNumberAudioCodecFormats(); ++i) {
+                    SonobusAudioProcessor::AudioCodecFormatInfo info;
+                    if (proc->getAudioCodeFormatInfo(i, info) && info.codec == SonobusAudioProcessor::CodecOpus
+                        && info.bitrate == 96000) { found = i; break; }
+                }
+            }
+            if (found < 0) {
+                std::cerr << "Error in --config: bitrate " << (cfg.bitrate ? *cfg.bitrate : 0)
+                          << " is not a supported Opus bitrate (bits/s per channel). Supported: "
+                          << bitrates << std::endl;
+                return false;
+            }
+            proc->setDefaultAudioCodecFormat(found);
+            std::cerr << "Config: default send format = " << proc->getAudioCodeFormatName(found) << std::endl;
+        }
+
+        // --- audio devices / sample rate / buffer ---
+        if (dm != nullptr && (cfg.inputDevice || cfg.outputDevice || cfg.sampleRate || cfg.buffer)) {
+            // P2.11 hook: on Linux, audio.input_device / audio.output_device are
+            // meant to name PipeWire nodes (D12). That needs a generated ALSA config
+            // pinning crosspoint_in / crosspoint_out PCMs to the nodes before JUCE
+            // opens them; it is NOT implemented yet. Until P2.11 lands, Linux
+            // behaves like every other platform: the names are matched against the
+            // devices JUCE lists (the ALSA PCMs).
+            String err;
+            if (!applyAudioConfig(*dm, cfg, err)) {
+                std::cerr << "Error in --config: " << err << std::endl;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Selects devices/rate/buffer on the device manager by JUCE device name.
+    static bool applyAudioConfig (AudioDeviceManager & dm, const crosspoint::Config & cfg, String & err)
+    {
+        // Find a device type (CoreAudio, WASAPI, ALSA, ...) that offers the
+        // requested devices, preferring the current one.
+        const String wantIn = cfg.inputDevice ? String(*cfg.inputDevice) : String();
+        const String wantOut = cfg.outputDevice ? String(*cfg.outputDevice) : String();
+
+        auto & types = dm.getAvailableDeviceTypes();
+        String listing;
+        AudioIODeviceType * chosen = nullptr;
+        auto * current = dm.getCurrentDeviceTypeObject();
+
+        std::vector<AudioIODeviceType*> order;
+        if (current != nullptr) order.push_back(current);
+        for (auto * t : types) if (t != current) order.push_back(t);
+
+        for (auto * t : order) {
+            t->scanForDevices();
+            const auto ins = t->getDeviceNames(true);
+            const auto outs = t->getDeviceNames(false);
+            listing << "  [" << t->getTypeName() << "]\n";
+            for (auto & n : ins)  listing << "    input:  " << n << "\n";
+            for (auto & n : outs) listing << "    output: " << n << "\n";
+            if (chosen == nullptr
+                && (wantIn.isEmpty() || ins.contains(wantIn))
+                && (wantOut.isEmpty() || outs.contains(wantOut))) {
+                chosen = t;
+            }
+        }
+
+        if (chosen == nullptr) {
+            String what;
+            if (wantIn.isNotEmpty())  what << "audio.input_device '" << wantIn << "'";
+            if (wantIn.isNotEmpty() && wantOut.isNotEmpty()) what << " and ";
+            if (wantOut.isNotEmpty()) what << "audio.output_device '" << wantOut << "'";
+            err = what + " not found (names must match exactly, in one audio system). Available devices:\n" + listing.trimEnd();
+            return false;
+        }
+
+        if (chosen != current) dm.setCurrentAudioDeviceType(chosen->getTypeName(), true);
+
+        auto setup = dm.getAudioDeviceSetup();
+        if (wantIn.isNotEmpty())  setup.inputDeviceName = wantIn;
+        if (wantOut.isNotEmpty()) setup.outputDeviceName = wantOut;
+        if (cfg.sampleRate) setup.sampleRate = *cfg.sampleRate;
+        if (cfg.buffer)     setup.bufferSize = *cfg.buffer;
+
+        const String openErr = dm.setAudioDeviceSetup(setup, true);
+        if (openErr.isNotEmpty()) {
+            err = "could not open the audio device(s): " + openErr;
+            return false;
+        }
+
+        // JUCE silently picks the closest rate/buffer; a config is an explicit
+        // request, so report a mismatch instead of running on something else.
+        if (auto * dev = dm.getCurrentAudioDevice()) {
+            if (cfg.sampleRate && (int) std::lround(dev->getCurrentSampleRate()) != *cfg.sampleRate) {
+                String rates;
+                for (auto r : dev->getAvailableSampleRates()) rates << (rates.isEmpty() ? "" : ", ") << (int) r;
+                err = "audio.sample_rate " + String(*cfg.sampleRate) + " is not supported by the device; it supports: " + rates;
+                return false;
+            }
+            if (cfg.buffer && dev->getCurrentBufferSizeSamples() != *cfg.buffer) {
+                String sizes;
+                for (auto b : dev->getAvailableBufferSizes()) sizes << (sizes.isEmpty() ? "" : ", ") << b;
+                err = "audio.buffer " + String(*cfg.buffer) + " is not supported by the device; it supports: " + sizes;
+                return false;
+            }
+            std::cerr << "Config: audio input='" << setup.inputDeviceName << "' output='" << setup.outputDeviceName
+                      << "' rate=" << dev->getCurrentSampleRate() << " buffer=" << dev->getCurrentBufferSizeSamples() << std::endl;
+        }
+        return true;
+    }
+#else
+    bool applyConfigRuntime (SonobusAudioProcessor *, AudioDeviceManager *) { return true; }
+#endif
+
+    // A config problem found after startup began: report the exit code and quit.
+    void failStartup()
+    {
+        setApplicationReturnValue(1);
+        quit();
+    }
+
     void handleCommandLine()
     {
         ConsoleApplication app;
@@ -485,6 +713,9 @@ public:
 
         const String dumpPeersSpec("--dump-peers");
         const String dumpPeersSpecDesc("--dump-peers <filename>");
+
+        const String configSpec("--config");
+        const String configSpecDesc("--config <file.yaml>");
 
         
 
@@ -533,6 +764,12 @@ public:
             nullptr
         });
 
+        app.addCommand ({ configSpec, configSpecDesc,
+            TRANS("Read settings from a YAML file: server, group, password, username, role, audio.input_device, audio.output_device, audio.sample_rate, audio.buffer, codec, bitrate."),
+            TRANS("Precedence, highest first: command-line options, the YAML file, the --load-setup file, the saved application state. Unknown keys and wrong types are errors. See vdi.example.yaml."),
+            nullptr
+        });
+
         app.addCommand ({ dumpPeersSpec, dumpPeersSpecDesc,
             TRANS("Write a JSON snapshot of the remote peer table to the given file, refreshed about once per second. Used by the local test harness."),
             {},
@@ -572,6 +809,10 @@ public:
         setupDefaultConnInfo();
 
         auto connserv = arglist.removeValueForOption(serverSpec);
+#if CROSSPOINT_HAS_CONFIG
+        crosspoint::Config cliValues; // what the command line itself gave, for the merge below
+        if (connserv.isNotEmpty()) cliValues.server = connserv.toStdString();
+#endif
         if (connserv.isNotEmpty()) {
             cmdlineConnInfo.serverHost =  connserv.upToFirstOccurrenceOf(":", false, true);
             String portpart = connserv.fromFirstOccurrenceOf(":", false, false);
@@ -585,6 +826,9 @@ public:
         }
 
         auto groupname = arglist.removeValueForOption(groupSpec);
+#if CROSSPOINT_HAS_CONFIG
+        if (groupname.isNotEmpty()) cliValues.group = groupname.trim().toStdString();
+#endif
         if (groupname.isNotEmpty()) {
             cmdlineConnInfo.groupName = groupname.trim();
             doInitialConnect = true;
@@ -592,18 +836,29 @@ public:
         }
 
         auto grouppass = arglist.removeValueForOption(groupPassSpec);
+#if CROSSPOINT_HAS_CONFIG
+        if (grouppass.isNotEmpty()) cliValues.password = grouppass.toStdString();
+#endif
         if (grouppass.isNotEmpty()) {
             cmdlineConnInfo.groupPassword = grouppass;
             copyInfo = true;
         }
 
         auto username = arglist.removeValueForOption(userNameSpec);
+#if CROSSPOINT_HAS_CONFIG
+        if (username.isNotEmpty()) cliValues.username = username.trim().toStdString();
+#endif
         if (username.isNotEmpty()) {
             cmdlineConnInfo.userName = username.trim();
             copyInfo = true;
         }
 
-        auto setupfile = arglist.removeValueForOption(loadSetupSpec);
+        // P2.1: "--load-setup <file>" (space form) was silently ignored by JUCE's
+        // removeValueForOption, which only reads "--load-setup=<file>" (and left
+        // the file name behind as a stray argument). Handle the space form first.
+        auto setupfile = removeLongOptionValue(arglist, "--load-setup");
+        if (setupfile.isEmpty())
+            setupfile = arglist.removeValueForOption(loadSetupSpec);
         if (setupfile.isNotEmpty()) {
             loadSetupFilename = setupfile;
         }
@@ -617,6 +872,9 @@ public:
             auto r = role.trim().toLowerCase();
             if (r == "vdi" || r == "console") {
                 cmdlineRole = r;
+#if CROSSPOINT_HAS_CONFIG
+                cliValues.role = r.toStdString();
+#endif
             } else {
                 std::cerr << "Error: --role must be 'vdi' or 'console', got '"
                           << role << "'" << std::endl;
@@ -633,17 +891,40 @@ public:
             dumpPeersFilename = dumppeers;
         }
 
-        applyApiOptions (arglist);   // P4.1
+        // P2.1: --config. After every other option so the CLI values are known;
+        // before the --headless check so a YAML group satisfies it.
+        auto configPath = removeLongOptionValue(arglist, configSpec, &configWasGiven);
+        if (configWasGiven && configPath.isEmpty()) {
+            std::cerr << "Error: --config requires a filename" << std::endl;
+            doImmediateQuit = true;
+            setApplicationReturnValue(1);
+        }
+        else if (configPath.isNotEmpty()) {
+#if CROSSPOINT_HAS_CONFIG
+            if (!doImmediateQuit && !loadConfigFile(configPath, cliValues)) {
+                doImmediateQuit = true;
+                setApplicationReturnValue(1);
+            }
+#else
+            std::cerr << "Error: --config is not supported on this platform" << std::endl;
+            doImmediateQuit = true;
+            setApplicationReturnValue(1);
+#endif
+        }
+
+        applyApiOptions (arglist);   // P4.1 (after --config, so YAML api:/role/username feed its defaults)
 
         if (arglist.removeOptionIfFound(headlessSpec)) {
 
             doHeadless = true;
 
             // P4.1: a headless app with the control API on can be driven over it,
-            // so it does not need a group on the command line.
-            if (!doInitialConnect && !(apiPortWasGiven && apiConfig.port > 0)) {
+            // so it does not need a group on the command line. P2.1: don't repeat
+            // an error that was already reported.
+            if (!doInitialConnect && !doImmediateQuit && !(apiPortWasGiven && apiConfig.port > 0)) {
                 std::cout << TRANS("Error: you need to specify a group to connect to for headless operation right now... eventually there will be an OSC interface.") << std::endl;
                 doImmediateQuit = true;
+                setApplicationReturnValue(1);
             }
         }
 
@@ -748,6 +1029,12 @@ public:
                         }
                     }
                 }
+
+                // P2.1: YAML codec/audio keys go on top of the setup file just loaded.
+                if (!applyConfigRuntime(sonoproc, &mainWindow->getDeviceManager())) {
+                    failStartup();
+                    return;
+                }
             }
 
 #if JUCE_ANDROID && JUCE_OPENGL
@@ -797,6 +1084,12 @@ public:
                     }
                 }
 
+                // P2.1: YAML codec/audio keys go on top of the setup file just loaded
+                // (CLI > YAML > setup file > saved state); role is already pinned.
+                if (!applyConfigRuntime(sonoproc, &pluginHolder->deviceManager)) {
+                    failStartup();
+                    return;
+                }
 
                 if (doInitialConnect) {
                     DBG("CONNECTING HEADLESS INITIAL");

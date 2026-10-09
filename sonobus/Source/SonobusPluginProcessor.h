@@ -353,6 +353,11 @@ public:
     // our role, advertised to peers in the peer-info JSON
     PeerRole getRole() const { return mRole; }
     void setRole(PeerRole role);
+    // P2.1: set the role AND pin it, so a later setStateInformation (a setup file
+    // from --load-setup, or the saved state) cannot override it. Used for roles
+    // that came from the command line or --config, which outrank both
+    // (precedence: CLI > YAML > setup file > saved state).
+    void setRoleAndLock(PeerRole role) { setRole(role); mRoleLocked.store(true); }
 
     // remote peer role, learned from the peer-info JSON
     PeerRole getRemotePeerRole(int index) const;
@@ -1052,6 +1057,8 @@ private:
     // and read when building peer-info JSON and applying the routing matrix, so
     // it is atomic like the other scalar settings around it.
     std::atomic<PeerRole> mRole { PeerRole::Console };
+    // P2.1: when set, restoring state must not change mRole (see setRoleAndLock).
+    std::atomic<bool> mRoleLocked { false };
 
     Atomic<float>   mInputReverbLevel  { 1.0f };
     Atomic<float>   mInputReverbSize  { 0.15f };

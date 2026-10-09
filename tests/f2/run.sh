@@ -83,6 +83,7 @@ LIST=0
 PEER_NAMES=()
 PEER_ROLES=()   # the peer's own role, or "default" when --role must be omitted
 PEER_ENVS=()    # comma separated KEY=VALUE env vars for this peer
+PEER_EXTRAS=()  # the peer's scenario entry as compact JSON (config/setup_role/cli_*, see peerprep.py)
 # Extra per-peer arguments.
 PEER_ARGS=()
 PEER_ARGS_SET=0
@@ -288,9 +289,11 @@ for entry in scen.get("peers", []):
     # advertise:false is expressed through SONOBUS_NO_ROLE_ADVERT for the app.
     if advertise is False and "SONOBUS_NO_ROLE_ADVERT" not in env:
         env = (env + ",SONOBUS_NO_ROLE_ADVERT=1").lstrip(",")
-    print("PEER\t%s\t%s\t%s\t%s"
+    # empty fields are written as "-": read with a tab IFS would collapse them
+    print("PEER\t%s\t%s\t%s\t%s\t%s"
           % (entry["name"], "default" if role is None else role,
-             "1" if advertise else "0", env))
+             "1" if advertise else "0", env or "-",
+             json.dumps(entry, separators=(",", ":"))))
 PY
 )" || die "could not read scenario '$SCENARIO'"
 
@@ -298,7 +301,7 @@ GROUP=""
 ROUTING=""
 EXPECT=""
 DESC=""
-while IFS=$'\t' read -r kind a b c d; do
+while IFS=$'\t' read -r kind a b c d e; do
     case "$kind" in
         GROUP)   GROUP="$a" ;;
         ROUTING) ROUTING="$a" ;;
@@ -307,7 +310,9 @@ while IFS=$'\t' read -r kind a b c d; do
         PEER)
             PEER_NAMES[${#PEER_NAMES[@]}]="$a"
             PEER_ROLES[${#PEER_ROLES[@]}]="$b"
+            [ "$d" = "-" ] && d=""
             PEER_ENVS[${#PEER_ENVS[@]}]="$d"
+            PEER_EXTRAS[${#PEER_EXTRAS[@]}]="$e"
             ;;
     esac
 done <<EOF
@@ -339,18 +344,19 @@ if [ -n "$PEER_FILTER" ]; then
         SELECTED[${#SELECTED[@]}]="$want"
     done
     [ "${#SELECTED[@]}" -gt 0 ] || die "--peers selected no peers"
-    NEW_NAMES=(); NEW_ROLES=(); NEW_ENVS=()
+    NEW_NAMES=(); NEW_ROLES=(); NEW_ENVS=(); NEW_EXTRAS=()
     for want in "${SELECTED[@]}"; do
         for i in "${!PEER_NAMES[@]}"; do
             if [ "${PEER_NAMES[$i]}" = "$want" ]; then
                 NEW_NAMES[${#NEW_NAMES[@]}]="${PEER_NAMES[$i]}"
                 NEW_ROLES[${#NEW_ROLES[@]}]="${PEER_ROLES[$i]}"
                 NEW_ENVS[${#NEW_ENVS[@]}]="${PEER_ENVS[$i]}"
+                NEW_EXTRAS[${#NEW_EXTRAS[@]}]="${PEER_EXTRAS[$i]}"
                 break
             fi
         done
     done
-    PEER_NAMES=("${NEW_NAMES[@]}"); PEER_ROLES=("${NEW_ROLES[@]}"); PEER_ENVS=("${NEW_ENVS[@]}")
+    PEER_NAMES=("${NEW_NAMES[@]}"); PEER_ROLES=("${NEW_ROLES[@]}"); PEER_ENVS=("${NEW_ENVS[@]}"); PEER_EXTRAS=("${NEW_EXTRAS[@]}")
 elif [ -n "$COUNT" ]; then
     case "$COUNT" in ''|*[!0-9]*) die "--count must be a positive integer" ;; esac
     [ "$COUNT" -ge 1 ] || die "--count must be >= 1"
@@ -358,6 +364,7 @@ elif [ -n "$COUNT" ]; then
     PEER_NAMES=("${PEER_NAMES[@]:0:$COUNT}")
     PEER_ROLES=("${PEER_ROLES[@]:0:$COUNT}")
     PEER_ENVS=("${PEER_ENVS[@]:0:$COUNT}")
+    PEER_EXTRAS=("${PEER_EXTRAS[@]:0:$COUNT}")
 fi
 
 TOTAL_PEERS="${#PEER_NAMES[@]}"
@@ -547,13 +554,36 @@ for i in "${!PEER_NAMES[@]}"; do
     home_dir="$peer_dir/home"
     mkdir -p "$home_dir"
 
-    cmd=( "$APP" -q -c "$SERVER_HOST:$PORT" -g "$GROUP" -n "$name" --dump-peers "$DUMP_DIR/$name.json" )
+    # P2.1: per-peer config:/setup_role:/cli_* scenario fields (see peerprep.py).
+    prep_nocli=0; prep_role="keep"; prep_args=()
+    if [ "$APP_IS_STUB" = 0 ]; then
+        mkdir -p "$peer_dir"
+        while IFS=$'\t' read -r pk pv; do
+            case "$pk" in
+                NOCLI) prep_nocli=1 ;;
+                ROLE)  prep_role="$pv" ;;
+                ARG)   prep_args[${#prep_args[@]}]="$pv" ;;
+            esac
+        done < <(python3 "$SCRIPT_DIR/peerprep.py" "${PEER_EXTRAS[$i]}" "$peer_dir" "$SERVER_HOST" "$PORT" "$GROUP" "$name")
+    fi
+
+    cmd=( "$APP" -q --dump-peers "$DUMP_DIR/$name.json" )
+    if [ "$prep_nocli" = 0 ]; then
+        cmd+=( -c "$SERVER_HOST:$PORT" -g "$GROUP" -n "$name" )
+    fi
+    if [ "${#prep_args[@]}" -gt 0 ]; then
+        cmd+=( "${prep_args[@]}" )
+    fi
     # --role is the real app's flag. "default" means the scenario did not
     # specify one, so the flag is omitted and the app uses its own default
     # (console). The stub accepts --role too, but for a stub run it gets
     # --fake-role from PEER_ARGS below, so it is not passed twice.
-    if [ "$APP_IS_STUB" = 0 ] && [ "$role" != "default" ]; then
-        cmd+=( --role "$role" )
+    if [ "$APP_IS_STUB" = 0 ]; then
+        case "$prep_role" in
+            keep) if [ "$role" != "default" ]; then cmd+=( --role "$role" ); fi ;;
+            none) ;;
+            *)    cmd+=( --role "$prep_role" ) ;;
+        esac
     fi
     if [ "${#PEER_ARGS[@]}" -gt 0 ]; then
         for extra in "${PEER_ARGS[@]}"; do

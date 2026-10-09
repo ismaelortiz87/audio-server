@@ -9418,7 +9418,11 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
             setLastSoundboardWidth((int)extraTree.getProperty(lastSoundboardWidthKey, (int)mLastSoundboardWidth));
             setLastSoundboardShown(extraTree.getProperty(lastSoundboardShownKey, mLastSoundboardShown));
             mCurrentUsername = extraTree.getProperty(lastUsernameKey, mCurrentUsername);
-            setRole(peerRoleFromString(extraTree.getProperty(roleStateKey, peerRoleToString(mRole.load())).toString()));
+            // P2.1: a role given on the command line / in --config outranks any
+            // restored state (setup file or saved state), so don't restore over it.
+            if (!mRoleLocked.load()) {
+                setRole(peerRoleFromString(extraTree.getProperty(roleStateKey, peerRoleToString(mRole.load())).toString()));
+            }
             mLangOverrideCode = extraTree.getProperty(langOverrideCodeKey, mLangOverrideCode);
             mUseUniversalFont = extraTree.getProperty(useUnivFontKey, mUseUniversalFont);
             setChatFontSizeOffset((int) extraTree.getProperty(chatFontSizeOffsetKey, (int)mChatFontSizeOffset));
