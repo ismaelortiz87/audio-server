@@ -71,11 +71,11 @@ Ordered so that every task appears after everything it depends on.
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
 | P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
-| P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | todo | |
+| P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | todo | |
 | P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | todo | |
-| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | todo | |
-| P2.2 | Vendor a YAML parser | F1 | S | any | todo | |
+| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | wip | Claude (helper) |
+| P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | todo | |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | todo | |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
@@ -417,20 +417,50 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   changing role. Add F2 scenario: 2 Consoles + 2 VDIs, expected matrix per
   ROADMAP.
 - **Done when:** F2 passes for the 2+2 scenario, and for 1+1.
-- **Result:** *Not done — this is now the critical-path task.* F2, P1.1, P1.2
-  and P1.3 are `done`, so P1.4 is unblocked and everything else in P1/P2/P4/P7
-  waits on it. **Until it lands the engine passes no audio at all in the
-  default configuration**: P1.3 blocks every new peer, and only P1.4 opens the
-  console↔vdi paths. Do not cut over to daily use before this. Start here:
-  `RemotePeer::roleBlocked` (in `SonobusPluginProcessor.cpp`) is the single gate
-  to clear once the matrix decision is made for a peer — it is already honoured
-  by `setRemotePeerSendActive` / `setRemotePeerRecvActive`, so clearing it and
-  applying the allow flags is sufficient and no other open path needs patching.
-  F2 is ready and already encodes this: `matrix-1v1` / `matrix-2v2` currently
-  expect all-blocked and print the matrix target separately, and
-  `matrix-target-check` is designed to **fail until this task is done** (it is
-  the acceptance test). Also note: when our own role changes, the matrix must
-  be re-applied to every peer, and `setRole` is where that hook belongs.
+- **Result:** `roleMatrixAllows()` (`SonobusPluginProcessor.cpp`) mirrors
+  `tests/f2/evaluate.py::allowed()`: unknown on either side blocked, same role
+  blocked, console↔vdi allowed both ways. `applyRoleMatrixToPeer()` is called
+  when a peer's role is first learned or changes (`handleRemotePeerInfoUpdate`),
+  and `applyRoleMatrixToAllPeers()` from `setRole`, so our own role change
+  re-decides every peer. Both run under the caller's existing `mCoreLock` read
+  lock (the allow/active setters re-take it; JUCE read locks are recursive per
+  thread), never under a write lock. `roleBlocked` is cleared **only** for a
+  positive allowed decision, so a same-role peer and a still-unknown peer both
+  stay gated and no other path (global unmute, solo, peer UI) can open them.
+  **Consequence for P1.6:** `roleBlocked` no longer distinguishes "same-role,
+  decided" from "unknown, pending" — the UI must read
+  `remoteRole`/`hasRemoteRole` for that. Send is opened via
+  `setRemotePeerSendActive(i, true)` (the `*Allow` setter alone does not start
+  the stream). Recv handles both arrival orders: while
+  `remoteSourceId == AOO_ID_NONE` it sets `recvAllow` and lets
+  `AOO_SOURCE_ADD_EVENT` invite the source when the id arrives, instead of
+  inviting `AOO_ID_NONE`. Three traps fixed that F2 does **not** catch: (1) the
+  matrix is applied on a **role change only**, not on every peer-info update,
+  because that message is also resent for buffer auto-sizing and pings and
+  re-applying there silently overrides a per-peer or global mute; (2) a
+  permitted-but-muted peer records the permission in `sendAllowCache`/
+  `recvAllowCache` while staying closed, so the unmute handler still restores
+  it; (3) a matrix-blocked peer pins both caches to **false**, because at
+  creation they are `!mMainSendMute` (normally true) and the unmute handler
+  restores them through the Active setter, which force-sets the allow flags —
+  leaving them true let one unmute re-open a blocked peer.
+  `SONOBUS_NO_ROLE_BLOCK=1` returns early, so `mesh-stock` is unchanged.
+  Verified: `matrix-target-check`, `matrix-1v1`, `matrix-2v2`,
+  `blocked-unknown` and `mesh-stock` all exit 0 in **3/3 runs each** (15 runs,
+  no flake), plus `test-evaluate.sh` (71 passed / 0 failed) and
+  `matrix-1v1 --strict-fields`. Both cache claims were proven by counterfactual
+  against the real binary: a repeated unmute-only probe re-opened blocked peers
+  on the naive build (`c2 -> c1 sendAllow: expected false, got true`, never
+  settles) and not on this one; and a mute held from startup re-opened a peer on
+  a mute-unaware build. `matrix-1v1`/`matrix-2v2` now `"expect": "matrix"`;
+  `test-evaluate.sh` section 3 had to be inverted (it asserted the pre-P1.4
+  all-blocked state passed for these scenarios); stale "P1.4 not implemented"
+  notes in `scenarios.json` and `tests/f2/README.md` were corrected. **Not
+  verified:** no live peer was ever observed *changing* role (there is no
+  CLI/API to flip a running peer's role, and F2 has no such scenario), so the
+  re-apply-on-change path rests on code inspection plus the `setRole`-at-startup
+  path; the mute counterfactuals used a temporary env-gated probe that was
+  removed before committing, so F2 does not cover mute interaction.
 
 ### P1.6 — Role-less peers
 - **Depends on:** P1.4 · **Size:** S
@@ -438,7 +468,16 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   "unknown" role so UIs can show them greyed out. F2 scenario with one peer
   started without `--role` (or an env var forcing old behaviour).
 - **Done when:** F2 passes with an unknown peer present.
-- **Result:**
+- **Result:** *Partly satisfied by P1.4; remains open for the UI half.*
+  The blocking half is done and tested: with P1.4, a peer that never sends a
+  role keeps `roleBlocked` set indefinitely, so it can never be opened by any
+  path, and the F2 `blocked-unknown` scenario (two peers, no advertised role)
+  exits 0. `remoteRole` is exposed as `"unknown"` and `hasRemoteRole` as
+  `false` in the peer dump. **What is left is the UI half** — showing such
+  peers greyed out. Note when doing it: P1.4 leaves `roleBlocked` set for both
+  same-role and unknown peers, so the UI must key off `remoteRole`/
+  `hasRemoteRole`, not `roleBlocked`, to tell "stock SonoBus, unknown" apart
+  from "same role as us, deliberately blocked".
 
 ### P1.7 — VDI agent health in peer info · S
 - **Depends on:** P1.2
@@ -475,7 +514,58 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   is not required (VDI role is desktop-only).
 - **Done when:** builds on macOS and Linux with a trivial parse in a test or
   startup debug path.
-- **Result:**
+- **Result:** Vendored **rapidyaml (ryml) 0.7.2**, MIT, tag `v0.7.2`, as the
+  upstream amalgamated single header
+  (`https://github.com/biojppm/rapidyaml/releases/download/v0.7.2/rapidyaml-0.7.2.hpp`,
+  sha256 `00aca709dbd24115874a3ee97da4f615ea15cae60bb1155bef1e7369c7c2f6d8`,
+  1 523 783 B), committed byte-identical as
+  `sonobus/deps/rapidyaml/ryml_all.hpp`;
+  `sonobus/deps/rapidyaml/README.md` records parser, version/tag/commit,
+  upstream URL, licence, the date and method of obtaining it, the exact files
+  added, and the update procedure. Chosen over yaml-cpp because it is MIT, is
+  one file with no `add_subdirectory`/`FetchContent` (so no configure-time
+  network), and keeps **per-node byte offsets** — needed by P2.1's in-place
+  `Config::save()` that must preserve comments and key order. Upstream's
+  amalgamation rule is followed exactly: exactly one TU defines
+  `RYML_SINGLE_HDR_DEFINE_NOW` (`deps/rapidyaml/ryml_impl.cpp`), because the
+  header alone does not link. That TU also defines
+  `RYML_DEFAULT_CALLBACK_USES_EXCEPTIONS` — a measured necessity: the stock
+  default error callback calls `abort()`, so malformed YAML would kill the app
+  (exit 134); with it, bad input throws `std::runtime_error`. CMake changes are
+  additive only (41 insertions, 0 deletions): a self-contained
+  `# BEGIN P2.2`/`# END P2.2` block exposing the **`yaml_parser` INTERFACE
+  library** carrying `deps/rapidyaml` as its include directory, a small
+  `sono_yaml` STATIC lib for the implementation TU, and a `yaml_smoke`
+  executable (`tests/yaml_smoke.cpp`, `EXCLUDE_FROM_ALL`, out of the runtime
+  path); `SonoBus` links `sono_yaml` privately so P2.1 can just
+  `#include <ryml_all.hpp>`. **`sono_yaml` is built with
+  `POSITION_INDEPENDENT_CODE ON`, which is required rather than cosmetic:** the
+  default Linux format set is VST3 + Standalone + LV2, so this archive is
+  linked into shared modules, and without the property linking any ryml-calling
+  TU into a `.so` fails with 32 `recompile with -fPIC` / `dangerous
+  relocation` errors (root cause: external data symbols such as
+  `c4::detail::digits0099` referenced via `R_AARCH64_ADR_PREL_PG_HI21` instead
+  of GOT-relative). It passes without the property only while nothing
+  references the archive and the linker discards it — i.e. only until P2.1
+  lands. The app does not reference the parser, so the linker drops it and
+  behaviour is unchanged. Desktop only; Android/iOS use separate Projucer
+  projects and are untouched. **Verified on macOS** (Release, arm64):
+  `yaml_smoke` builds clean and exits 0, printing the parsed values of a
+  document using the P2.1 key schema (11 checked leaves incl. nested
+  `audio.*`/`codec.*`, plus a malformed-input rejection); `SonoBus_Standalone`
+  still links. **Verified on Linux** in `ubuntu:22.04` with the project's exact
+  apt list: the full default target set (no `--target`, so VST3 + Standalone +
+  LV2) builds 390/390 and exits 0 with the Standalone executable and both the
+  VST3 and LV2 `.so` present, and `yaml_smoke` exits 0. The PIC fix was proven
+  against the real `build/libsono_yaml.a`: a TU calling `ryml::parse_in_arena`
+  links into a shared object successfully and the resulting `.so` is loadable
+  and returns the right value, while the identical control against a non-PIC
+  archive fails with 32 errors. **Not verified:** the Linux binaries are built
+  but never *executed* (no display/audio in the container); Windows not built.
+  `scripts/build-desktop.sh` was not touched. **Handoff to P2.1:** link
+  `yaml_parser` (include dir only) and `#include <ryml_all.hpp>`; do **not**
+  define `RYML_SINGLE_HDR_DEFINE_NOW` anywhere else — `sono_yaml` owns the
+  single implementation TU and duplicating it means duplicate symbols.
 
 ### P2.1 — `--config` loader
 - **Depends on:** P1.1, P2.2 · **Size:** M · **Touches:** `SonoStandaloneFilterApp.cpp`, new `Config.{h,cpp}`
