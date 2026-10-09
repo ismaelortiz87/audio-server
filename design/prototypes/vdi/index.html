@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VDI agent prototype</title>
+<title>Agent prototype</title>
 <style>
 /* Same tokens as the Console prototype (Maia + UX1 additions). Kept to flat
    rects, text and simple meters so P2.6 can build it in JUCE as drawn. */
@@ -40,13 +40,14 @@ button:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px;
 .titlebar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--rail);
   border-bottom: 1px solid var(--line); color: var(--ink3); font-size: 12px; }
 .titlebar .spacer { flex: 1; }
+.titlebar .url { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; margin-left: 6px; color: var(--ink2); }
 .titlebar .wc { width: 10px; height: 10px; border-radius: 50%; background: var(--ink4); }
 
 .body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 
 /* identity + state */
 .ident { display: flex; align-items: center; gap: 10px; }
-.ident .sw { width: 12px; height: 12px; border-radius: 50%; background: var(--s1); flex: none; }
+.ident .sw { width: 12px; height: 12px; border-radius: 3px; background: var(--ink4); flex: none; }
 .ident .name { font-size: 20px; font-weight: 700; letter-spacing: .01em; }
 .ident .role { margin-left: auto; font-size: 11px; color: var(--ink3); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
 
@@ -90,7 +91,7 @@ button:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px;
 .devsel .chev { color: var(--ink3); }
 .meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .meter i { display: block; height: 100%; width: 0; background: var(--ink3); }
-.meter.send i { background: var(--s1); }
+.meter.send i { background: var(--accentInk); }
 .meter.send.local i { background: var(--ink3); }
 .meter.voice i { background: var(--live); }
 .devfoot { display: flex; align-items: center; gap: 8px; color: var(--ink3); font-size: 12px; }
@@ -146,11 +147,11 @@ button:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px;
 <body>
 <div class="desk">
   <div>
-    <div class="caption">Agent window</div>
+    <div class="caption">Agent web UI · served by the agent on localhost (P2.6)</div>
     <div class="win" id="win">
-      <div class="titlebar"><span class="wc"></span><span class="wc"></span><span class="wc"></span><span class="spacer"></span>VDI agent<span class="spacer"></span></div>
+      <div class="titlebar"><span class="wc"></span><span class="wc"></span><span class="wc"></span><span class="url num">http://localhost:7071</span><span class="spacer"></span>Crosspoint agent<span class="spacer"></span></div>
       <div class="body">
-        <div class="ident"><span class="sw"></span><span class="name">VDI-ACCT-07</span><span class="role">VDI agent</span></div>
+        <div class="ident"><span class="sw"></span><span class="name">VDI-ACCT-07</span><span class="role">Crosspoint agent</span></div>
         <div class="state" id="state" role="status" aria-live="polite"></div>
         <div class="sect" id="listenSect">
           <span class="label">Listening now</span>
@@ -166,14 +167,14 @@ button:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px;
       <div class="foot">
         <button class="btn" id="pause" aria-pressed="false">Pause sending</button>
         <button class="btn" id="reload">Reload config</button>
-        <span class="path num" id="path" title="C:\ProgramData\VdiAgent\vdi.yaml">C:\ProgramData\VdiAgent\vdi.yaml</span>
+        <span class="path num" id="path" title="/home/maelo/.config/crosspoint/vdi.yaml">~/.config/crosspoint/vdi.yaml</span>
       </div>
     </div>
   </div>
 
   <div class="tray">
-    <div class="caption">Tray icon + menu</div>
-    <div class="taskbar"><span>ENG</span><span class="ticon" id="ticon" title="VDI agent">
+    <div class="caption">Tray icon + menu · deferred (P2.9), not required on Debian</div>
+    <div class="taskbar"><span>ENG</span><span class="ticon" id="ticon" title="Crosspoint agent">
       <svg viewBox="0 0 24 24" fill="none" stroke="#e8e4da" stroke-width="2" stroke-linecap="round"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg><span class="badge" id="tbadge"></span></span><span class="num">15:42</span></div>
     <div class="menu" id="menu"></div>
     <div class="legend">
@@ -200,15 +201,16 @@ button:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px;
 </div>
 
 <script>
+// Placeholder PipeWire nodes (D12, Debian 13). Real names come from the VDI.
 const INPUTS = [
-  { name: 'CABLE Output (VB-Audio Virtual Cable)', hint: 'Loopback: captures system audio', act: .7 },
-  { name: 'Remote Audio', hint: 'VDI session audio', act: .15 },
-  { name: 'Microphone (Remote Audio)', hint: 'Redirected mic', act: .05 },
+  { name: 'Monitor of System Loopback', hint: 'PipeWire node loopback_sink.monitor: captures system audio', act: .7 },
+  { name: 'Monitor of Built-in Audio', hint: 'alsa_output.platform.monitor: session audio device', act: .15 },
+  { name: 'Remote Microphone', hint: 'Redirected mic from the VDI client', act: .05 },
 ];
 const OUTPUTS = [
-  { name: 'VoiceMeeter Input (VB-Audio)', hint: 'Virtual mic: apps on this VDI hear it' },
-  { name: 'Speakers (Remote Audio)', hint: 'VDI session output' },
-  { name: 'CABLE Input (VB-Audio Virtual Cable)', hint: 'Loopback input' },
+  { name: 'Crosspoint Virtual Mic', hint: 'PipeWire node crosspoint_mic: apps on this VDI pick it as their mic', act: 0 },
+  { name: 'Built-in Audio', hint: 'alsa_output.platform: session speakers', act: 0 },
+  { name: 'System Loopback', hint: 'loopback_sink: would feed audio back to Consoles', act: 0 },
 ];
 
 const SC = {
@@ -226,7 +228,7 @@ const $ = id => document.getElementById(id);
 
 function load(k) {
   const sc = SC[k];
-  S = { ...sc, paused: !!sc.paused, inDev: sc.missingIn ? 'Loopback Audio (missing)' : INPUTS[0].name,
+  S = { ...sc, paused: !!sc.paused, inDev: sc.missingIn ? 'Loopback (missing)' : INPUTS[0].name,
         outDev: OUTPUTS[0].name, open: sc.missingIn ? 'in' : null, retry: 8, attempt: 3, tone: null };
   $('toast').classList.remove('on');
   render();
@@ -238,10 +240,10 @@ function stateInfo() {
     meta: `aoo.sonobus.net:10998 · attempt ${S.attempt} · next try in ${S.retry}s`, acts: '<button class="btn small" id="retryNow">Retry now</button>' };
   if (S.conn === 'password') return { cls: 'crit', dot: 'crit', big: 'Needs attention',
     sub: 'The server rejected the password for group "ops".',
-    meta: 'Fix <b class="num">password:</b> in vdi.yaml, then reload. Nothing is sent until then.',
+    meta: 'Fix <b class="num">password:</b> in ~/.config/crosspoint/vdi.yaml, then reload. Nothing is sent until then.',
     acts: '<button class="btn small primary">Open vdi.yaml</button><button class="btn small" id="reload2">Reload config</button>' };
   if (S.open === 'in' && S.inDev.includes('missing')) return { cls: 'crit', dot: 'crit', big: 'Needs attention',
-    sub: 'The input device in vdi.yaml, "Loopback Audio", isn\'t on this machine.',
+    sub: 'The input node in vdi.yaml, "loopback_sink.monitor", isn\'t on this machine.',
     meta: 'Pick the device that carries this VDI\'s system audio below. Your choice is saved to vdi.yaml.', acts: '' };
   if (S.paused) return { cls: 'warn', dot: 'warn', big: 'Sending paused',
     sub: 'Consoles hear silence from this VDI. You can still be heard through the virtual mic.',
@@ -277,7 +279,7 @@ function render() {
   $('devIn').className = 'dev' + (S.open === 'in' ? ' open' : '') + (missing ? ' bad' : '');
   $('devIn').innerHTML = `
     <div class="devhead"><span class="what">Sends</span><span class="why">system audio → Consoles</span><span class="spacer"></span></div>
-    <button class="devsel" data-k="in" aria-expanded="${S.open === 'in'}"><span class="dn ${missing ? 'missing' : ''}">${missing ? 'Loopback Audio' : S.inDev}</span><span class="chev">${S.open === 'in' ? '▴' : 'Change ▾'}</span></button>
+    <button class="devsel" data-k="in" aria-expanded="${S.open === 'in'}"><span class="dn ${missing ? 'missing' : ''}">${missing ? 'loopback_sink.monitor' : S.inDev}</span><span class="chev">${S.open === 'in' ? '▴' : 'Change ▾'}</span></button>
     ${missing ? '' : `<div class="meter send ${S.paused || offline || !S.consoles.length ? 'local' : ''}" id="mIn" title="Coloured when the audio is being sent; grey when it's only the local level"><i></i></div>
     <div class="devfoot"><span>${S.paused ? 'Paused: local level only, Consoles hear silence' : offline ? 'Not sending: local level only' : !S.consoles.length ? 'Local level: sending starts when a Console joins' : 'Mono to Consoles'}</span><span class="spacer"></span><span class="num" id="dbIn"></span></div>`}
     <div class="picker">${INPUTS.map((d, i) => `

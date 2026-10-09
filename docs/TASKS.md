@@ -60,9 +60,9 @@ Ordered so that every task appears after everything it depends on.
 |---|---|---|---|---|---|---|
 | F1 | Reproducible desktop build script (macOS + Linux) | — | S | any | done | Claude |
 | UX1 | Design brief: purpose, contexts, principles | — | S | design | done | Claude |
-| UX2 | Console experience design + interactive prototype | UX1 | L | design | wip | Claude |
-| UX3 | VDI agent experience design + prototype | UX1 | M | design | wip | Claude |
-| UX4 | Design spec + component kit for implementers | UX2, UX3 | M | design | todo | Claude |
+| UX2 | Console experience design + interactive prototype | UX1 | L | design | done | Claude |
+| UX3 | VDI agent experience design + prototype | UX1 | M | design | done | Claude |
+| UX4 | Design spec + component kit for implementers | UX2, UX3 | M | design | done | Claude |
 | P0.1 | Stock SonoBus on a VDI, join group from Mac | — | S | human | done | maelo |
 | P0.2 | Identify network path peers use (VPN vs internet) | P0.1 | S | human | done | maelo |
 | P0.3 | Wire VDI virtual devices, verify audio both ways | P0.1 | S | human | done | maelo |
@@ -93,6 +93,7 @@ Ordered so that every task appears after everything it depends on.
 | P3.7 | Trim effects to what UX2 specifies | P3.5, UX2 | S | any | todo | |
 | P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
 | P3.9 | Own app identity: name, bundle id, settings folder (coexist with stock SonoBus) | — | S | any | done | Claude |
+| P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | todo | |
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | todo | |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | todo | |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | todo | |
@@ -231,7 +232,9 @@ start.
   from the engine (input to P4.5).
 - **Done when:** I've reviewed and approved the prototype; open design
   questions are resolved.
-- **Result:** (in progress) first prototype at
+- **Result:** **done, approved by maelo 2026-10-09.** Final engine-needs list:
+  `docs/design/console-needs.md` (input to P4.5). History:
+   (in progress) first prototype at
   `design/prototypes/console/index.html`, opened locally. URL params:
   `?scenario=everyday|twocalls|problem|four|connecting&view=phone`. Awaiting
   maelo's feedback; the engine-needs list and VDI-side states are still to do.
@@ -249,7 +252,11 @@ start.
   level per device, save to YAML, picker offered when a configured device is
   missing). Clickable prototype in `design/prototypes/vdi/`.
 - **Done when:** I've reviewed and approved the prototype.
-- **Result:** (in progress) prototype at `design/prototypes/vdi/index.html`
+- **Result:** **done, approved by maelo 2026-10-09.** This is the design of the agent's
+  localhost web UI (P2.6). Placeholders updated to Debian/PipeWire (D12), the
+  frame shows `http://localhost:7071`, and the tray is marked deferred (P2.9).
+  Its state and commands are in `docs/design/console-needs.md` §4. History:
+   (in progress) prototype at `design/prototypes/vdi/index.html`
   Note (D10): the tray mock is Windows-styled. On Linux the tray is optional
   and the localhost web UI plus notifications are the primary surface; UX4
   must specify both, and specify the agent UI as a browser page.
@@ -270,7 +277,19 @@ start.
   HTML/CSS is the starting code for P5.1.
 - **Done when:** an implementer can build P2.6 and P5.x without asking design
   questions.
-- **Result:**
+- **Result:** **done 2026-10-09.** `docs/design/spec.md` (the build and
+  review reference), `docs/design/tokens.json` v1, `docs/design/console-needs.md`
+  (engine needs, for P4.5), and the icon in `design/icon/` (SVG source plus
+  PNGs for macOS, Linux and PWA, including a maskable one). Colour
+  validation: the draft 4th station colour `#5fa8d3` merged with s1 under
+  deuteranopia (CIEDE2000 7.0), so it was replaced by `#bed590` after a
+  search constrained against stations, live, status and text colours. Now
+  the minimum between stations is 14.7 across normal/protan/deutan/tritan,
+  and contrast on `panel` is 5.3–11.4. Remaining station-vs-status-green
+  closeness is solved by shape: station = rounded square, status = circle +
+  word. Prototypes updated to match (lime s4, square swatches, Crosspoint
+  brand, agent send meter in `accentInk`). Maia doc marked as the palette's
+  origin.
 
 ## P0 — Validation spike (human)
 
@@ -672,6 +691,15 @@ the mobile `.jucer` source list (remove deleted files from it too).
   filename prefix (P10), and the internal state tree id `SonoBusAoO`. Changing
   that id would break loading of saved setups for no user-visible gain.
 
+### P3.10 — Wire the Crosspoint icon · S
+- **Depends on:** UX4 (icon files in `design/icon/`)
+- **Do:** in `sonobus/CMakeLists.txt` set `ICON_BIG` to
+  `../design/icon/crosspoint-1024.png` and `ICON_SMALL` to
+  `../design/icon/crosspoint-256.png` (or copy them into `sonobus/images/`).
+  Coordinate with anyone else editing CMake (P2.2/P2.1 touch it).
+- **Done when:** the built `Crosspoint.app` shows the new icon in Finder and the Dock.
+- **Result:**
+
 ## P4 — Control API
 
 ### P4.5 — API schema (write first)
@@ -727,7 +755,9 @@ build against the spec. Implementers don't make design decisions (see
 [Design ownership](#design-ownership)).
 
 ### P5.1 — Scaffold `console-ui/` from the prototype · M
-- **Depends on:** UX4, P4.5
+- **Depends on:** UX4 (done: `docs/design/spec.md`), P4.5
+- **Read first:** spec §8 (implementation notes) and §9 (review checklist).
+  Two entry points from one codebase: `console` and `agent` (P2.6).
 - **Do:** start from the UX4 prototype HTML/CSS, apply the spec's tokens, and
   add a mock API client that follows the P4.5 schema (fake peers, animated
   meters) so P5.2–P5.5 can be built before the engine API exists.

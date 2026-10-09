@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Console prototype</title>
+<title>Crosspoint prototype</title>
 <style>
-/* Tokens: Maia Mission Control + additions from the UX1 brief
-   (series4 for a 4th station, `live` for talking). */
+/* Tokens: docs/design/tokens.json (UX4). Station swatches are rounded
+   squares, status indicators are circles + words (spec §1.1). */
 :root {
   color-scheme: dark;
   --bg: #0b0d0f; --rail: #0d1013; --panel: #12161a; --panel2: #161b20;
@@ -14,7 +14,7 @@
   --ink: #e8e4da; --ink2: #a8a69d; --ink3: #71746e; --ink4: #4a4e4b;
   --accent: #2e6b66; --accentInk: #8fc3ba; --accentWash: rgba(46,107,102,.18);
   --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
-  --s1: #9085e9; --s2: #199e70; --s3: #c98500; --s4: #5fa8d3;
+  --s1: #9085e9; --s2: #199e70; --s3: #c98500; --s4: #bed590;
   --live: #ff4f7b; --liveWash: rgba(255,79,123,.14); --liveInk: #ffd9e2;
   --sans: ui-sans-serif, -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -87,7 +87,7 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
   cursor: grab; touch-action: none; user-select: none; white-space: nowrap; font-size: 12px; font-weight: 600;
   transition: left .18s ease, top .18s ease, opacity .2s; }
 .puck.dragging { cursor: grabbing; transition: none; z-index: 3; border-color: var(--ink3); }
-.puck .sw { width: 10px; height: 10px; border-radius: 50%; }
+.puck .sw { width: 10px; height: 10px; border-radius: 3px; }
 .puck.dim { color: var(--ink3); } .puck.dim .sw { opacity: .5; }
 .puck.muted { color: var(--ink4); text-decoration: line-through; } .puck.muted .sw { opacity: .3; }
 .puck .mi { width: 12px; height: 12px; color: var(--live); display: none; }
@@ -107,7 +107,7 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
 .station.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .station.lost { opacity: .7; }
 .shead { display: flex; align-items: center; gap: 8px; }
-.shead .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.shead .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .sname { font-weight: 650; font-size: 15px; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shead .spacer { flex: 1; }
 .shead { flex-wrap: wrap; row-gap: 4px; }
@@ -225,7 +225,7 @@ summary { cursor: pointer; color: var(--ink2); font-weight: 600; }
 <div class="stagewrap" id="wrap">
   <div class="app" id="app">
     <header class="top">
-      <span class="brand">Console</span>
+      <span class="brand">Crosspoint</span>
       <span class="conn" id="conn"></span>
       <span class="spacer"></span>
       <button class="iconbtn" id="openSettings" aria-label="Settings" title="Settings">
@@ -299,7 +299,7 @@ summary { cursor: pointer; color: var(--ink2); font-weight: 600; }
 
 <script>
 const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
-const RAW = ['#9085e9', '#199e70', '#c98500', '#5fa8d3'];
+const RAW = ['#9085e9', '#199e70', '#c98500', '#bed590'];
 const SNAPS = [-1, -0.5, 0, 0.5, 1];
 const DIM_DB = -18;
 

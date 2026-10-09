@@ -1,9 +1,11 @@
 # Maia Mission Control — colour palette (SonoBus / audio-server)
 
-Status: **design reference only.** Nothing in this file is wired into code yet. It is
-the agreed palette for a future appearance/UX pass on SonoBus.
+Status: **origin of the Crosspoint palette, superseded for implementation** by
+[spec.md](spec.md) and [tokens.json](tokens.json) (UX4). Those add station colour s4
+(`#bed590`, replacing a draft blue that failed colour-blind validation), the `live`
+tokens and the colour-role rules. Keep this file as the palette's history.
 
-Source of truth for values: [`tokens.json`](./tokens.json) — keep the two in sync.
+Source of truth for values: [`tokens.json`](./tokens.json).
 
 A dark-only, calm operations-console look: warm off-white text on near-black
 graphite surfaces. No cyan, no neon, no gradients on chrome. Colour carries

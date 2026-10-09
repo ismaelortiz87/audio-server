@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Crosspoint PWA maskable icon (UX4): full bleed; artwork kept inside the
+       central 80% safe zone so any platform mask (circle, squircle) keeps it. -->
+  <rect width="1024" height="1024" fill="#12161a"/>
+  <g stroke="#232b32" stroke-width="22" stroke-linecap="round">
+    <line x1="0" y1="372" x2="1024" y2="372"/>
+    <line x1="0" y1="652" x2="1024" y2="652"/>
+    <line x1="372" y1="0" x2="372" y2="1024"/>
+    <line x1="652" y1="0" x2="652" y2="1024"/>
+  </g>
+    <!-- the full buses, idle -->
+    <g stroke="#2b343c" stroke-width="54" stroke-linecap="round">
+      <line x1="512" y1="512" x2="762" y2="512"/>
+      <line x1="512" y1="262" x2="512" y2="512"/>
+    </g>
+    <!-- the active route: in from the left, out the bottom, through the crosspoint -->
+    <path d="M262 512 H512 V762" fill="none" stroke="#a8a69d" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="512" r="128" fill="#12161a"/>
+  <circle cx="512" cy="512" r="96" fill="#8fc3ba"/>
+  <circle cx="512" cy="512" r="38" fill="#12161a"/>
+</svg>

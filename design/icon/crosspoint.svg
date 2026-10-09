@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Crosspoint app icon (UX4). macOS-style: 824px tile inset in 1024. -->
+  <defs>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="#12161a"/>
+  <g clip-path="url(#tile)">
+    <!-- the matrix: faint buses -->
+    <g stroke="#232b32" stroke-width="22" stroke-linecap="round">
+      <line x1="100" y1="342" x2="924" y2="342"/>
+      <line x1="100" y1="682" x2="924" y2="682"/>
+      <line x1="342" y1="100" x2="342" y2="924"/>
+      <line x1="682" y1="100" x2="682" y2="924"/>
+    </g>
+    <!-- the full buses, idle -->
+    <g stroke="#2b343c" stroke-width="58" stroke-linecap="round">
+      <line x1="512" y1="512" x2="814" y2="512"/>
+      <line x1="512" y1="210" x2="512" y2="512"/>
+    </g>
+    <!-- the active route: in from the left, out the bottom, through the crosspoint -->
+    <path d="M210 512 H512 V814" fill="none" stroke="#a8a69d" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- the lit crosspoint -->
+    <circle cx="512" cy="512" r="150" fill="#12161a"/>
+    <circle cx="512" cy="512" r="112" fill="#8fc3ba"/>
+    <circle cx="512" cy="512" r="44" fill="#12161a"/>
+  </g>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="186" fill="none" stroke="#2b343c" stroke-width="3"/>
+</svg>

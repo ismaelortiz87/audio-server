@@ -34,7 +34,7 @@ No monitor fader in either role.
 
 | Phase | Scope | Effort | Status |
 |---|---|---|---|
-| [UX](#ux--experience-design) | Experience design from scratch: brief, Console + VDI prototypes, spec (**Claude only**) | 1.5–2 w | todo |
+| [UX](#ux--experience-design) | Experience design from scratch: brief, Console + VDI prototypes, spec (**Claude only**) | 1.5–2 w | done |
 | [P0](#p0--validation-spike) | Validation spike: VDI ↔ Mac over the VPN with stock app | — | done |
 | [P1](#p1--roles-and-routing) | Roles and routing in the engine | 3–5 d | wip |
 | [P2](#p2--vdi-agent-mode) | VDI agent mode: YAML, auto-connect, mono, status UI | 1–1.5 w | todo |
@@ -123,10 +123,10 @@ Owned by Claude (lead session), never delegated. See D7 and
 
 | ID | Item | Status |
 |---|---|---|
-| UX1 | Design brief: purpose, contexts of use, jobs, principles, palette review | todo |
-| UX2 | Console experience design + clickable prototype (desktop + phone) | todo |
-| UX3 | VDI agent experience design + prototype | todo |
-| UX4 | Implementation spec + component kit (tokens, states, a11y, copy) | todo |
+| UX1 | Design brief: purpose, contexts of use, jobs, principles, palette review | done |
+| UX2 | Console experience design + clickable prototype (desktop + phone) | done |
+| UX3 | VDI agent experience design + prototype (now the localhost agent UI) | done |
+| UX4 | Implementation spec + component kit (tokens, states, a11y, copy) + app icon: `docs/design/spec.md` | done |
 
 **Done when:** the spec is approved and implementers can build P2.6 and P5
 without asking design questions.
