@@ -36,7 +36,7 @@ No monitor fader in either role.
 |---|---|---|---|
 | [UX](#ux--experience-design) | Experience design from scratch: brief, Console + VDI prototypes, spec (**Claude only**) | 1.5–2 w | todo |
 | [P0](#p0--validation-spike) | Validation spike: VDI ↔ Mac over the VPN with stock app | — | done |
-| [P1](#p1--roles-and-routing) | Roles and routing in the engine | 3–5 d | todo |
+| [P1](#p1--roles-and-routing) | Roles and routing in the engine | 3–5 d | wip |
 | [P2](#p2--vdi-agent-mode) | VDI agent mode: YAML, auto-connect, mono, status UI | 1–1.5 w | todo |
 | [P3](#p3--strip-jam-features) | Remove jamming features | 3–5 d | todo |
 | [P4](#p4--control-api) | Local control API on the engine | ~1 w | todo |
@@ -64,7 +64,9 @@ P8 whenever the public server becomes a problem (see P0 findings).
 | D6 | Role is advertised in the existing peer-info JSON (`SONOBUS_FULLMSG_PEERINFO`). New peers start send/recv-blocked until their role is known. | Reuses an existing channel; no audio leaks during the join window. |
 | D7 | **All UX and visual design is done by Claude (lead session)**: brief, prototypes, spec, and approval of every UI implementation. The UI is designed from scratch for VDI remote audio; nothing in the SonoBus editor carries over by default. Helper agents implement to the spec and don't make design decisions. | One coherent design owner; the purpose changed completely, so the old jam UI isn't a starting point. |
 | D10 | **VDI agent = native headless engine + local web UI.** The agent is the native engine (JUCE build per OS) running without its own window, started at boot. Its screens are an HTML page served by the agent on `localhost` (installable as a PWA, since Chrome treats localhost as secure) and built from the same components as the Console. A minimal native tray icon is a bonus, never required (GNOME shows no tray by default, and JUCE's Linux tray uses the old X11 tray that many desktops ignore). No Docker and no browser-based engine on VDIs. | Needs real device access, unattended start and direct UDP to Consoles. Docker can't reach host audio on Windows/macOS and is often not allowed on VDIs; a browser can't do UDP. Portability comes from building per OS. One UI technology across Console and agent. |
-| D11 | **The Console is where VDI problems show up.** VDI agents run as services from fixed YAML config, which avoids picking the wrong device by hand. They report their own health to Consoles (P1.7), and the Console remembers known VDIs so a missing one shows as offline. The VDI's own UI (P2.6) and tray (P2.9) are secondary. | maelo checks everything from the Console, not on the VDIs. |
+| D11 | **The Console is where VDI problems show up.** VDI agents run as services from fixed YAML config, which avoids picking the wrong device by hand. They report their own health to Consoles (P1.7), and the Console remembers known VDIs so a missing one shows as offline. The VDI's localhost web UI (P2.6) is for checking and fixing a VDI when needed; the native tray (P2.9) is deferred. | maelo checks everything from the Console, not on the VDIs. |
+| D12 | **VDIs run Debian 13 (trixie), Linux only.** The agent is a native Linux build (glibc of trixie), shipped as a `.deb`, started by a **systemd user unit** with `loginctl enable-linger` (PipeWire runs per user, so a system service can't reach the user's audio). Audio goes through PipeWire: JUCE opens ALSA devices, and the agent addresses the loopback and virtual mic through named ALSA PCMs pinned to PipeWire nodes (pipewire-alsa `playback_node` / `capture_node`), not through "default". | Answer to Q1. PipeWire is trixie's default audio stack; JUCE on Linux has ALSA and JACK backends only. Building the `.deb` in a `debian:trixie` container keeps glibc and library versions matched. |
+| D13 | **TLS is the proxy's job.** The web Console is served as plain HTTP inside the VPN and published at `crosspoint.app.lagreca.io` through maelo's reverse proxy (public LE wildcard `*.app.lagreca.io`, rotated by the proxy). The app is unaware of certificates. The proxy must forward WebSocket upgrades (control API, signalling). **WebRTC media does not go through the proxy:** it is UDP between browser and container, so the container exposes a fixed UDP range on its VPN address (or a TURN server is added). | Answer to Q4. Keeps certificates out of the app; the wildcard covers the PWA origin. |
 | D9 | **Mobile is the PWA for now.** Phones (Android, and iOS via Safari "Add to Home Screen") use the web Console installed as a PWA (P7.7). Native Android and iOS apps are deferred to P9. The Mac keeps its native shell (P6.1) for direct P2P audio and the global PTT hotkey. | Saves the Android build pipeline and native shells; the PWA reuses the same UI and container. Cost: one extra hop and less control over background audio. Revisit if P7.7's background test fails. |
 | D8 | **Mesh, no hub.** VDIs connect directly to Consoles. The Ubuntu Studio + Carla server is retired once P2 replaces it (P2.8). | The hub's only purpose was to emulate the VDI/Console roles; roles make it redundant, and removing it saves a network hop of latency and a machine to maintain. Scale is small: 3 VDIs today, 4 at most. |
 
@@ -72,10 +74,10 @@ P8 whenever the public server becomes a problem (see P0 findings).
 
 | ID | Question | Affects | Default if unanswered |
 |---|---|---|---|
-| Q1 | VDI OS — Windows, Linux, or both? | P2.5 (run as service), packaging | Build for both, service for whichever comes first |
+| Q1 | ~~VDI OS?~~ **Answered (D12):** Debian 13 (trixie) | — | — |
 | Q2 | Can several Consoles be connected at once (Mac + phone)? If yes, does the VDI virtual mic mix all of them? | P1 routing, P2 | Allowed; VDI mixes all Console mics |
 | Q3 | ~~Does my mic go to all VDIs, or only selected ones?~~ **Answered:** open mic to all by default, with a per-VDI "hears you" toggle and push-to-talk as an option. Revisit after real use. | P1.5, P5 | — |
-| Q4 | TLS for the web Console on a VPN IP — internal CA or a real domain? | P7.4 | Internal CA |
+| Q4 | ~~TLS for the web Console?~~ **Answered (D13):** maelo's reverse proxy terminates TLS with a public Let's Encrypt wildcard `*.app.lagreca.io` (auto-rotated); the app serves plain HTTP behind it | — | — |
 | Q7 | Recaps: which external transcription + summary models, and is meeting audio allowed to leave my infra? (Self-hosted ASR such as Whisper keeps the audio in-house; a hosted API is less work.) | P10.4, P10.5 | Undecided |
 | Q8 | Where do recordings and recaps live: on the Console machine, or in a central store on my infra (needed for web/PWA sessions, whose engine runs in the container)? Retention? | P10.1, P10.6 | Central store on my infra, 30-day audio retention, recaps kept |
 | Q6 | ~~Could the installed PWA replace the native Android app?~~ **Answered (D9):** yes, PWA first; native mobile deferred. Revisit if P7.7's latency or background-audio results are poor. | P6, P7 | — |
@@ -148,9 +150,9 @@ Engine-level, UI unchanged. Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}
 
 | ID | Item | Status |
 |---|---|---|
-| P1.1 | `Role` enum (`VDI`, `Console`) on the processor; settable from CLI/config | todo |
-| P1.2 | Add `"role"` to peer-info JSON in `sendRemotePeerInfoUpdate`; parse it in `handleRemotePeerInfoUpdate`; store on `RemotePeer` | todo |
-| P1.3 | New peers start with send + recv disallowed until role known (`setRemotePeerSendAllow` / `setRemotePeerRecvAllow`) | todo |
+| P1.1 | `Role` enum (`VDI`, `Console`) on the processor; settable from CLI/config | done |
+| P1.2 | Add `"role"` to peer-info JSON in `sendRemotePeerInfoUpdate`; parse it in `handleRemotePeerInfoUpdate`; store on `RemotePeer` | done |
+| P1.3 | New peers start with send + recv disallowed until role known (`setRemotePeerSendAllow` / `setRemotePeerRecvAllow`) | done |
 | P1.4 | Apply the routing matrix when a peer's role arrives: same role → block both ways; opposite role → allow | todo |
 | P1.5 | Per-VDI talk toggle on Console (gates Console → VDI send per peer) — pending Q3 | todo |
 | P1.6 | Peers with no role (stock SonoBus) are blocked and shown as "unknown" | todo |
@@ -169,12 +171,12 @@ Code: `sonobus/Source/SonoStandaloneFilterApp.cpp` (existing CLI: `--group`,
 | P2.2 | YAML parser dependency (vendored, small — e.g. `yaml-cpp` or `rapidyaml`) | todo |
 | P2.3 | VDI role locks: mono send, input monitor forced to 0, no mixing controls | todo |
 | P2.4 | Auto-connect on launch; auto-reconnect with backoff on disconnect or device loss | todo |
-| P2.5 | Start at boot, unattended: Windows scheduled task/service, systemd user unit on Linux (pending Q1) | todo |
-| P2.6 | VDI agent web UI on `localhost`, an occasional repair tool with device pickers (D10, D11) | deferred |
+| P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | todo |
+| P2.6 | VDI agent web UI on `localhost`, as in the UX3 prototype: status, listeners, device pickers, pause, reload (D10) | todo |
 | P2.7 | Example `vdi.example.yaml` + docs | todo |
 | P2.8 | Cut daily use over from the Carla hub to the mesh; retire the Ubuntu Studio server | todo |
 | P2.9 | Minimal native tray icon (not a priority: the agent is a service with fixed config, and problems surface on the Console) | deferred |
-| P2.10 | Packages per VDI OS: Windows (installer/zip), Linux (AppImage or .deb), pending Q1 | todo |
+| P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | todo |
 
 **Done when:** a VDI boots, connects with no interaction, and survives a network drop.
 
@@ -192,6 +194,7 @@ Remove from both UI and engine paths where safe.
 | P3.6 | Latency match, beat grid, other jam-only options | todo |
 | P3.7 | Trim effects to what the UX2 design keeps | todo |
 | P3.8 | Jitter buffer + codec settings: keep what UX2 exposes, fix the rest to defaults | todo |
+| P3.9 | Own app identity: **Crosspoint**, `io.lagreca.app.crosspoint`, own settings folder, `crosspoint://` links, upstream updater off | done |
 
 **Done when:** desktop and Android builds compile and P1/P2 behaviour is unchanged.
 
@@ -255,7 +258,7 @@ Replaces the current `docker/` job (VNC + raw PCM bridge).
 | P7.1 | Container runs the engine headless in Console role, joins over the VPN | todo |
 | P7.2 | Serves the P5 Console UI; proxies the P4 API | todo |
 | P7.3 | WebRTC (Opus) audio between browser and engine, both directions | todo |
-| P7.4 | HTTPS with a trusted cert so the browser allows the mic — pending Q4 | todo |
+| P7.4 | Publish through maelo's proxy at `crosspoint.app.lagreca.io` (TLS at the proxy, WebSocket upgrade, WebRTC UDP range on the VPN), D13 | todo |
 | P7.5 | One container per web user; compose file + docs | todo |
 | P7.6 | Remove the VNC / Xvfb / raw-PCM bridge pieces | todo |
 | P7.7 | Installable PWA: manifest + service worker, "Install" in Chrome on Mac and Android | todo |

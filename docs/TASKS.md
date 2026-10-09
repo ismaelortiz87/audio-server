@@ -73,16 +73,16 @@ Ordered so that every task appears after everything it depends on.
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | todo | |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | todo | |
-| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4, Q3 | S | any | todo | |
+| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | S | any | todo | |
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | todo | |
 | P2.2 | Vendor a YAML parser | F1 | S | any | todo | |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | todo | |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | todo | |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
-| P2.5 | Run as a service (Windows / systemd) | P2.4, Q1 | M | any | todo | |
+| P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | todo | |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
-| P2.10 | Packages per VDI OS | P2.5, Q1 | M | any | todo | |
+| P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | todo | |
 | P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | todo | |
 | P3.1 | Remove metronome | P1.4 | M | any | todo | |
 | P3.2 | Remove soundboard | P1.4 | M | any | todo | |
@@ -92,13 +92,14 @@ Ordered so that every task appears after everything it depends on.
 | P3.6 | Remove latency match, beat grid, other jam options | P3.1 | M | any | todo | |
 | P3.7 | Trim effects to what UX2 specifies | P3.5, UX2 | S | any | todo | |
 | P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
+| P3.9 | Own app identity: name, bundle id, settings folder (coexist with stock SonoBus) | — | S | any | done | Claude |
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | todo | |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | todo | |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | todo | |
 | P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
-| P2.6 | VDI agent web UI on localhost (D10), an occasional repair tool (D11) | P5.1, P4.2, P4.4, P2.3 | M | any + design review | deferred | |
+| P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
 | P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | todo | |
 | P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | todo | |
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | todo | |
@@ -109,7 +110,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | todo | |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | todo | |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
-| P7.4 | HTTPS with trusted cert | P7.2, Q4 | S | any | todo | |
+| P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
@@ -464,6 +465,25 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   `audio.sample_rate`, `audio.buffer`, `codec` (opus/pcm + bitrate).
   CLI flags override YAML. Fail with a clear message on unknown keys or
   missing devices (list the available device names).
+  **Linux / PipeWire device addressing (D12):** on Debian 13 JUCE sees ALSA
+  devices, and PipeWire nodes (the loopback monitor, the virtual-mic sink)
+  are not individually listed. `audio.input_device` / `audio.output_device`
+  therefore name **PipeWire nodes**; the agent writes a generated ALSA config
+  (e.g. `~/.config/crosspoint/asound.conf`, loaded via `ALSA_CONFIG_PATH` or
+  an `@hooks` include) defining `pcm.crosspoint_in { type pipewire
+  capture_node "<node>" }` and `pcm.crosspoint_out { type pipewire
+  playback_node "<node>" }`, then opens those PCMs. Validate node names with
+  `pw-cli ls Node` / `pactl list short sources|sinks` and list the valid
+  ones on error. First check how maelo routes stock SonoBus on the VDIs today
+  and match that setup.
+  **Precedence bug to fix here (found in review of P1.1):** `--load-setup` is
+  applied *after* `--role` (`SonoStandaloneFilterApp.cpp`, both windowed and
+  headless paths), and `setStateInformationWithOptions` restores
+  `ExtraState/Role` unconditionally, so a setup file saved by this fork
+  silently overrides `--role`. Define and enforce one order, **CLI > YAML >
+  setup file > saved state**, for role and every config key, and add an F2
+  scenario: start with `--role vdi --load-setup <file saved as console>` and
+  expect `selfRole: vdi`.
   **Write-back:** a `Config::save()` that updates `audio.input_device` /
   `audio.output_device` in the YAML when changed from the agent UI (P2.6).
   It must keep the file's comments and key order (edit in place, don't
@@ -491,9 +511,11 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   rejoins without intervention.
 - **Result:**
 
-### P2.6 — VDI agent web UI on localhost · deferred
-Deferred (D11): day to day the YAML is the only source and problems show on
-the Console. Kept as an occasional repair tool (status, device pickers).
+### P2.6 — VDI agent web UI on localhost
+In scope (maelo, 2026-10-09): the agent has no native window, but its
+localhost web UI is wanted, following the UX3 prototype. Day to day the YAML
+stays the source of truth and problems also show on the Console (D11); this
+UI is for checking and fixing a VDI when needed.
 - **Depends on:** P5.1 (shared UI scaffold), P4.2 + P4.4 (state and commands), P2.3 · **Size:** M · **Who:** any + design review · **Touches:** `console-ui/` (agent view), engine static-file serving
 - **Do:** per ROADMAP D10, the agent has no native window. It serves an HTML
   page on `http://localhost:<port>` (bound to localhost only), built from the
@@ -509,10 +531,19 @@ the Console. Kept as an occasional repair tool (status, device pickers).
 - **Result:**
 
 ### P2.5 — Run as a service
-- **Depends on:** P2.4, **Q1** · **Size:** M
-- **Do:** per the VDI OS: a systemd unit and/or Windows service (or a
-  scheduled task at logon if a service can't access the user's audio
-  session — check this first). Install/uninstall docs.
+- **Depends on:** P2.4 · **Size:** M
+- **Do (D12, Debian 13):** a **systemd user unit**
+  (`~/.config/systemd/user/crosspoint-agent.service`, `After=pipewire.service
+  pipewire-pulse.service`, `Restart=on-failure`) plus `loginctl
+  enable-linger <user>` so it starts at boot without a login. It must be a
+  user unit, not a system service, because PipeWire runs per user.
+  Install/uninstall docs.
+  **Signal handling (from the F2 handoff):** today `SIGINT` is ignored and
+  `SIGTERM` kills the process without running JUCE `shutdown()`, so on
+  service stop nothing is saved (F2 teardown ends in `SIGKILL` for the same
+  reason). Install handlers (`SIGTERM`/`SIGINT` on Linux, console control /
+  service stop on Windows) that quit the message loop cleanly so state is
+  persisted and peers see an orderly leave.
 - **Done when:** VDI reboot → agent connected without login interaction
   (or with only the expected user login).
 - **Result:**
@@ -531,11 +562,13 @@ surface on the Console via P1.7.
 - **Result:**
 
 ### P2.10 — Packages per VDI OS · M
-- **Depends on:** P2.5, **Q1**
-- **Do:** a reproducible package for each VDI OS in use: Windows (installer
-  or zip + scheduled-task/service setup), Linux (AppImage or .deb + systemd
-  user unit). Include `vdi.example.yaml` and an install/uninstall guide.
-  Script it under `scripts/`.
+- **Depends on:** P2.5
+- **Do (D12):** a `.deb` for Debian 13 (trixie), built reproducibly in a
+  `debian:trixie` container (`scripts/build-deb.sh`; `docker/Dockerfile`
+  already proves the Linux build). Contents: the agent binary, the systemd
+  user unit, `vdi.example.yaml`, and a postinst note on `loginctl
+  enable-linger`. Declare runtime deps (`libasound2t64`, `pipewire-alsa`,
+  libcurl, freetype, etc.). Include an install/uninstall guide.
 - **Done when:** a clean VDI goes from package to "Connected" by following
   the guide.
 - **Result:**
@@ -597,6 +630,47 @@ the mobile `.jucer` source list (remove deleted files from it too).
 - **Do:** engine side only: keep the settings UX2 exposes, fix the rest to
   sensible defaults.
 - **Result:**
+
+### P3.9 — Own app identity · S
+- **Depends on:** ~~UX4~~ the name was decided directly by maelo (2026-10-09); the icon still comes from UX4
+- **Why (found in review):** the fork still builds as "SonoBus", so it shares
+  `~/Library/Application Support/SonoBus/SonoBus.settings` (and the Windows /
+  Linux equivalents) with the stock SonoBus maelo uses daily. Running the
+  fork writes fork-only state (e.g. `ExtraState/Role`) into that file, and
+  `reconnectlast` can make it rejoin daily groups as the wrong identity. Also,
+  until P1.4 lands the fork passes no audio, so it must not replace the daily
+  app by accident.
+- **Do:** set the product name, bundle id / app id and settings folder from
+  UX4 in `sonobus/CMakeLists.txt` and the standalone app, so the fork and
+  stock SonoBus run side by side with separate settings.
+- **Result:** the app is now **Crosspoint**, bundle id
+  `io.lagreca.app.crosspoint`. One identity block at the top of
+  `sonobus/CMakeLists.txt` (`APP_NAME`, `APP_BUNDLE_ID`, `APP_COMPANY`,
+  `APP_URL_SCHEME`, `APP_LINUX_DIR`, `APP_MFR_CODE`) feeds the bundle, the
+  plist URL scheme, the plugin codes (`Lagr`/`Xpnt`/`Xpni`, so no clash with
+  stock SonoBus VST3/AU) and, via `APP_ID_*` defines,
+  `sonobus/Source/AppIdentity.h`. Settings: macOS `Application
+  Support/Crosspoint`, Linux `~/.config/crosspoint`, Windows
+  `%APPDATA%\Crosspoint`. Links: `crosspoint://` (generation, clipboard
+  parsing, URL handling), and the copied invite link no longer uses
+  `go.sonobus.net`, which opens stock SonoBus. **Also fixed beyond the card:**
+  the upstream auto-updater is compiled out (`APP_ID_ENABLE_UPDATE_CHECK=0`;
+  it would download stock SonoBus over the fork); both legacy migrations are
+  disabled (Linux `~/.config/SonoBus.settings` move, and the Windows
+  `%APPDATA%\dummy` move), since each could move stock SonoBus's files.
+  Window/title label show the product name. CMake target names stay `SonoBus`
+  / `SonoBus_Standalone`, so build commands are unchanged; only the bundle is
+  `Crosspoint.app`. Scripts updated (`build-desktop.sh` output,
+  `tests/f2/run.sh` default app path).
+  **Verified:** Info.plist shows the new id and only the `crosspoint` scheme;
+  F2 `mesh-stock`, `matrix-1v1`, `matrix-2v2`, `blocked-unknown` pass; test
+  peers create `Application Support/Crosspoint`; the real stock
+  `~/Library/Application Support/SonoBus` was unchanged before/after.
+  **Not done (owned elsewhere):** app icon (UX4); Linux `linux/install.sh` +
+  `sonobus.desktop` (P2.10); mobile `.jucer` identity (P9.2/P9.3). Left as
+  is: the `*.sonobus` setup-file extension, the "SonoBusSession" recording
+  filename prefix (P10), and the internal state tree id `SonoBusAoO`. Changing
+  that id would break loading of saved setups for no user-visible gain.
 
 ## P4 — Control API
 
@@ -727,6 +801,9 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 - **Do:** sidecar process in the container (e.g. Go + pion, or Python +
   aiortc) bridging PulseAudio ↔ one WebRTC peer connection with Opus both
   ways. Signalling over the same HTTPS origin. Measure added latency.
+  Use a fixed, configurable UDP port range for ICE and advertise the
+  container's VPN address as the host candidate (D13: media doesn't go
+  through the proxy).
 - **Done when:** browser hears engine output and engine receives browser mic;
   latency recorded in *Result*.
 - **Result:**
@@ -735,8 +812,17 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 - **Depends on:** P7.1, P5.6
 - **Result:**
 
-### P7.4 — HTTPS with trusted cert · S
-- **Depends on:** P7.2, **Q4**
+### P7.4 — Publish via maelo's proxy · S
+- **Depends on:** P7.2
+- **Do (D13):** the container serves plain HTTP on its VPN address; maelo's
+  reverse proxy publishes it at `crosspoint.app.lagreca.io` with the public
+  `*.app.lagreca.io` Let's Encrypt wildcard, rotated by the proxy, so the app
+  never handles certificates. Document the proxy route: WebSocket upgrade for
+  the control API and WebRTC signalling, and no buffering. **WebRTC media is
+  UDP and bypasses the proxy:** give the gateway (P7.3) a fixed UDP port
+  range bound to the container's VPN address and publish it in compose.
+  Verify from the phone on the VPN that ICE picks the direct path; if not,
+  add a TURN server.
 - **Result:**
 
 ### P7.5 — Per-user containers, compose + docs · S
