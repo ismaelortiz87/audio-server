@@ -631,6 +631,102 @@ check_case kind-wrong 1 console-kind
 assert_contains kind-wrong 'v1 -> c1 kind: expected "web", got "mac"'
 
 # ---------------------------------------------------------------------------
+# 13. P1.5 timed control steps (evaluate.py steps). A private scenarios file
+# keeps the timeouts short; the dumps are static mock files.
+# ---------------------------------------------------------------------------
+STEPS_SCEN="$WORK/steps-scenarios.json"
+cat > "$STEPS_SCEN" <<'JSON'
+{ "scenarios": {
+  "dim": { "group": "g", "routing": "matrix", "peers": [
+      {"name": "c1", "role": "console"}, {"name": "v2", "role": "vdi"}],
+    "steps": [
+      {"name": "base", "hold": 0, "timeout": 1, "expect": [
+        {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "min": -16, "capture": "pre"}]},
+      {"name": "solo", "hold": 0.2, "timeout": 1,
+       "control": {"c1": {"solo": ["v1"], "mic": {"mode": "open"}}},
+       "expect": [
+        {"peer": "c1", "of": "v2", "field": "postGainPeakDb",
+         "near": {"field": "preFaderPeakDb", "offset": -18, "tol": 2}},
+        {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "near": {"capture": "pre", "tol": 2}},
+        {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+        {"peer": "c1", "field": "micTransmitting", "eq": true}]},
+      {"name": "merge", "hold": 0, "timeout": 1,
+       "control": {"c1": {"mic": {"on": false}}},
+       "expect": [{"peer": "c1", "field": "soloDimDb", "eq": -18}]}]},
+  "counter": { "group": "g", "routing": "matrix", "peers": [
+      {"name": "c1", "role": "console"}, {"name": "v2", "role": "vdi"}],
+    "steps": [{"hold": 0.3, "timeout": 1.5, "expect": [
+        {"peer": "c1", "of": "v2", "field": "packetsReceived", "increases": true}]}]},
+  "badstep": { "group": "g", "routing": "matrix", "peers": [
+      {"name": "c1", "role": "console"}, {"name": "v2", "role": "vdi"}],
+    "steps": [{"expect": [{"peer": "c1", "field": "x", "eq": 1}], "bogus": 1}]}
+}}
+JSON
+steps_dump() {  # DIR POST PRE
+    mkdir -p "$1"
+    python3 - "$1" "$2" "$3" <<'PY'
+import json, os, sys
+d, post, pre = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
+json.dump({"self": "c1", "selfRole": "console", "micTransmitting": True, "soloDimDb": -18,
+           "peers": [{"name": "v2", "role": "vdi", "hearsYou": False, "packetsReceived": 10,
+                      "postGainPeakDb": post, "preFaderPeakDb": pre}]},
+          open(os.path.join(d, "c1.json"), "w"))
+PY
+}
+# run_steps NAME EXPECTED_RC SCENARIO NEEDLE
+run_steps() {
+    local name="$1" want="$2" scen="$3" needle="$4" out rc
+    mkdir -p "$WORK/$name/ctl"
+    set +e
+    out="$(python3 "$EVAL" steps --dir "$WORK/$name" --control-dir "$WORK/$name/ctl" \
+        --scenario "$scen" --scenarios "$STEPS_SCEN" --peers c1 --interval 0.1 2>&1)"
+    rc=$?
+    set -e
+    LAST_OUT="$out"
+    if [ "$rc" -ne "$want" ]; then
+        FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s expected exit %s, got %s\n' "$name" "$want" "$rc"
+        printf '%s\n' "$out" | sed 's/^/       | /'
+    else
+        PASS_COUNT=$((PASS_COUNT + 1)); printf 'ok   %-26s exit %s\n' "$name" "$rc"
+    fi
+    assert_contains "$name" "$needle"
+}
+
+steps_dump "$WORK/steps-ok" -30 -12
+run_steps steps-ok 0 dim "PASS: all 3 step(s) held"
+# Controls are deep-merged across steps and written for the app to poll.
+if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d=={"solo":["v1"],"mic":{"mode":"open","on":False}} else 1)' \
+        "$WORK/steps-ok/ctl/c1.json"; then
+    PASS_COUNT=$((PASS_COUNT + 1)); printf 'ok   %-26s control file deep-merged\n' steps-ok
+else
+    FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s control file: %s\n' steps-ok "$(cat "$WORK/steps-ok/ctl/c1.json")"
+fi
+
+# A cut (-100) instead of a -18 dB dim must fail and say why.
+steps_dump "$WORK/steps-cut" -100 -12
+run_steps steps-cut 1 dim "expected preFaderPeakDb-18 = -30.0 +/- 2"
+
+# A packet counter that never moves fails "increases".
+steps_dump "$WORK/steps-frozen" -12 -12
+run_steps steps-frozen 1 counter "expected to increase from 10"
+
+# Malformed steps are a usage error.
+steps_dump "$WORK/steps-bad" -12 -12
+run_steps steps-bad 2 badstep "unknown key 'bogus'"
+
+# The stub cannot run step scenarios; run.sh refuses before starting anything.
+set +e
+OUT="$("$SCRIPT_DIR/run.sh" --scenario talk-gate --app "$SCRIPT_DIR/fake-peer.sh" 2>&1)"
+RC=$?
+set -e
+if [ "$RC" -eq 2 ] && printf '%s' "$OUT" | grep -qF "need the real app"; then
+    PASS_COUNT=$((PASS_COUNT + 1)); printf 'ok   %-26s stub refused (exit 2)\n' steps-stub
+else
+    FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s exit %s\n' steps-stub "$RC"
+    printf '%s\n' "$OUT" | sed 's/^/       | /'
+fi
+
+# ---------------------------------------------------------------------------
 echo
 echo "passed: $PASS_COUNT  failed: $FAIL_COUNT"
 if [ "$FAIL_COUNT" -ne 0 ]; then

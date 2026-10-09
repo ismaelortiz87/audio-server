@@ -202,6 +202,48 @@ Observed raw dumps (abridged):
    "sendAllow":false,"recvAllow":false,...}]}
 ```
 
+## Control steps and levels (P1.5, real app only)
+
+A scenario may list timed `steps`. Once the routing model has settled, run.sh
+runs `evaluate.py steps`, which for each step writes the step's `control`
+(deep-merged with earlier steps) to `<run>/control/<peer>.json` and waits until
+every assertion in `expect` holds for `hold` seconds (default 2, `timeout`
+default 25). Every peer of such a scenario is started with
+`--test-control <run>/control/<name>.json`; the app polls that file ~1/s on the
+message thread and applies it (test only):
+
+```json
+{"mic":{"mode":"open","on":true,"ptt":false},"talk":{"v2":false},
+ "solo":["v1"],"mute":["v3"],"soloDimDb":-18}
+```
+
+Keys are peer usernames; `solo`/`mute` are declarative (unlisted peers are
+un-soloed/unmuted). `SONOBUS_TEST_TONE_HZ=<hz>` (peer `env`) replaces that
+peer's input with a -12 dBFS sine on input channel 0, so levels can be checked
+end to end.
+
+Assertions are `{"peer", "of"?, "field", ...checks}`: with `of` the field is
+read from `peer`'s entry for `of`, otherwise from `peer`'s top level. Checks:
+`eq`, `min`, `max`, `near` (`{"field"|"capture"|"value", "offset", "tol"}`),
+`increases` (e.g. packet counters, proving the stream stays up) and `capture`
+(store the value for a later step's `near`). The stub cannot run these
+scenarios; run.sh exits 2 if asked to.
+
+P1.5 dump fields, per peer: `talk`, `mute`, `solo`, `hearsYou`,
+`sendGateGain` (current gate gain on what we send to it, 0..1),
+`preFaderPeakDb` (what it sends us, before level/mute/dim),
+`postGainPeakDb` (after them), `packetsReceived`, `packetsSent`. Top level:
+`micMode` (`open`|`ptt`), `micOn`, `pttHeld`, `micTransmitting`, `soloDimDb`.
+Peaks are the meter's held peak in dBFS rounded to 0.1; `-100` means silence.
+
+| Scenario | What it proves |
+| --- | --- |
+| `talk-gate` | talk off for v2: `hearsYou=false`, v2 receives silence, v1 the tone, the stream stays up |
+| `solo-narrow` | solo v1: only v1 hears; un-solo: both; solo beats a talk-off flag, which is restored on un-solo |
+| `solo-dim` | solo v1: v2 post-gain = pre-fader -18 dB (+/-2), pre-fader unchanged |
+| `mute-prefader` | mute v2: post-gain silent, pre-fader still shows the tone, packets still arrive |
+| `ptt` | ptt not held: nobody hears; held: both; released: nobody |
+
 ## Fault injection (stub)
 
 `--fault NAME` sets `FAKE_PEER_FAULT` on every stub peer:

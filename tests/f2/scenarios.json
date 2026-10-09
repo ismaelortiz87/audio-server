@@ -29,7 +29,15 @@
     "                                                 applies the routing matrix",
     "                                                 on role arrival).",
     "  console + console, or vdi + vdi (no env)    -> both directions blocked",
-    "                                                 (same role)."
+    "                                                 (same role).",
+    "",
+    "P1.5 steps (real app only): 'steps' is a list of { name, control, expect,",
+    "  timeout?, hold? }. After the routing model settles, each step writes",
+    "  control[peer] (deep-merged with earlier steps) to that peer's",
+    "  --test-control file, then waits until every 'expect' assertion holds for",
+    "  'hold' seconds. See evaluate.py run_steps for the assertion checks.",
+    "  SONOBUS_TEST_TONE_HZ=<hz> replaces a peer's input with a -12 dBFS sine.",
+    "  Silence is asserted as a peak <= -60 dBFS (the dump reports -100 for none)."
   ],
   "scenarios": {
     "mesh-stock": {
@@ -185,6 +193,246 @@
         { "name": "c1", "role": "console" },
         { "name": "v1", "role": "vdi", "cli_role": "vdi", "setup_role": "console",
           "config": { "role": "console" } }
+      ]
+    },
+    "talk-gate": {
+      "description": "P1.5: 1 console (660 Hz tone as its mic) + 2 VDIs. Talk off for v2: v2 hearsYou=false and receives silence from the console, v1 still receives the tone, and the c1->v2 stream stays up (gain gate, not a stream stop). Talk back on restores v2.",
+      "group": "f2-talk-gate",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660"}},
+        {"name": "v1", "role": "vdi"},
+        {"name": "v2", "role": "vdi"}
+      ],
+      "steps": [
+        {
+          "name": "all-talk",
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        },
+        {
+          "name": "talk-off-v2",
+          "control": {"c1": {"talk": {"v2": false}}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "talk", "eq": false},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "sendGateGain", "eq": 0},
+            {"peer": "c1", "of": "v1", "field": "sendGateGain", "eq": 1},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v2", "field": "sendActive", "eq": true},
+            {"peer": "v2", "of": "c1", "field": "receivingAudio", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "packetsSent", "increases": true},
+            {"peer": "v2", "of": "c1", "field": "packetsReceived", "increases": true}
+          ]
+        },
+        {
+          "name": "talk-on-v2",
+          "control": {"c1": {"talk": {"v2": true}}},
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        }
+      ]
+    },
+    "solo-narrow": {
+      "description": "P1.5: solo narrows talk. All talk on, v1 soloed -> only v1 hearsYou (and only v1 receives the console tone); un-solo -> both. Then talk off for v2 and solo v2: solo wins over the talk flag; un-solo restores the kept talk flags (v2 off, v1 on).",
+      "group": "f2-solo-narrow",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660"}},
+        {"name": "v1", "role": "vdi"},
+        {"name": "v2", "role": "vdi"}
+      ],
+      "steps": [
+        {
+          "name": "all-talk",
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true}
+          ]
+        },
+        {
+          "name": "solo-v1",
+          "control": {"c1": {"solo": ["v1"]}},
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "solo", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+            {"peer": "c1", "of": "v2", "field": "talk", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unsolo",
+          "control": {"c1": {"solo": []}},
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        },
+        {
+          "name": "solo-beats-talk",
+          "control": {"c1": {"talk": {"v2": false}, "solo": ["v2"]}},
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": false},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "talk-restored",
+          "control": {"c1": {"solo": []}},
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "talk", "eq": false},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        }
+      ]
+    },
+    "solo-dim": {
+      "description": "P1.5: solo dims, doesn't cut. VDIs send tones (v1 440 Hz, v2 880 Hz). With v1 soloed on the console, v2's post-gain level is its pre-fader level -18 dB (+/-2) and its pre-fader level is unchanged; v1 is not dimmed. Un-solo restores v2.",
+      "group": "f2-solo-dim",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console"},
+        {"name": "v1", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "440"}},
+        {"name": "v2", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "880"}}
+      ],
+      "steps": [
+        {
+          "name": "baseline",
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "min": -16, "capture": "v2pre"},
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": 0, "tol": 1}},
+            {"peer": "c1", "of": "v1", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": 0, "tol": 1}}
+          ]
+        },
+        {
+          "name": "solo-v1",
+          "control": {"c1": {"solo": ["v1"]}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "solo", "eq": true},
+            {"peer": "c1", "field": "soloDimDb", "eq": -18},
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": -18, "tol": 2}},
+            {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "near": {"capture": "v2pre", "offset": 0, "tol": 2}},
+            {"peer": "c1", "of": "v1", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": 0, "tol": 1}},
+            {"peer": "c1", "of": "v2", "field": "receivingAudio", "eq": true}
+          ]
+        },
+        {
+          "name": "unsolo",
+          "control": {"c1": {"solo": []}},
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": 0, "tol": 1}}
+          ]
+        }
+      ]
+    },
+    "mute-prefader": {
+      "description": "P1.5: mute is playback gain 0 with the receive stream kept. VDIs send tones; with v2 muted on the console, v2's post-gain level is silence while its pre-fader level still shows the tone and the stream keeps receiving; v1 is unaffected. Unmute restores v2.",
+      "group": "f2-mute-prefader",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console"},
+        {"name": "v1", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "440"}},
+        {"name": "v2", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "880"}}
+      ],
+      "steps": [
+        {
+          "name": "baseline",
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "min": -16},
+            {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "min": -16}
+          ]
+        },
+        {
+          "name": "mute-v2",
+          "control": {"c1": {"mute": ["v2"]}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "mute", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "max": -60},
+            {"peer": "c1", "of": "v2", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v2", "field": "receivingAudio", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "packetsReceived", "increases": true},
+            {"peer": "c1", "of": "v1", "field": "postGainPeakDb", "min": -16}
+          ]
+        },
+        {
+          "name": "unmute",
+          "control": {"c1": {"mute": []}},
+          "expect": [
+            {"peer": "c1", "of": "v2", "field": "postGainPeakDb", "near": {"field": "preFaderPeakDb", "offset": 0, "tol": 1}}
+          ]
+        }
+      ]
+    },
+    "ptt": {
+      "description": "P1.5: push-to-talk. Mic mode ptt, not held -> micTransmitting false and nobody hearsYou (VDIs receive silence); held -> both hear the console tone; released -> nobody again.",
+      "group": "f2-ptt",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660"}},
+        {"name": "v1", "role": "vdi"},
+        {"name": "v2", "role": "vdi"}
+      ],
+      "steps": [
+        {
+          "name": "ptt-up",
+          "control": {"c1": {"mic": {"mode": "ptt", "on": true, "ptt": false}}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "field": "micMode", "eq": "ptt"},
+            {"peer": "c1", "field": "micTransmitting", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": false},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v1", "of": "c1", "field": "receivingAudio", "eq": true}
+          ]
+        },
+        {
+          "name": "ptt-held",
+          "control": {"c1": {"mic": {"ptt": true}}},
+          "expect": [
+            {"peer": "c1", "field": "micTransmitting", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": true},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v2", "of": "c1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        },
+        {
+          "name": "ptt-released",
+          "control": {"c1": {"mic": {"ptt": false}}},
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "hearsYou", "eq": false},
+            {"peer": "c1", "of": "v2", "field": "hearsYou", "eq": false},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        }
       ]
     }
   }

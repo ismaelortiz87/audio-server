@@ -424,7 +424,19 @@ struct SonobusAudioProcessor::RemotePeer {
     bool recvAllow = true;
     bool recvAllowCache = false; // used for recvmute all state
     bool sendAllowCache = false; // used for sendmute all state
-    bool soloed = false;
+    // Atomic since P1.5: written from the message thread, read per block by
+    // processBlock for both the solo dim and the solo-narrows-talk send gate.
+    std::atomic<bool> soloed { false };
+    // P1.5: Console talk flag (gates our send to this peer) and playback mute
+    // (gain 0, receive stream kept). Gains only; never the allow/active flags.
+    std::atomic<bool> talk { true };
+    std::atomic<bool> playMuted { false };
+    // P1.5 audio-thread ramp state (only processBlock touches these).
+    // sendGateGain starts closed so a new peer fades in rather than clicks.
+    float sendGateGain = 0.0f;
+    float playStageGain = 1.0f;
+    // copy of sendGateGain for the message thread (dump, getters)
+    std::atomic<float> sendGateGainShown { 0.0f };
     bool invitedPeer = false;
     int  formatIndex = -1; // default
     AudioCodecFormatInfo recvFormat;
@@ -471,6 +483,9 @@ struct SonobusAudioProcessor::RemotePeer {
     // metering
     foleys::LevelMeterSource sendMeterSource;
     foleys::LevelMeterSource recvMeterSource;
+    // P1.5/P4.3: measured on workBuffer straight out of the sink, before level,
+    // mute, solo dim and channel-group processing. recvMeterSource is post-gain.
+    foleys::LevelMeterSource preFaderMeterSource;
     bool viewExpanded = false;
     int orderPriority = -1;
 
@@ -999,6 +1014,14 @@ mState (*this, &mUndoManager, "SonoBusAoO",
     loadGlobalState();
     
     moveOldMisplacedFiles();
+
+    // P1.5 TEST ONLY: SONOBUS_TEST_TONE_HZ=<hz> replaces the local input with a
+    // -12 dBFS sine (see processBlock). Read here, once, so the audio thread
+    // never touches the environment.
+    {
+        const float hz = SystemStats::getEnvironmentVariable("SONOBUS_TEST_TONE_HZ", "").trim().getFloatValue();
+        mTestToneHz = (hz > 0.0f && hz < 20000.0f) ? hz : 0.0f;
+    }
 
     mFreshInit = true;
 }
@@ -2349,6 +2372,16 @@ foleys::LevelMeterSource * SonobusAudioProcessor::getRemotePeerRecvMeterSource(i
     const ScopedReadLock sl (mCoreLock);        
     auto remote = mRemotePeers.getUnchecked(index);
     return &(remote->recvMeterSource);
+}
+
+foleys::LevelMeterSource * SonobusAudioProcessor::getRemotePeerPreFaderMeterSource(int index)
+{
+    // Same lifetime caveat as getRemotePeerRecvMeterSource: the pointer is only
+    // valid while the peer exists, so P4.3 should read it under mCoreLock or
+    // re-fetch it per frame by index.
+    const ScopedReadLock sl (mCoreLock);
+    if (index < 0 || index >= mRemotePeers.size()) return nullptr;
+    return &(mRemotePeers.getUnchecked(index)->preFaderMeterSource);
 }
 
 foleys::LevelMeterSource * SonobusAudioProcessor::getRemotePeerSendMeterSource(int index)
@@ -4158,6 +4191,7 @@ int32_t SonobusAudioProcessor::handleSinkEvents(const aoo_event ** events, int32
                 if (peer->oursink->get_source_format(e->endpoint, e->id, f) > 0) {
                     DBG("Got source format event from " << es->ipaddr << ":" << es->port << "  " <<  e->id  << "  channels: " << f.header.nchannels);
                     peer->recvMeterSource.resize(f.header.nchannels, meterRmsWindow);
+                    peer->preFaderMeterSource.resize(f.header.nchannels, meterRmsWindow);
 
                     // check for layout
                     bool gotuserformat = false;
@@ -4192,6 +4226,7 @@ int32_t SonobusAudioProcessor::handleSinkEvents(const aoo_event ** events, int32
                             peer->oursink->setup(getSampleRate(), currSamplesPerBlock, sinkchan);
                         }
                         peer->recvMeterSource.resize (peer->recvChannels, meterRmsWindow);
+                        peer->preFaderMeterSource.resize (peer->recvChannels, meterRmsWindow);
 
                         // for now if > 2, all on own changroup (by default)
 
@@ -5920,6 +5955,174 @@ bool SonobusAudioProcessor::getRemotePeerSoloed(int index) const
     return false;            
 }
 
+// ---------------------------------------------------------------------------
+// P1.5: Console mix controls. Gains only (see the header); the audio thread
+// reads the atomics set here once per block and ramps.
+// ---------------------------------------------------------------------------
+
+void SonobusAudioProcessor::setMicMode(MicMode mode)
+{
+    const int m = (int) mode;
+    // Only an actual mode change releases the hold, so re-asserting the same
+    // mode (e.g. a repeated command) can't cause a gap in a held PTT.
+    if (mMicMode.exchange(m) != m) {
+        mPttHeld.store(false);
+    }
+}
+
+bool SonobusAudioProcessor::isMicTransmitting() const
+{
+    return mMicMode.load() == (int) MicMode::PushToTalk ? mPttHeld.load() : mMicOn.load();
+}
+
+void SonobusAudioProcessor::setSoloDimDb(float db)
+{
+    if (! std::isfinite(db)) return;
+    mSoloDimDb.store(jlimit(-60.0f, 0.0f, db));
+}
+
+void SonobusAudioProcessor::setRemotePeerTalk(int index, bool talk)
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        mRemotePeers.getUnchecked(index)->talk.store(talk);
+    }
+}
+
+bool SonobusAudioProcessor::getRemotePeerTalk(int index) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        return mRemotePeers.getUnchecked(index)->talk.load();
+    }
+    return false;
+}
+
+void SonobusAudioProcessor::setRemotePeerMuted(int index, bool muted)
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        mRemotePeers.getUnchecked(index)->playMuted.store(muted);
+    }
+}
+
+bool SonobusAudioProcessor::getRemotePeerMuted(int index) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        return mRemotePeers.getUnchecked(index)->playMuted.load();
+    }
+    return false;
+}
+
+void SonobusAudioProcessor::setRemotePeerLevelDb(int index, float db)
+{
+    setRemotePeerLevelGain(index, Decibels::decibelsToGain(db, -100.0f));
+}
+
+float SonobusAudioProcessor::getRemotePeerLevelDb(int index) const
+{
+    return Decibels::gainToDecibels(getRemotePeerLevelGain(index), -100.0f);
+}
+
+bool SonobusAudioProcessor::computeHearsYou(const RemotePeer * peer, bool anyPeerSoloed) const
+{
+    // "online" from what the engine knows: the routing matrix has released the
+    // peer (roleBlocked clear), and our send stream to it is allowed and up.
+    // `connected` is deliberately not used: it tracks AOO invite timing and is
+    // asymmetric/unstable (tests/f2/README.md), while sendActive is the stream
+    // our mic actually goes out on.
+    const bool online = !peer->roleBlocked && peer->sendAllow && peer->sendActive;
+    if (! online) return false;
+    // Not a Console: the send gate is not applied (see processBlock), so the
+    // peer hears whatever we send while the path is open.
+    if (mRole.load() != PeerRole::Console) return true;
+    if (! isMicTransmitting()) return false;
+    // talk && !(anySolo && !solo), with solo narrowing talk: while anything is
+    // soloed only soloed peers hear us, whatever their talk flag says.
+    return anyPeerSoloed ? peer->soloed.load() : peer->talk.load();
+}
+
+bool SonobusAudioProcessor::getRemotePeerHearsYou(int index) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index < 0 || index >= mRemotePeers.size()) return false;
+    bool anyPeerSoloed = false;
+    for (auto * p : mRemotePeers) {
+        if (p->soloed.load()) { anyPeerSoloed = true; break; }
+    }
+    return computeHearsYou(mRemotePeers.getUnchecked(index), anyPeerSoloed);
+}
+
+float SonobusAudioProcessor::getRemotePeerSendGateGain(int index) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index >= 0 && index < mRemotePeers.size()) {
+        return mRemotePeers.getUnchecked(index)->sendGateGainShown.load(std::memory_order_relaxed);
+    }
+    return 0.0f;
+}
+
+int SonobusAudioProcessor::getRemotePeerIndexByName(const String & name) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    for (int i = 0; i < mRemotePeers.size(); ++i) {
+        if (mRemotePeers.getUnchecked(i)->userName == name) return i;
+    }
+    return -1;
+}
+
+bool SonobusAudioProcessor::applyTestControlFile(const File & file)
+{
+    // TEST ONLY (F2 --test-control). Message thread; JSON never reaches the
+    // audio thread, which only sees the atomics the setters below write.
+    if (! file.existsAsFile()) return false;
+    const var root = JSON::parse(file.loadFileAsString());
+    if (! root.isObject()) return false;
+
+    const var mic = root.getProperty("mic", var());
+    if (mic.isObject()) {
+        if (mic.hasProperty("mode")) {
+            setMicMode(mic["mode"].toString().trim().equalsIgnoreCase("ptt") ? MicMode::PushToTalk : MicMode::Open);
+        }
+        if (mic.hasProperty("on"))  setMicOn((bool) mic["on"]);
+        if (mic.hasProperty("ptt")) setPttHeld((bool) mic["ptt"]);
+    }
+
+    const var dim = root.getProperty("soloDimDb", var());
+    if (dim.isInt() || dim.isInt64() || dim.isDouble()) {
+        setSoloDimDb((float) (double) dim);
+    }
+
+    const var talk = root.getProperty("talk", var());
+    const var solo = root.getProperty("solo", var());
+    const var mute = root.getProperty("mute", var());
+
+    auto listed = [] (const var & arr, const String & name) {
+        if (auto * a = arr.getArray()) {
+            for (auto & v : *a) if (v.toString() == name) return true;
+        }
+        return false;
+    };
+
+    // One read lock for the whole pass; the setters re-take it (JUCE read
+    // locks are re-entrant per thread, as P1.4 relies on too).
+    const ScopedReadLock sl (mCoreLock);
+    for (int i = 0; i < mRemotePeers.size(); ++i) {
+        const String name = mRemotePeers.getUnchecked(i)->userName;
+        if (name.isEmpty()) continue;
+        if (auto * obj = talk.getDynamicObject()) {
+            if (obj->hasProperty(name)) setRemotePeerTalk(i, (bool) obj->getProperty(name));
+        }
+        if (solo.isArray()) {
+            const bool want = listed(solo, name);
+            if (getRemotePeerSoloed(i) != want) setRemotePeerSoloed(i, want);
+        }
+        if (mute.isArray()) setRemotePeerMuted(i, listed(mute, name));
+    }
+    return true;
+}
+
 
 int64_t SonobusAudioProcessor::getRemotePeerPacketsReceived(int index) const
 {
@@ -6472,10 +6675,30 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
         root->setProperty("selfKind", consoleKindString());
     }
 
+    // P1.5: mic state and the solo dim setting (control-api 3.2 mic/settings).
+    root->setProperty("micMode", getMicMode() == MicMode::PushToTalk ? "ptt" : "open");
+    root->setProperty("micOn", getMicOn());
+    root->setProperty("pttHeld", getPttHeld());
+    root->setProperty("micTransmitting", isMicTransmitting());
+    root->setProperty("soloDimDb", getSoloDimDb());
+
+    // Peak (held ~500 ms by the meter) across channels, in dBFS rounded to
+    // 0.1; -100 stands for silence/no data.
+    auto peakDb = [] (const foleys::LevelMeterSource & m, int nch) {
+        float peak = 0.0f;
+        for (int ch = 0; ch < nch; ++ch) peak = jmax(peak, m.getMaxLevel(ch));
+        const double db = Decibels::gainToDecibels((double) peak, -100.0);
+        return std::round(db * 10.0) / 10.0;
+    };
+
     Array<var> peers;
 
     {
         const ScopedReadLock sl (mCoreLock);
+        bool anyPeerSoloed = false;
+        for (auto * p : mRemotePeers) {
+            if (p->soloed.load()) { anyPeerSoloed = true; break; }
+        }
         for (int i = 0; i < mRemotePeers.size(); ++i) {
             auto * peer = mRemotePeers.getUnchecked(i);
 
@@ -6499,6 +6722,17 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
             // recvActive already implies the allow flag and a live stream, so
             // this is the "audio is actually arriving" signal F2 checks.
             p->setProperty("receivingAudio", peer->recvActive && peer->recvAllow);
+
+            // P1.5: mix state, the effective gate and both receive meters.
+            p->setProperty("talk", peer->talk.load());
+            p->setProperty("mute", peer->playMuted.load());
+            p->setProperty("solo", peer->soloed.load());
+            p->setProperty("hearsYou", computeHearsYou(peer, anyPeerSoloed));
+            p->setProperty("sendGateGain", std::round((double) peer->sendGateGainShown.load(std::memory_order_relaxed) * 1000.0) / 1000.0);
+            p->setProperty("preFaderPeakDb", peakDb(peer->preFaderMeterSource, peer->preFaderMeterSource.getNumChannels()));
+            p->setProperty("postGainPeakDb", peakDb(peer->recvMeterSource, peer->recvMeterSource.getNumChannels()));
+            p->setProperty("packetsReceived", (int64) peer->dataPacketsReceived);
+            p->setProperty("packetsSent", (int64) peer->dataPacketsSent);
 
             // P1.7: the health this peer's VDI agent reports about itself.
             // "hasAgent" distinguishes "this peer has no agent to report on"
@@ -6754,6 +6988,7 @@ SonobusAudioProcessor::RemotePeer * SonobusAudioProcessor::doAddRemotePeerIfNece
         int outchannels = getMainBusNumOutputChannels();
         
         retpeer->recvMeterSource.resize (outchannels, meterRmsWindow);
+        retpeer->preFaderMeterSource.resize (outchannels, meterRmsWindow);
         retpeer->sendMeterSource.resize (retpeer->sendChannels, meterRmsWindow);
 
         // P1.3: a new peer starts blocked in both directions. Nothing is sent
@@ -7840,6 +8075,7 @@ void SonobusAudioProcessor::setupSourceFormatsForAll()
         }
 
         s->recvMeterSource.resize (s->recvChannels, meterRmsWindow);
+        s->preFaderMeterSource.resize (s->recvChannels, meterRmsWindow);
         //s->sendMeterSource.resize (s->sendChannels, meterRmsWindow);
 
         // XXX
@@ -8120,6 +8356,29 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
         }
     }
     
+    // P1.5 TEST ONLY (SONOBUS_TEST_TONE_HZ): replace the local input with a
+    // -12 dBFS sine so F2 can measure levels end to end. The tone goes on input
+    // channel 0 only and the other input channels are silenced: the default
+    // mono send sums the input channels, so a tone on both would arrive at
+    // -6 dBFS. Plain arithmetic on precomputed members only; no allocation,
+    // locks or logging.
+    if (mTestToneHz > 0.0f && buffer.getNumChannels() > 0) {
+        const double sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+        const double inc = MathConstants<double>::twoPi * (double) mTestToneHz / sr;
+        const float amp = 0.25118864f; // -12 dBFS
+        double ph = mTestTonePhase;
+        float * first = buffer.getWritePointer(0);
+        for (int s = 0; s < numSamples; ++s) {
+            first[s] = amp * (float) std::sin(ph);
+            ph += inc;
+            if (ph >= MathConstants<double>::twoPi) ph -= MathConstants<double>::twoPi;
+        }
+        mTestTonePhase = ph;
+        for (int ch = 1; ch < jmin(buffer.getNumChannels(), mainBusInputChannels); ++ch) {
+            buffer.clear(ch, 0, numSamples);
+        }
+    }
+
     // main bus only
     
     for (auto i = mainBusInputChannels; i < mainBusOutputChannels; ++i) {
@@ -8502,6 +8761,24 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
 
     bool anysoloed = mMainMonitorSolo.get();
 
+    // P1.5 gain stages. Everything here is read once per block from atomics.
+    // Gains ramp linearly by at most `rampStep` per block, i.e. a full 0<->1
+    // swing takes ~10 ms whatever the block size (and processBlock/addFrom
+    // ramps interpolate within each block, so there are no steps).
+    const double p15sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    const float rampStep = jlimit(0.0f, 1.0f, (float) (numSamples / (0.010 * p15sr)));
+    auto approachGain = [rampStep] (float current, float target) {
+        return target > current ? jmin(target, current + rampStep) : jmax(target, current - rampStep);
+    };
+    const float soloDimGain = Decibels::decibelsToGain(mSoloDimDb.load());
+    const bool micTransmitting = isMicTransmitting();
+    // The talk/mic/solo send gate is a Console concept; on any other role our
+    // send is never gated (a VDI's system audio must not follow these flags).
+    const bool gateSend = mRole.load() == PeerRole::Console;
+    // Solo-narrows-talk looks at remote peers only; the SonoBus self-monitor
+    // solo (mMainMonitorSolo) must not stop us talking to everyone.
+    bool anyPeerSoloed = false;
+
 
     // push data for going out
     {
@@ -8511,8 +8788,9 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
         
         for (auto & remote : mRemotePeers) 
         {
-            if (remote->soloed) {
+            if (remote->soloed.load()) {
                 anysoloed = true;
+                anyPeerSoloed = true;
                 break;
             }
         }
@@ -8605,23 +8883,30 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
             }
 
             
+            // P1.5/P4.3: pre-fader meter -- what the peer actually sends, before
+            // level, mute, solo dim and channel-group processing, so a muted or
+            // dimmed station that starts talking still shows activity.
+            remote->preFaderMeterSource.measureBlock (remote->workBuffer, 0, numSamples);
+
             // apply effects
 
-            float usegain = remote->gain;
-            bool wasSilent = false;
+            // P1.5 playback stage: mute is gain 0 and solo DIMS the others by
+            // soloDimDb (it used to force them silent). Both ramp over ~10 ms
+            // via playStageGain; the receive stream is never stopped for them.
+            const float stageTarget = remote->playMuted.load() ? 0.0f
+                                    : ((anysoloed && !remote->soloed.load()) ? soloDimGain : 1.0f);
+            remote->playStageGain = approachGain(remote->playStageGain, stageTarget);
 
-            bool forceSilent = false;
+            float usegain = remote->gain * remote->playStageGain;
 
-            // we get the stuff, but ignore it (either muted or others soloed)
-            if (!remote->recvActive || (anysoloed && !remote->soloed) || remote->resetSafetyMuted) {
-
+            // we get the stuff, but ignore it (not receiving, or safety muted
+            // while the jitter buffer resets). These stay hard cuts as before.
+            if (!remote->recvActive || remote->resetSafetyMuted) {
                 usegain = 0.0f;
-                forceSilent = true;
-
-                if (remote->_lastgain <= 0.0f) {
-                    wasSilent = true;
-                }
             }
+
+            // fully silent this block and the last: skip the mix-in entirely
+            const bool wasSilent = usegain <= 0.0f && remote->_lastgain <= 0.0f;
 
             bool anysubsolo = false;
             for (auto cgi = 0; cgi < remote->numChanGroups; ++cgi) {
@@ -8656,7 +8941,11 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
             if (wasSilent) continue; // can skip the rest, already fully muted/absent
             
             float tgain = mainBusOutputChannels == 1 && remote->recvChannels > 0 ? 1.0f/(float)remote->recvChannels : 1.0f;
-            tgain *= usegain; // handles main solo
+            // P1.5: usegain was multiplied in a second time here, on top of the
+            // in-place chanGroups processBlock above, so a peer level g reached
+            // the output as g^2 (invisible at the default level of 1). With the
+            // solo dim that would turn -18 dB into -36 dB, and a level of -6 dB
+            // into -12 dB, so it is applied exactly once now (in processBlock).
 
 
             for (auto i = 0; i < remote->numChanGroups; ++i)
@@ -8688,8 +8977,31 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
 
                 int sendchans = jmin(workBuffer.getNumChannels(), remote->sendChannels);
 
+                // P1.5 send gate: on a Console, our signal reaches this peer only
+                // while the mic is transmitting and the peer's talk flag is on --
+                // or, while any peer is soloed, only if THIS peer is soloed
+                // (talk flags are left untouched, so they apply again on
+                // un-solo). Closed = silence into the source; the AOO stream and
+                // the P1.4 allow flags are not touched, so there is no
+                // re-handshake when talk toggles.
+                float gateTarget = 1.0f;
+                if (gateSend) {
+                    const bool wants = anyPeerSoloed ? remote->soloed.load() : remote->talk.load();
+                    gateTarget = (micTransmitting && wants) ? 1.0f : 0.0f;
+                }
+                const float gateStart = remote->sendGateGain;
+                const float gateEnd = approachGain(gateStart, gateTarget);
+                remote->sendGateGain = gateEnd;
+                remote->sendGateGainShown.store(gateEnd, std::memory_order_relaxed);
+
                 for (int channel = 0; channel < remote->sendChannels && channel < sendWorkBuffer.getNumChannels() && channel < workBuffer.getNumChannels() ; ++channel) {
-                    workBuffer.addFrom(channel, 0, sendWorkBuffer, channel, 0, numSamples);
+                    if (gateStart != gateEnd) {
+                        workBuffer.addFromWithRamp(channel, 0, sendWorkBuffer.getReadPointer(channel), numSamples, gateStart, gateEnd);
+                    }
+                    else if (gateEnd > 0.0f) {
+                        workBuffer.addFrom(channel, 0, sendWorkBuffer, channel, 0, numSamples, gateEnd);
+                    }
+                    // else: gate fully closed, leave the cleared (silent) buffer
                 }
 
                 // now add any cross-routed input

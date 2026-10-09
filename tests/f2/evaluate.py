@@ -45,6 +45,11 @@ ROUTING MODELS (`expect`):
                 paths; such a scenario declares `expect: "all-blocked"`, records
                 the target in `routing`, and explains itself in `pending`.
 
+P1.5 STEPS: a scenario may also list timed "steps" (see run_steps below). They
+run after the routing model has settled: each step writes per-peer control
+files (the app's --test-control) and asserts dump fields such as hearsYou,
+sendGateGain, preFaderPeakDb and postGainPeakDb.
+
 Exit codes: 0 = match, 1 = mismatch / did not settle, 2 = usage or config error.
 """
 
@@ -767,6 +772,267 @@ def cmd_settle(args):
         time.sleep(min(args.interval, max(0.0, remaining)))
 
 
+# --------------------------------------------------------------------------
+# P1.5: timed control steps and per-field assertions
+# --------------------------------------------------------------------------
+#
+# A scenario may carry "steps". run.sh first settles the routing model as
+# usual, then runs `evaluate.py steps`, which for each step in order:
+#   1. deep-merges the step's "control" ({peer: control-object}) into that
+#      peer's accumulated control and writes <control-dir>/<peer>.json
+#      atomically (the app polls it ~1/s via --test-control);
+#   2. polls the dumps until every assertion in "expect" holds, then requires
+#      them to keep holding for "hold" seconds (default 2) -- a failure during
+#      the hold restarts the wait while the step's "timeout" (default 25 s)
+#      allows;
+#   3. records "capture" values for later steps.
+#
+# An assertion is {"peer": P, "of": Q?, "field": F, <check>...}. With "of" the
+# field is read from P's dump entry for peer Q, without it from P's top level.
+# Checks (any combination):
+#   "eq": value               exact equality
+#   "min": n / "max": n       numeric bounds
+#   "near": {"field": G | "capture": name | "value": n, "offset": d, "tol": t}
+#                             |F - (ref + offset)| <= tol, where ref is field G
+#                             of the same entry, a captured value, or n
+#   "increases": true         F is larger at the end of the hold than at its
+#                             start (e.g. packet counters: the stream is up)
+#   "capture": name           store F (at the end of the step) for later steps
+
+STEP_ASSERT_KEYS = ("peer", "of", "field", "eq", "min", "max", "near",
+                    "increases", "capture")
+STEP_KEYS = ("name", "control", "expect", "timeout", "hold")
+
+
+def scenario_steps(scen, name):
+    """Validate and return the scenario's steps list ([] when none)."""
+    steps = scen.get("steps")
+    if steps is None:
+        return []
+    if not isinstance(steps, list):
+        raise UsageError("scenario %r: steps must be a list" % name)
+    peer_names = set(scenario_peers(scen, name))
+    out = []
+    for idx, step in enumerate(steps):
+        where = "scenario %r steps[%d]" % (name, idx)
+        if not isinstance(step, dict):
+            raise UsageError("%s must be an object" % where)
+        for key in step:
+            if key not in STEP_KEYS:
+                raise UsageError("%s: unknown key %r" % (where, key))
+        control = step.get("control", {})
+        if not isinstance(control, dict):
+            raise UsageError("%s: control must be an object" % where)
+        for peer, ctl in control.items():
+            if peer not in peer_names:
+                raise UsageError("%s: control names unknown peer %r" % (where, peer))
+            if not isinstance(ctl, dict):
+                raise UsageError("%s: control[%s] must be an object" % (where, peer))
+        expect = step.get("expect", [])
+        if not isinstance(expect, list) or not expect:
+            raise UsageError("%s: expect must be a non-empty list" % where)
+        for aidx, a in enumerate(expect):
+            awhere = "%s expect[%d]" % (where, aidx)
+            if not isinstance(a, dict):
+                raise UsageError("%s must be an object" % awhere)
+            for key in a:
+                if key not in STEP_ASSERT_KEYS:
+                    raise UsageError("%s: unknown key %r" % (awhere, key))
+            if a.get("peer") not in peer_names:
+                raise UsageError("%s: peer must name a scenario peer" % awhere)
+            if "of" in a and a["of"] not in peer_names:
+                raise UsageError("%s: of must name a scenario peer" % awhere)
+            if not isinstance(a.get("field"), str) or not a["field"]:
+                raise UsageError("%s: field must be a non-empty string" % awhere)
+            if not any(k in a for k in ("eq", "min", "max", "near", "increases", "capture")):
+                raise UsageError("%s: needs at least one check" % awhere)
+            near = a.get("near")
+            if near is not None:
+                if not isinstance(near, dict) or \
+                        sum(1 for k in ("field", "capture", "value") if k in near) != 1:
+                    raise UsageError("%s: near needs exactly one of field/capture/value" % awhere)
+                if not isinstance(near.get("tol", 0), (int, float)):
+                    raise UsageError("%s: near.tol must be a number" % awhere)
+        for key in ("timeout", "hold"):
+            if key in step and (not isinstance(step[key], (int, float)) or step[key] < 0):
+                raise UsageError("%s: %s must be a non-negative number" % (where, key))
+        out.append({
+            "name": step.get("name") or ("step%d" % (idx + 1)),
+            "control": control,
+            "expect": expect,
+            "timeout": float(step.get("timeout", 25)),
+            "hold": float(step.get("hold", 2)),
+        })
+    return out
+
+
+def deep_merge(base, update):
+    """Merge `update` into a copy of `base`; dicts merge, anything else replaces."""
+    out = dict(base)
+    for key, value in update.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def write_json_atomic(path, doc):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(doc, fh)
+    os.replace(tmp, path)
+
+
+def _lookup(docs, a):
+    """(found, value, entry) for an assertion's peer/of/field."""
+    doc = docs.get(a["peer"])
+    if doc is None:
+        return False, None, None
+    if "of" in a:
+        for entry in doc.get("peers") or []:
+            if isinstance(entry, dict) and entry.get("name") == a["of"]:
+                return (a["field"] in entry), entry.get(a["field"]), entry
+        return False, None, None
+    return (a["field"] in doc), doc.get(a["field"]), doc
+
+
+def _label(a):
+    if "of" in a:
+        return "%s -> %s %s" % (a["peer"], a["of"], a["field"])
+    return "%s %s" % (a["peer"], a["field"])
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def check_assertion(docs, a, captures, baseline=None):
+    """Return (ok, description) for one assertion against the current dumps.
+
+    `baseline` is the value seen at the start of the hold window, used by
+    "increases"; None means the window has not started (treated as passing so
+    the other checks decide when the hold starts)."""
+    found, value, entry = _lookup(docs, a)
+    label = _label(a)
+    if not found:
+        return False, "%s: missing" % label
+    problems = []
+    if "eq" in a and value != a["eq"]:
+        problems.append("expected %s" % _fmt(a["eq"]))
+    if "min" in a and not (_is_num(value) and value >= a["min"]):
+        problems.append("expected >= %s" % a["min"])
+    if "max" in a and not (_is_num(value) and value <= a["max"]):
+        problems.append("expected <= %s" % a["max"])
+    near = a.get("near")
+    if near is not None:
+        offset = near.get("offset", 0)
+        tol = near.get("tol", 0)
+        if "field" in near:
+            ref, refdesc = entry.get(near["field"]), near["field"]
+        elif "capture" in near:
+            ref, refdesc = captures.get(near["capture"]), "captured %s" % near["capture"]
+        else:
+            ref, refdesc = near["value"], _fmt(near["value"])
+        if not (_is_num(ref) and _is_num(value)):
+            problems.append("near %s: not numeric (ref %s)" % (refdesc, _fmt(ref)))
+        else:
+            want = ref + offset
+            if abs(value - want) > tol:
+                problems.append("expected %s%+g = %.1f +/- %g"
+                                % (refdesc, offset, want, tol))
+    if a.get("increases") and baseline is not None:
+        if not (_is_num(value) and _is_num(baseline) and value > baseline):
+            problems.append("expected to increase from %s" % _fmt(baseline))
+    desc = "%s = %s" % (label, _fmt(value))
+    if near is not None and "field" in near and _is_num(entry.get(near["field"])):
+        desc += " (%s = %s)" % (near["field"], _fmt(entry.get(near["field"])))
+    if problems:
+        return False, desc + ": " + "; ".join(problems)
+    return True, desc
+
+
+def read_dumps(dumps_dir, peers):
+    docs = {}
+    for peer in peers:
+        try:
+            docs[peer] = parse_dump(os.path.join(dumps_dir, peer + ".json"))
+        except DumpError:
+            pass
+    return docs
+
+
+def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
+              clock=time.time, sleep=time.sleep):
+    """Execute the steps. Returns EXIT_OK or EXIT_MISMATCH."""
+    controls = {}
+    captures = {}
+    for sidx, step in enumerate(steps):
+        for peer, ctl in step["control"].items():
+            controls[peer] = deep_merge(controls.get(peer, {}), ctl)
+            if control_dir:
+                write_json_atomic(os.path.join(control_dir, peer + ".json"), controls[peer])
+        t0 = clock()
+        deadline = t0 + step["timeout"]
+        has_increases = any(a.get("increases") for a in step["expect"])
+        hold_start = None
+        hold_polls = 0
+        baselines = {}
+        last = []
+        while True:
+            docs = read_dumps(dumps_dir, peers)
+            # "increases" compares with the value seen when the hold began; on
+            # the poll that starts the hold there is no baseline yet.
+            results = [check_assertion(docs, a, captures, baselines.get(i))
+                       for i, a in enumerate(step["expect"])]
+            last = results
+            now = clock()
+            if all(ok for ok, _ in results):
+                if hold_start is None:
+                    hold_start = now
+                    hold_polls = 0
+                    for i, a in enumerate(step["expect"]):
+                        if a.get("increases"):
+                            baselines[i] = _lookup(docs, a)[1]
+                else:
+                    hold_polls += 1
+                # an "increases" check needs at least one poll after the baseline
+                if now - hold_start >= step["hold"] and (hold_polls > 0 or not has_increases):
+                    for a in step["expect"]:
+                        if "capture" in a:
+                            captures[a["capture"]] = _lookup(docs, a)[1]
+                    print("step %d %-14s PASS after %.1fs (held %.1fs)"
+                          % (sidx + 1, step["name"], hold_start - t0, now - hold_start), file=out)
+                    for _, desc in results:
+                        print("    ok   %s" % desc, file=out)
+                    break
+            else:
+                hold_start = None
+                baselines = {}
+            if now >= deadline:
+                print("step %d %-14s FAIL: not satisfied within %.0fs%s"
+                      % (sidx + 1, step["name"], step["timeout"],
+                         " (held %.1fs of %.1fs)" % (now - hold_start, step["hold"])
+                         if hold_start is not None else ""), file=out)
+                for ok, desc in last:
+                    print("    %s %s" % ("ok  " if ok else "FAIL", desc), file=out)
+                return EXIT_MISMATCH
+            sleep(interval)
+    print("PASS: all %d step(s) held" % len(steps), file=out)
+    return EXIT_OK
+
+
+def cmd_steps(args):
+    peers, _, _, scen = load_context(args)
+    steps = scenario_steps(scen, args.scenario)
+    if not steps:
+        print("scenario %s has no steps" % args.scenario)
+        return EXIT_OK
+    if args.control_dir and not os.path.isdir(args.control_dir):
+        raise UsageError("control directory does not exist: %s" % args.control_dir)
+    return run_steps(args.dir, args.control_dir, peers, steps, args.interval)
+
+
 def cmd_list(args):
     scen_path = args.scenarios
     if scen_path is None:
@@ -779,11 +1045,13 @@ def cmd_list(args):
             routing = scenario_routing(scen, name)
             expect = scenario_expect(scen, name)
             pending = scen.get("pending")
-            summary = "%s: expect=%s target=%s peers=%s%s" % (
+            steps = scenario_steps(scen, name)
+            summary = "%s: expect=%s target=%s peers=%s%s%s" % (
                 name, expect, routing,
                 ", ".join("%s:%s%s" % (p, peers[p]["effective"],
                                        "" if peers[p]["advertise"] else "(no-advert)")
                           for p in sorted(peers)),
+                "  steps=%d" % len(steps) if steps else "",
                 "  [pending: %s]" % pending if pending else "")
         except UsageError as exc:
             summary = "%s: INVALID (%s)" % (name, exc)
@@ -810,6 +1078,14 @@ def main(argv):
     p_settle.add_argument("--progress", action="store_true",
                           help="print a line per poll to stderr")
     p_settle.set_defaults(func=cmd_settle)
+
+    p_steps = sub.add_parser("steps", help="P1.5: run the scenario's timed control steps")
+    build_common_parser(p_steps)
+    p_steps.add_argument("--control-dir", default=None,
+                         help="directory for <peer>.json control files (the app's --test-control)")
+    p_steps.add_argument("--interval", type=float, default=1.0,
+                         help="seconds between polls (default 1)")
+    p_steps.set_defaults(func=cmd_steps)
 
     p_list = sub.add_parser("list", help="list scenarios")
     p_list.add_argument("--scenarios", default=None)
