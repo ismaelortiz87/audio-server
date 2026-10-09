@@ -22,7 +22,15 @@ dependency and one place to patch it.
 - `sono6good/` — legacy JUCE 6 fork branch, kept for reference.
   Upstream: `essej/JUCE` branch `sono6good` @ `9415d09`
 - `aooserver/` — headless AOO connection server (rendezvous only, audio stays
-  peer-to-peer). Upstream: `essej/aooserver` branch `master` @ `81a4cf9`
+  peer-to-peer). Upstream: `essej/aooserver` branch `master` @ `81a4cf9`.
+  It keeps its own vendored AOO snapshot under `aooserver/deps/aoo` **on
+  purpose**: that snapshot carries server API the SonoBus fork dropped — e.g.
+  the IP blocklist (`add_blocked_address` / `is_address_blocked`, used by the
+  server's `-b/--blocklist` flag). The AOO that SonoBus vendors in `aoo/`
+  (branch `sono`) has a reduced `server.cpp` because the app only runs the
+  small embedded rendezvous server. Pointing `aooserver/` at the top-level
+  `aoo/` would silently strip that functionality. Its JUCE is self-contained
+  in `aooserver/JuceLibraryCode/modules`.
 
 `sono6good/` is not referenced by any build file in the current tree. Upstream's
 README still claims SonoBus is built on the `sono6good` (JUCE 6) fork, but the
@@ -84,10 +92,12 @@ rewired by script; re-save from Projucer on a Mac and sanity-check before
 trusting a mobile build, so the generated projects and the `.jucer` are
 guaranteed in sync.
 
-Server:
+Server (self-contained Projucer project; default port 10998, TCP+UDP):
 
 ```bash
-cd aooserver   # headless AOO connection server, default port 10999 (TCP+UDP)
+cd aooserver/Builds/LinuxMakefile
+CONFIG=Release make -j4          # -> Builds/LinuxMakefile/build/aooserver
+./build/aooserver -h             # -p port, -l logdir, -b blocklist
 ```
 
 ## Licensing
