@@ -10,64 +10,64 @@
   <MAINGROUP id="i87g34" name="SonoBus">
     <GROUP id="{A463ADFB-B23B-B2B4-881B-B7CE9954D0D4}" name="deps">
       <GROUP id="{81488E5D-9CA2-F73A-62B1-4376F46E70B1}" name="aoo">
-        <FILE id="CXCcNv" name="aoo.h" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo.h"/>
-        <FILE id="KsAYo0" name="aoo.hpp" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo.hpp"/>
-        <FILE id="oGmcZz" name="aoo_net.h" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_net.h"/>
-        <FILE id="K9e2rX" name="aoo_net.hpp" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_net.hpp"/>
-        <FILE id="K5dggG" name="aoo_opus.h" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_opus.h"/>
-        <FILE id="pXeQTi" name="aoo_pcm.h" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_pcm.h"/>
-        <FILE id="b9NaJv" name="aoo_types.h" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_types.h"/>
-        <FILE id="o3BEea" name="aoo_utils.hpp" compile="0" resource="0" file="../deps/aoo/lib/aoo/aoo_utils.hpp"/>
+        <FILE id="CXCcNv" name="aoo.h" compile="0" resource="0" file="../../aoo/lib/aoo/aoo.h"/>
+        <FILE id="KsAYo0" name="aoo.hpp" compile="0" resource="0" file="../../aoo/lib/aoo/aoo.hpp"/>
+        <FILE id="oGmcZz" name="aoo_net.h" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_net.h"/>
+        <FILE id="K9e2rX" name="aoo_net.hpp" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_net.hpp"/>
+        <FILE id="K5dggG" name="aoo_opus.h" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_opus.h"/>
+        <FILE id="pXeQTi" name="aoo_pcm.h" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_pcm.h"/>
+        <FILE id="b9NaJv" name="aoo_types.h" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_types.h"/>
+        <FILE id="o3BEea" name="aoo_utils.hpp" compile="0" resource="0" file="../../aoo/lib/aoo/aoo_utils.hpp"/>
       </GROUP>
       <GROUP id="{E5AFC4C8-A0A7-B0F4-A69E-CFDB0B320E38}" name="aoo_source">
-        <FILE id="haNxDa" name="client.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/client.cpp"/>
-        <FILE id="LImbGg" name="client.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/client.hpp"/>
-        <FILE id="bftdbU" name="codec_opus.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/codec_opus.cpp"/>
-        <FILE id="ZCju9A" name="codec_pcm.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/codec_pcm.cpp"/>
-        <FILE id="uCZ3sZ" name="common.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/common.cpp"/>
-        <FILE id="yHRnJs" name="common.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/common.hpp"/>
-        <FILE id="p8sifr" name="lockfree.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/lockfree.hpp"/>
-        <FILE id="douMr0" name="net_utils.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/net_utils.cpp"/>
-        <FILE id="GtE9uV" name="net_utils.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/net_utils.hpp"/>
-        <FILE id="BXeAp6" name="server.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/server.cpp"/>
-        <FILE id="auHV1g" name="server.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/server.hpp"/>
-        <FILE id="BXxcs8" name="sink.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/sink.cpp"/>
-        <FILE id="BTG69z" name="sink.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/sink.hpp"/>
-        <FILE id="YdSsAe" name="SLIP.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/SLIP.hpp"/>
-        <FILE id="ekvKE6" name="source.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/source.cpp"/>
-        <FILE id="J6tW6e" name="source.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/source.hpp"/>
-        <FILE id="rImC26" name="sync.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/sync.cpp"/>
-        <FILE id="AZX8fA" name="sync.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/sync.hpp"/>
-        <FILE id="J9l9Fn" name="time.cpp" compile="1" resource="0" file="../deps/aoo/lib/src/time.cpp"/>
-        <FILE id="n36AJF" name="time.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/time.hpp"/>
-        <FILE id="bcqhDS" name="time_dll.hpp" compile="0" resource="0" file="../deps/aoo/lib/src/time_dll.hpp"/>
+        <FILE id="haNxDa" name="client.cpp" compile="1" resource="0" file="../../aoo/lib/src/client.cpp"/>
+        <FILE id="LImbGg" name="client.hpp" compile="0" resource="0" file="../../aoo/lib/src/client.hpp"/>
+        <FILE id="bftdbU" name="codec_opus.cpp" compile="1" resource="0" file="../../aoo/lib/src/codec_opus.cpp"/>
+        <FILE id="ZCju9A" name="codec_pcm.cpp" compile="1" resource="0" file="../../aoo/lib/src/codec_pcm.cpp"/>
+        <FILE id="uCZ3sZ" name="common.cpp" compile="1" resource="0" file="../../aoo/lib/src/common.cpp"/>
+        <FILE id="yHRnJs" name="common.hpp" compile="0" resource="0" file="../../aoo/lib/src/common.hpp"/>
+        <FILE id="p8sifr" name="lockfree.hpp" compile="0" resource="0" file="../../aoo/lib/src/lockfree.hpp"/>
+        <FILE id="douMr0" name="net_utils.cpp" compile="1" resource="0" file="../../aoo/lib/src/net_utils.cpp"/>
+        <FILE id="GtE9uV" name="net_utils.hpp" compile="0" resource="0" file="../../aoo/lib/src/net_utils.hpp"/>
+        <FILE id="BXeAp6" name="server.cpp" compile="1" resource="0" file="../../aoo/lib/src/server.cpp"/>
+        <FILE id="auHV1g" name="server.hpp" compile="0" resource="0" file="../../aoo/lib/src/server.hpp"/>
+        <FILE id="BXxcs8" name="sink.cpp" compile="1" resource="0" file="../../aoo/lib/src/sink.cpp"/>
+        <FILE id="BTG69z" name="sink.hpp" compile="0" resource="0" file="../../aoo/lib/src/sink.hpp"/>
+        <FILE id="YdSsAe" name="SLIP.hpp" compile="0" resource="0" file="../../aoo/lib/src/SLIP.hpp"/>
+        <FILE id="ekvKE6" name="source.cpp" compile="1" resource="0" file="../../aoo/lib/src/source.cpp"/>
+        <FILE id="J6tW6e" name="source.hpp" compile="0" resource="0" file="../../aoo/lib/src/source.hpp"/>
+        <FILE id="rImC26" name="sync.cpp" compile="1" resource="0" file="../../aoo/lib/src/sync.cpp"/>
+        <FILE id="AZX8fA" name="sync.hpp" compile="0" resource="0" file="../../aoo/lib/src/sync.hpp"/>
+        <FILE id="J9l9Fn" name="time.cpp" compile="1" resource="0" file="../../aoo/lib/src/time.cpp"/>
+        <FILE id="n36AJF" name="time.hpp" compile="0" resource="0" file="../../aoo/lib/src/time.hpp"/>
+        <FILE id="bcqhDS" name="time_dll.hpp" compile="0" resource="0" file="../../aoo/lib/src/time_dll.hpp"/>
       </GROUP>
       <GROUP id="{9AC6513B-2710-657C-2315-852FA6D3B5ED}" name="md5">
-        <FILE id="e3l4tq" name="md5.c" compile="1" resource="0" file="../deps/aoo/deps/md5/md5.c"/>
-        <FILE id="vlwWfU" name="md5.h" compile="0" resource="0" file="../deps/aoo/deps/md5/md5.h"/>
+        <FILE id="e3l4tq" name="md5.c" compile="1" resource="0" file="../../aoo/deps/md5/md5.c"/>
+        <FILE id="vlwWfU" name="md5.h" compile="0" resource="0" file="../../aoo/deps/md5/md5.h"/>
       </GROUP>
       <GROUP id="{7491F91C-7028-FD78-C4DF-16BA24EA05FB}" name="osc">
         <FILE id="YVJwWs" name="MessageMappingOscPacketListener.h" compile="0"
-              resource="0" file="../deps/aoo/deps/oscpack/osc/MessageMappingOscPacketListener.h"/>
-        <FILE id="wudfp1" name="OscException.h" compile="0" resource="0" file="../deps/aoo/deps/oscpack/osc/OscException.h"/>
+              resource="0" file="../../aoo/deps/oscpack/osc/MessageMappingOscPacketListener.h"/>
+        <FILE id="wudfp1" name="OscException.h" compile="0" resource="0" file="../../aoo/deps/oscpack/osc/OscException.h"/>
         <FILE id="r6vfLx" name="OscHostEndianness.h" compile="0" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscHostEndianness.h"/>
+              file="../../aoo/deps/oscpack/osc/OscHostEndianness.h"/>
         <FILE id="U47Hul" name="OscOutboundPacketStream.cpp" compile="1" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscOutboundPacketStream.cpp"/>
+              file="../../aoo/deps/oscpack/osc/OscOutboundPacketStream.cpp"/>
         <FILE id="yAdHA8" name="OscOutboundPacketStream.h" compile="0" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscOutboundPacketStream.h"/>
+              file="../../aoo/deps/oscpack/osc/OscOutboundPacketStream.h"/>
         <FILE id="STrZZK" name="OscPacketListener.h" compile="0" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscPacketListener.h"/>
+              file="../../aoo/deps/oscpack/osc/OscPacketListener.h"/>
         <FILE id="OVpzdi" name="OscPrintReceivedElements.cpp" compile="1" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscPrintReceivedElements.cpp"/>
+              file="../../aoo/deps/oscpack/osc/OscPrintReceivedElements.cpp"/>
         <FILE id="Uw3Ebz" name="OscPrintReceivedElements.h" compile="0" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscPrintReceivedElements.h"/>
+              file="../../aoo/deps/oscpack/osc/OscPrintReceivedElements.h"/>
         <FILE id="OAOct3" name="OscReceivedElements.cpp" compile="1" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscReceivedElements.cpp"/>
+              file="../../aoo/deps/oscpack/osc/OscReceivedElements.cpp"/>
         <FILE id="zWkCYF" name="OscReceivedElements.h" compile="0" resource="0"
-              file="../deps/aoo/deps/oscpack/osc/OscReceivedElements.h"/>
-        <FILE id="aNEtYV" name="OscTypes.cpp" compile="1" resource="0" file="../deps/aoo/deps/oscpack/osc/OscTypes.cpp"/>
-        <FILE id="ABDX07" name="OscTypes.h" compile="0" resource="0" file="../deps/aoo/deps/oscpack/osc/OscTypes.h"/>
+              file="../../aoo/deps/oscpack/osc/OscReceivedElements.h"/>
+        <FILE id="aNEtYV" name="OscTypes.cpp" compile="1" resource="0" file="../../aoo/deps/oscpack/osc/OscTypes.cpp"/>
+        <FILE id="ABDX07" name="OscTypes.h" compile="0" resource="0" file="../../aoo/deps/oscpack/osc/OscTypes.h"/>
       </GROUP>
     </GROUP>
     <GROUP id="{45E6E779-87D2-18D9-1A29-7DFF68963CE8}" name="Resources">
@@ -415,29 +415,29 @@
                   iPadScreenOrientation="UIInterfaceOrientationLandscapeLeft,UIInterfaceOrientationLandscapeRight,UIInterfaceOrientationPortrait,UIInterfaceOrientationPortraitUpsideDown"
                   UIRequiresFullScreen="0" buildNumber="86">
       <CONFIGURATIONS>
-        <CONFIGURATION isDebug="1" name="Debug" headerPath="../../../deps/aoo/lib&#10;../../../deps/aoo/deps&#10;../../../deps/ios/include&#10;"
+        <CONFIGURATION isDebug="1" name="Debug" headerPath="../../../../aoo/lib&#10;../../../../aoo/deps&#10;../../../deps/ios/include&#10;"
                        libraryPath="../../../deps/ios/lib" defines="LOGLEVEL=2&#10;JUCE_IOS_AUDIO_LOGGING=1"
                        iosCompatibility="11.0" iosDeploymentTarget="11.0"/>
-        <CONFIGURATION isDebug="0" name="Release" headerPath="../../../deps/aoo/lib&#10;../../../deps/aoo/deps&#10;../../../deps/ios/include&#10;"
+        <CONFIGURATION isDebug="0" name="Release" headerPath="../../../../aoo/lib&#10;../../../../aoo/deps&#10;../../../deps/ios/include&#10;"
                        libraryPath="../../../deps/ios/lib" iosCompatibility="11.0" iosDeploymentTarget="11.0"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
-        <MODULEPATH id="juce_opengl" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_gui_extra" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_gui_basics" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_graphics" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_events" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_data_structures" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_cryptography" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_core" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_utils" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_processors" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_plugin_client" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_formats" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_devices" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_basics" path="../deps/juce/modules"/>
+        <MODULEPATH id="juce_opengl" path="../../juce/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../juce/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../juce/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../juce/modules"/>
+        <MODULEPATH id="juce_events" path="../../juce/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../juce/modules"/>
+        <MODULEPATH id="juce_cryptography" path="../../juce/modules"/>
+        <MODULEPATH id="juce_core" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="../../juce/modules"/>
         <MODULEPATH id="ff_meters" path="../deps"/>
-        <MODULEPATH id="juce_dsp" path="../deps/juce/modules"/>
+        <MODULEPATH id="juce_dsp" path="../../juce/modules"/>
       </MODULEPATHS>
     </XCODE_IPHONE>
     <ANDROIDSTUDIO targetFolder="Builds/Android" extraDefs="USE_CODEC_OPUS=1&#10;AOO_TIMEFILTER_CHECK=0&#10;AOO_STATIC&#10;JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME=&quot;com_sonosaurus_sonobus_SonoBusActivity&quot;&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH=&quot;com/sonosaurus/sonobus/SonoBusActivity&quot;"
@@ -452,27 +452,27 @@
                    androidTheme="@android:style/Theme.NoTitleBar" androidActivitySubClassName="com.sonosaurus.sonobus.SonoBusActivity"
                    androidVersionCode="86">
       <CONFIGURATIONS>
-        <CONFIGURATION isDebug="1" name="Debug" headerPath="../../../deps/aoo/lib&#10;../../../deps/aoo/deps&#10;../../../deps/android&#10;"
+        <CONFIGURATION isDebug="1" name="Debug" headerPath="../../../../aoo/lib&#10;../../../../aoo/deps&#10;../../../deps/android&#10;"
                        libraryPath="../../../deps/android/${ANDROID_ABI}" defines="LOGLEVEL=2"/>
-        <CONFIGURATION isDebug="0" name="Release" headerPath="../../../deps/aoo/lib&#10;../../../deps/aoo/deps&#10;../../../deps/android&#10;"
+        <CONFIGURATION isDebug="0" name="Release" headerPath="../../../../aoo/lib&#10;../../../../aoo/deps&#10;../../../deps/android&#10;"
                        libraryPath="../../../deps/android/${ANDROID_ABI}"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
-        <MODULEPATH id="juce_opengl" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_gui_extra" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_gui_basics" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_graphics" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_events" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_dsp" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_data_structures" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_cryptography" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_core" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_utils" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_processors" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_plugin_client" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_formats" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_devices" path="../deps/juce/modules"/>
-        <MODULEPATH id="juce_audio_basics" path="../deps/juce/modules"/>
+        <MODULEPATH id="juce_opengl" path="../../juce/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../juce/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../juce/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../juce/modules"/>
+        <MODULEPATH id="juce_events" path="../../juce/modules"/>
+        <MODULEPATH id="juce_dsp" path="../../juce/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../juce/modules"/>
+        <MODULEPATH id="juce_cryptography" path="../../juce/modules"/>
+        <MODULEPATH id="juce_core" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../juce/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="../../juce/modules"/>
         <MODULEPATH id="ff_meters" path="../deps"/>
       </MODULEPATHS>
     </ANDROIDSTUDIO>

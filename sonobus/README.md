@@ -1,6 +1,12 @@
 
 # SonoBus
 
+> **Monorepo note (audio-server):** this tree is part of the `audio-server`
+> monorepo. Its dependencies are no longer under `deps/`: `deps/juce` →
+> `../juce`, `deps/aoo` → `../aoo`, root `JUCE/` (legacy) → `../sono6good`.
+> All build files here were rewired accordingly. See the repository root
+> `README.md` for the layout and build instructions.
+
 SonoBus is an easy to use application for streaming high-quality, low-latency peer-to-peer audio between devices over the internet or a local network.
 
 Simply choose a unique group name (with optional password), and instantly connect multiple people together to make music, remote sessions, podcasts, etc. Easily record the audio from everyone, as well as playback any audio content to the whole group.

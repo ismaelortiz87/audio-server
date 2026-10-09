@@ -75,7 +75,7 @@ option(JUCE_ENABLE_MODULE_SOURCE_GROUPS "Show all module sources in IDE projects
 
 # include JUCE
 
-add_subdirectory(deps/juce EXCLUDE_FROM_ALL )
+add_subdirectory(../juce juce EXCLUDE_FROM_ALL )
 
 
 juce_add_modules(deps/ff_meters)
@@ -186,8 +186,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
 
 
     set (HEADER_INCLUDES
-        deps/aoo/lib
-        deps/aoo/deps
+        ../aoo/lib
+        ../aoo/deps
     )
 
     set (LIB_PATHS  "")
@@ -336,50 +336,50 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         Source/zitaRev.h
     )
     set(AOOSourceFiles        
-        deps/aoo/lib/src/SLIP.hpp
-        deps/aoo/lib/src/client.cpp
-        deps/aoo/lib/src/client.hpp
-        deps/aoo/lib/src/codec_opus.cpp
-        deps/aoo/lib/src/codec_pcm.cpp
-        deps/aoo/lib/src/common.cpp
-        deps/aoo/lib/src/common.hpp
-        deps/aoo/lib/src/lockfree.hpp
-        deps/aoo/lib/src/net_utils.cpp
-        deps/aoo/lib/src/net_utils.hpp
-        deps/aoo/lib/src/server.cpp
-        deps/aoo/lib/src/server.hpp
-        deps/aoo/lib/src/sink.cpp
-        deps/aoo/lib/src/sink.hpp
-        deps/aoo/lib/src/source.cpp
-        deps/aoo/lib/src/source.hpp
-        deps/aoo/lib/src/sync.cpp
-        deps/aoo/lib/src/sync.hpp
-        deps/aoo/lib/src/time.cpp
-        deps/aoo/lib/src/time.hpp
-        deps/aoo/lib/src/time_dll.hpp
-        deps/aoo/lib/aoo/aoo.h
-        deps/aoo/lib/aoo/aoo.hpp
-        deps/aoo/lib/aoo/aoo_net.h
-        deps/aoo/lib/aoo/aoo_net.hpp
-        deps/aoo/lib/aoo/aoo_opus.h
-        deps/aoo/lib/aoo/aoo_pcm.h
-        deps/aoo/lib/aoo/aoo_types.h
-        deps/aoo/lib/aoo/aoo_utils.hpp
+        ../aoo/lib/src/SLIP.hpp
+        ../aoo/lib/src/client.cpp
+        ../aoo/lib/src/client.hpp
+        ../aoo/lib/src/codec_opus.cpp
+        ../aoo/lib/src/codec_pcm.cpp
+        ../aoo/lib/src/common.cpp
+        ../aoo/lib/src/common.hpp
+        ../aoo/lib/src/lockfree.hpp
+        ../aoo/lib/src/net_utils.cpp
+        ../aoo/lib/src/net_utils.hpp
+        ../aoo/lib/src/server.cpp
+        ../aoo/lib/src/server.hpp
+        ../aoo/lib/src/sink.cpp
+        ../aoo/lib/src/sink.hpp
+        ../aoo/lib/src/source.cpp
+        ../aoo/lib/src/source.hpp
+        ../aoo/lib/src/sync.cpp
+        ../aoo/lib/src/sync.hpp
+        ../aoo/lib/src/time.cpp
+        ../aoo/lib/src/time.hpp
+        ../aoo/lib/src/time_dll.hpp
+        ../aoo/lib/aoo/aoo.h
+        ../aoo/lib/aoo/aoo.hpp
+        ../aoo/lib/aoo/aoo_net.h
+        ../aoo/lib/aoo/aoo_net.hpp
+        ../aoo/lib/aoo/aoo_opus.h
+        ../aoo/lib/aoo/aoo_pcm.h
+        ../aoo/lib/aoo/aoo_types.h
+        ../aoo/lib/aoo/aoo_utils.hpp
         
-        deps/aoo/deps/md5/md5.c
-        deps/aoo/deps/md5/md5.h
-        deps/aoo/deps/oscpack/osc/OscOutboundPacketStream.cpp
-        deps/aoo/deps/oscpack/osc/OscPrintReceivedElements.cpp
-        deps/aoo/deps/oscpack/osc/OscReceivedElements.cpp
-        deps/aoo/deps/oscpack/osc/OscTypes.cpp
-        deps/aoo/deps/oscpack/osc/MessageMappingOscPacketListener.h
-        deps/aoo/deps/oscpack/osc/OscException.h
-        deps/aoo/deps/oscpack/osc/OscHostEndianness.h
-        deps/aoo/deps/oscpack/osc/OscOutboundPacketStream.h
-        deps/aoo/deps/oscpack/osc/OscPacketListener.h
-        deps/aoo/deps/oscpack/osc/OscPrintReceivedElements.h
-        deps/aoo/deps/oscpack/osc/OscReceivedElements.h
-        deps/aoo/deps/oscpack/osc/OscTypes.h
+        ../aoo/deps/md5/md5.c
+        ../aoo/deps/md5/md5.h
+        ../aoo/deps/oscpack/osc/OscOutboundPacketStream.cpp
+        ../aoo/deps/oscpack/osc/OscPrintReceivedElements.cpp
+        ../aoo/deps/oscpack/osc/OscReceivedElements.cpp
+        ../aoo/deps/oscpack/osc/OscTypes.cpp
+        ../aoo/deps/oscpack/osc/MessageMappingOscPacketListener.h
+        ../aoo/deps/oscpack/osc/OscException.h
+        ../aoo/deps/oscpack/osc/OscHostEndianness.h
+        ../aoo/deps/oscpack/osc/OscOutboundPacketStream.h
+        ../aoo/deps/oscpack/osc/OscPacketListener.h
+        ../aoo/deps/oscpack/osc/OscPrintReceivedElements.h
+        ../aoo/deps/oscpack/osc/OscReceivedElements.h
+        ../aoo/deps/oscpack/osc/OscTypes.h
     )
 
     target_sources("${target_name}" PRIVATE 
@@ -392,7 +392,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
 
     # The source tree should uhhh, still look like the source tree, yo
     source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/Source PREFIX "" FILES ${SourceFiles})
-    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/deps/aoo PREFIX "aoo" FILES ${AOOSourceFiles})
+    source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/../aoo PREFIX "aoo" FILES ${AOOSourceFiles})
 
     # Move the INTERFACE auto-created JUCE library stuff into its own folder
     source_group("JUCE Library Code" REGULAR_EXPRESSION "juce_")
@@ -428,7 +428,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
             
                 # MacOS only: Sets the default executable that Xcode will open on build
                 # For this exact path to to work, manually build the AudioPluginHost.xcodeproj in the JUCE subdir 
-                # XCODE_SCHEME_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/deps/juce/extras/AudioPluginHost/Builds/MacOSX/build/Debug/AudioPluginHost.app"
+                # XCODE_SCHEME_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/../juce/extras/AudioPluginHost/Builds/MacOSX/build/Debug/AudioPluginHost.app"
             
                 # Let us build the target in Xcode 
                 XCODE_GENERATE_SCHEME ON)
