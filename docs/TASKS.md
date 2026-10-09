@@ -492,16 +492,16 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   control-api §3.2, filled by P4.2 from `remoteRole`/`hasRemoteRole`, never
   from `roleBlocked`) and is already rendered by `console-ui` (spec §3.4
   notice). Nothing left in P1.
-- **Result:** *Partly satisfied by P1.4; remains open for the UI half.*
-  The blocking half is done and tested: with P1.4, a peer that never sends a
+- **Result:** Engine half done by P1.4 and tested: a peer that never sends a
   role keeps `roleBlocked` set indefinitely, so it can never be opened by any
   path, and the F2 `blocked-unknown` scenario (two peers, no advertised role)
   exits 0. `remoteRole` is exposed as `"unknown"` and `hasRemoteRole` as
-  `false` in the peer dump. **What is left is the UI half** — showing such
-  peers greyed out. Note when doing it: P1.4 leaves `roleBlocked` set for both
-  same-role and unknown peers, so the UI must key off `remoteRole`/
-  `hasRemoteRole`, not `roleBlocked`, to tell "stock SonoBus, unknown" apart
-  from "same role as us, deliberately blocked".
+  `false` in the peer dump. The UI half (showing such peers as unknown) is
+  carried by the control API / `console-ui` per the closure note above.
+  Relevant when touching anything that reads these flags: P1.4 leaves
+  `roleBlocked` set for both same-role and unknown peers, so the UI must key
+  off `remoteRole`/`hasRemoteRole`, not `roleBlocked`, to tell "stock SonoBus,
+  unknown" apart from "same role as us, deliberately blocked".
 
 ### P1.7 — VDI agent health in peer info · S
 - **Depends on:** P1.2
