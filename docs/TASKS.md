@@ -95,7 +95,7 @@ Ordered so that every task appears after everything it depends on.
 | P3.7 | Trim effects to what UX2 specifies | P3.5, UX2 | S | any | todo | |
 | P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
 | P3.9 | Own app identity: name, bundle id, settings folder (coexist with stock SonoBus) | — | S | any | done | Claude |
-| P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | wip | Claude |
+| P3.10 | Wire the Crosspoint icon into the app build | UX4 | S | any | done | Claude |
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | wip | Claude (subagent C, sonnet) |
@@ -850,7 +850,7 @@ the mobile `.jucer` source list (remove deleted files from it too).
   `../design/icon/crosspoint-256.png` (or copy them into `sonobus/images/`).
   Coordinate with anyone else editing CMake (P2.2/P2.1 touch it).
 - **Done when:** the built `Crosspoint.app` shows the new icon in Finder and the Dock.
-- **Result:**
+- **Result:** `ICON_BIG`/`ICON_SMALL` point at `../design/icon/crosspoint-1024.png` / `-256.png`. Verified: the rebuilt `Crosspoint.app` bundles a new `Icon.icns`, which, extracted with `sips`, is the Crosspoint artwork.
 
 ## P4 — Control API
 

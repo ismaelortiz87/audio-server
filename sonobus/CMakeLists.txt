@@ -206,8 +206,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         BUNDLE_ID "${APP_BUNDLE_ID}"
         MICROPHONE_PERMISSION_ENABLED TRUE
         
-        ICON_BIG "images/sonobus_icon_mac_1024.png"
-        ICON_SMALL "images/sonobus_icon_mac_256.png"
+        ICON_BIG "../design/icon/crosspoint-1024.png"
+        ICON_SMALL "../design/icon/crosspoint-256.png"
         NEEDS_WEB_BROWSER FALSE
         VST2_CATEGORY "${vst2cat}"
         VST3_CATEGORIES "${vst3cats}"
