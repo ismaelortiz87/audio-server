@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console prototype</title>
+<style>
+/* Tokens: Maia Mission Control + additions from the UX1 brief
+   (series4 for a 4th station, `live` for talking). */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d0f; --rail: #0d1013; --panel: #12161a; --panel2: #161b20;
+  --raised: #1c2228; --line: #232b32; --line2: #1a2026;
+  --ink: #e8e4da; --ink2: #a8a69d; --ink3: #71746e; --ink4: #4a4e4b;
+  --accent: #2e6b66; --accentInk: #8fc3ba; --accentWash: rgba(46,107,102,.18);
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --s1: #9085e9; --s2: #199e70; --s3: #c98500; --s4: #5fa8d3;
+  --live: #ff4f7b; --liveWash: rgba(255,79,123,.14); --liveInk: #ffd9e2;
+  --sans: ui-sans-serif, -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --r: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  font: 14px/1.4 var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- prototype harness (not product UI) ---------- */
+.harness { position: fixed; right: 12px; bottom: 12px; z-index: 50; display: flex; gap: 8px;
+  align-items: center; background: #000c; border: 1px dashed #555; border-radius: 8px;
+  padding: 6px 8px; font-size: 12px; color: #bbb; }
+.harness select, .harness button { background: #1a1a1a; border: 1px solid #444; border-radius: 6px;
+  color: #ddd; padding: 3px 6px; font-size: 12px; }
+.stagewrap { height: 100%; display: flex; justify-content: center; align-items: stretch; }
+.stagewrap.phone { align-items: center; padding: 20px 0 70px; }
+.stagewrap.phone .app { width: 390px; height: 800px; border: 1px solid var(--line);
+  border-radius: 28px; overflow: hidden; }
+
+/* ---------- app shell ---------- */
+.app { container-type: inline-size; width: 100%; min-width: 0; height: 100%; display: flex; flex-direction: column;
+  background: var(--bg); position: relative; }
+
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--rail);
+  border-bottom: 1px solid var(--line); min-height: 48px; }
+.brand { font-weight: 600; letter-spacing: .01em; }
+.conn { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 13px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink4); }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warning); }
+.dot.crit { background: var(--critical); }
+.dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.top .spacer { flex: 1; }
+.iconbtn { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px;
+  color: var(--ink2); cursor: pointer; }
+.iconbtn:hover { background: var(--panel2); color: var(--ink); }
+.iconbtn:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accentInk); outline-offset: 2px; }
+
+/* live band: the one loud thing on screen */
+.liveband { display: none; align-items: center; gap: 10px; padding: 8px 16px;
+  background: var(--liveWash); border-bottom: 2px solid var(--live); color: var(--liveInk);
+  font-weight: 600; font-size: 13px; }
+.liveband.on { display: flex; }
+.liveband.quiet { background: var(--panel); border-bottom-color: var(--line); color: var(--ink2); font-weight: 500; }
+.livepill { background: var(--live); color: #1a0008; font-weight: 800; letter-spacing: .08em;
+  font-size: 11px; padding: 2px 7px; border-radius: 4px; animation: pulse 1.6s ease-in-out infinite; }
+.liveband.quiet .livepill { display: none; }
+
+main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ---------- stage: the stereo field ---------- */
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px 12px; }
+.stagehead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--ink3); font-weight: 600; }
+.stagehead .spacer { flex: 1; }
+.chipbtn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink2);
+  padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.chipbtn:hover { color: var(--ink); border-color: var(--ink4); }
+.field { position: relative; height: 76px; margin: 0 6px; --pad: 56px; }
+@container (max-width: 640px) { .field { --pad: 44px; } }
+.field .axis { position: absolute; left: var(--pad); right: var(--pad); top: 50%; height: 1px; background: var(--line); }
+.field .tick { position: absolute; top: calc(50% - 6px); width: 1px; height: 12px; background: var(--ink4); }
+.field .tick.c { height: 20px; top: calc(50% - 10px); background: var(--ink3); }
+.field .end { position: absolute; top: calc(50% - 9px); font-size: 11px; color: var(--ink3); font-weight: 600; }
+.puck { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px;
+  background: var(--raised); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px 4px 6px;
+  cursor: grab; touch-action: none; user-select: none; white-space: nowrap; font-size: 12px; font-weight: 600;
+  transition: left .18s ease, top .18s ease, opacity .2s; }
+.puck.dragging { cursor: grabbing; transition: none; z-index: 3; border-color: var(--ink3); }
+.puck .sw { width: 10px; height: 10px; border-radius: 50%; }
+.puck.dim { color: var(--ink3); } .puck.dim .sw { opacity: .5; }
+.puck.muted { color: var(--ink4); text-decoration: line-through; } .puck.muted .sw { opacity: .3; }
+.puck .mi { width: 12px; height: 12px; color: var(--live); display: none; }
+.puck.live .mi { display: block; }
+.puck.sel { outline: 2px solid var(--accentInk); outline-offset: 2px; }
+
+/* ---------- notices ---------- */
+.notice { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line);
+  border-left: 3px solid var(--ink3); border-radius: var(--r); padding: 10px 12px; color: var(--ink2); font-size: 13px; }
+.notice b { color: var(--ink); font-weight: 600; }
+
+/* ---------- stations ---------- */
+.stations { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.station { min-width: 0; }
+.station { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px;
+  display: flex; flex-direction: column; gap: 12px; position: relative; transition: opacity .2s, border-color .2s; }
+.station.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.station.lost { opacity: .7; }
+.shead { display: flex; align-items: center; gap: 8px; }
+.shead .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.sname { font-weight: 650; font-size: 15px; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shead .spacer { flex: 1; }
+.shead { flex-wrap: wrap; row-gap: 4px; }
+.health { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); white-space: nowrap; cursor: help;
+  flex-basis: 100%; padding-left: 18px; overflow: hidden; }
+.health .num { overflow: hidden; text-overflow: ellipsis; }
+.sname { overflow: visible; white-space: normal; }
+.health .num { color: var(--ink3); }
+.badge { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 2px 6px; border-radius: 4px; }
+.badge.live { background: var(--live); color: #1a0008; }
+.badge.dim { background: var(--panel2); color: var(--ink2); border: 1px solid var(--line); font-weight: 700; }
+.badge.muted { background: var(--panel2); color: var(--ink3); border: 1px solid var(--line); }
+.wave { width: 100%; height: 72px; display: block; border-radius: 6px; background: var(--bg); }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .label { width: 64px; flex: none; }
+.row .val { width: 62px; text-align: right; color: var(--ink2); font-size: 12px; flex: none; }
+
+/* pan snaps: L · · C · · R as one track */
+.pan { position: relative; flex: 1; height: 28px; display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+.pan button { background: none; border: 0; cursor: pointer; color: var(--ink3); font-size: 11px; font-weight: 700;
+  border-radius: 6px; position: relative; z-index: 1; }
+.pan button:hover { color: var(--ink); }
+.pan button.on { color: var(--ink); }
+.pan .pk { position: absolute; top: 3px; bottom: 3px; width: calc(20% - 6px); background: var(--raised);
+  border: 1px solid var(--ink4); border-radius: 5px; transition: left .15s ease; }
+
+/* level */
+input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: 28px; background: none; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--ink3) var(--p,50%), var(--line) var(--p,50%)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--ink); margin-top: -6px; border: 3px solid var(--panel); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--ink3); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 2px solid var(--panel); }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.8fr; gap: 8px; }
+.tog { white-space: nowrap; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px; cursor: pointer;
+  font-weight: 600; font-size: 13px; color: var(--ink2); display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; }
+.tog:hover { color: var(--ink); border-color: var(--ink4); }
+.tog kbd { font-family: var(--mono); font-size: 10px; color: var(--ink4); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; }
+.tog.mute[aria-pressed=true] { background: #2a2f35; color: var(--ink); border-color: var(--ink3); }
+.tog.solo[aria-pressed=true] { background: var(--accentWash); color: var(--accentInk); border-color: var(--accent); }
+.tog.talk[aria-pressed=true] { color: var(--ink); border-color: var(--ink3); }
+.tog.talk.hot[aria-pressed=true] { background: var(--liveWash); color: var(--liveInk); border-color: rgba(255,79,123,.45); }
+.tog.talk.hot svg { color: var(--live); }
+.tog.talk[aria-pressed=false] { color: var(--ink3); border-style: dashed; }
+.tog.talk.held { color: var(--ink3); border-style: dotted; background: none; cursor: default; }
+.tog svg { width: 14px; height: 14px; flex: none; }
+
+/* skeleton / connecting */
+.issue { border: 1px solid rgba(250,178,25,.45); border-left: 3px solid var(--warning); background: rgba(250,178,25,.07);
+  border-radius: 6px; padding: 6px 9px; font-size: 12px; color: var(--ink2); }
+.issue b { color: #ffd98a; font-weight: 650; }
+.skel { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--r); min-height: 220px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink3); font-size: 13px; }
+
+/* ---------- you bar ---------- */
+.you { border-top: 1px solid var(--line); background: var(--rail); padding: 12px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mic { display: flex; align-items: center; gap: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel2);
+  padding: 8px 16px 8px 12px; cursor: pointer; min-height: 52px; font-weight: 700; font-size: 15px; color: var(--ink2);
+  user-select: none; touch-action: none; min-width: 190px; }
+.mic svg { width: 22px; height: 22px; }
+.mic .sub { display: block; font-weight: 500; font-size: 12px; color: var(--ink3); }
+.mic.hot { background: var(--live); border-color: var(--live); color: #1a0008; }
+.mic.hot .sub { color: #4a0716; }
+.mic.open-idle { border-color: var(--ink4); color: var(--ink); }
+.micmeter { width: 120px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.micmeter i { display: block; height: 100%; width: 0; background: var(--ink3); transition: width .05s linear; }
+.micmeter.hot i { background: var(--live); }
+.seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button { background: none; border: 0; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; color: var(--ink3); cursor: pointer; }
+.seg button.on { background: var(--raised); color: var(--ink); }
+.targets { color: var(--ink2); font-size: 13px; }
+.targets b { color: var(--ink); }
+.you .spacer { flex: 1; }
+.master { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+.hint { width: 100%; color: var(--ink4); font-size: 11px; }
+.hint kbd { font-family: var(--mono); color: var(--ink3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+
+/* ---------- settings sheet ---------- */
+.scrim { position: absolute; inset: 0; background: #0009; display: none; z-index: 10; }
+.sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--raised);
+  border-left: 1px solid var(--line); z-index: 11; transform: translateX(100%); transition: transform .2s ease;
+  padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.app.settings .scrim { display: block; } .app.settings .sheet { transform: none; }
+.field2 { display: flex; flex-direction: column; gap: 4px; }
+.field2 span { font-size: 12px; color: var(--ink3); }
+.field2 div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--ink); }
+.field2 small { color: var(--ink4); font-size: 11px; }
+details { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+summary { cursor: pointer; color: var(--ink2); font-weight: 600; }
+
+/* ---------- phone (container-driven) ---------- */
+@container (max-width: 640px) {
+  .top { padding: 10px 14px; } .conn .grp { display: none; }
+  main { padding: 12px; gap: 12px; }
+  .stations { grid-template-columns: 1fr; gap: 10px; }
+  .station { padding: 12px; gap: 10px; }
+  .wave { height: 36px; }
+  .row .label { width: 52px; }
+  .tog { min-height: 44px; }
+  .tog kbd, .hint { display: none; }
+  .field { height: 64px; }
+  .you { padding: 10px 12px 14px; gap: 10px; }
+  .mic { width: 100%; justify-content: center; min-height: 64px; order: -1; }
+  .micmeter { flex: 1; width: auto; }
+  .master { width: 100%; min-width: 0; }
+  .you .spacer { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="stagewrap" id="wrap">
+  <div class="app" id="app">
+    <header class="top">
+      <span class="brand">Console</span>
+      <span class="conn" id="conn"></span>
+      <span class="spacer"></span>
+      <button class="iconbtn" id="openSettings" aria-label="Settings" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </header>
+    <div class="liveband" id="liveband" role="status" aria-live="polite"><span class="livepill">LIVE</span><span id="livetext"></span></div>
+
+    <main>
+      <section class="stage" aria-label="Stereo placement">
+        <div class="stagehead">
+          <span class="label">Placement</span>
+          <span class="spacer"></span>
+          <button class="chipbtn" id="spread" title="Spread stations evenly from left to right">Spread</button>
+          <button class="chipbtn" id="center" title="Put every station in the centre">All centre</button>
+        </div>
+        <div class="field" id="field"></div>
+      </section>
+      <div id="notices"></div>
+      <section class="stations" id="stations" aria-label="Stations"></section>
+    </main>
+
+    <footer class="you" aria-label="Your microphone and output">
+      <button class="mic" id="mic" aria-pressed="true"></button>
+      <div class="micmeter" id="micmeter" aria-hidden="true"><i></i></div>
+      <div class="seg" role="group" aria-label="Talk mode">
+        <button id="modeOpen" class="on">Open mic</button>
+        <button id="modePtt">Push to talk</button>
+      </div>
+      <span class="targets" id="targets"></span>
+      <button class="chipbtn" id="allTalk">Talk to all</button>
+      <span class="spacer"></span>
+      <div class="master"><span class="label">Output</span>
+        <input type="range" id="master" min="-40" max="6" step="0.5" value="0" aria-label="Output level">
+        <span class="val num" id="masterVal">0.0 dB</span></div>
+      <div class="hint">Keys: <kbd>1</kbd>–<kbd>4</kbd> pick station · <kbd>←</kbd><kbd>→</kbd> place · <kbd>M</kbd> mute · <kbd>S</kbd> solo · <kbd>T</kbd> hears you · <kbd>`</kbd> mic on/off · hold <kbd>Space</kbd> to talk (push-to-talk mode)</div>
+    </footer>
+
+    <div class="scrim" id="scrim"></div>
+    <aside class="sheet" aria-label="Settings">
+      <div class="stagehead"><b>Settings</b><span class="spacer"></span><button class="iconbtn" id="closeSettings" aria-label="Close">✕</button></div>
+      <div class="field2"><span>Server</span><div class="num">aoo.sonobus.net:10998</div></div>
+      <div class="field2"><span>Group</span><div>ops</div><small>Password saved</small></div>
+      <div class="field2"><span>Your name</span><div>maelo-mac</div></div>
+      <div class="field2"><span>Microphone</span><div>MacBook Pro Microphone</div></div>
+      <div class="field2"><span>Output</span><div>AirPods Pro</div></div>
+      <div class="field2"><span>Solo dims others by</span><div class="num">−18 dB</div></div>
+      <div class="field2"><span>Push-to-talk key (works in other apps)</span><div class="num">⌥ Space</div></div>
+      <details><summary>Advanced</summary>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+          <div class="field2"><span>Codec</span><div>Opus · 96 kbps</div></div>
+          <div class="field2"><span>Network buffer</span><div>Auto (currently 24 ms)</div></div>
+        </div>
+      </details>
+      <button class="chipbtn" style="align-self:flex-start">Disconnect</button>
+    </aside>
+  </div>
+</div>
+
+<div class="harness" aria-label="Prototype controls">
+  <span>Prototype</span>
+  <select id="scenario">
+    <option value="everyday">Everyday · 3 VDIs</option>
+    <option value="twocalls">Two calls at once</option>
+    <option value="problem">Problems: VDI issue, unstable, lost, offline</option>
+    <option value="four">Four VDIs + unknown peer</option>
+    <option value="connecting">Connecting</option>
+  </select>
+  <button id="view">Phone view</button>
+</div>
+
+<script>
+const COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
+const RAW = ['#9085e9', '#199e70', '#c98500', '#5fa8d3'];
+const SNAPS = [-1, -0.5, 0, 0.5, 1];
+const DIM_DB = -18;
+
+const SCENARIOS = {
+  everyday: { conn: 'ok', stations: [
+    { name: 'VDI-ACCT-07', pan: -0.5, level: 0, activity: .35, health: 'clear', lat: 32, loss: 0 },
+    { name: 'VDI-DEV-02', pan: 0, level: -6, activity: .15, health: 'clear', lat: 41, loss: 0 },
+    { name: 'VDI-QA-11', pan: 0.5, level: -3, activity: .05, health: 'clear', lat: 38, loss: 0.1 },
+  ]},
+  twocalls: { conn: 'ok', stations: [
+    { name: 'VDI-ACCT-07', pan: -1, level: 0, activity: .9, health: 'clear', lat: 32, loss: 0, solo: true },
+    { name: 'VDI-DEV-02', pan: 1, level: 0, activity: .85, health: 'clear', lat: 44, loss: 0 },
+    { name: 'VDI-QA-11', pan: 0, level: -6, activity: .1, health: 'clear', lat: 38, loss: 0, mute: true, talk: false },
+  ]},
+  problem: { conn: 'ok', stations: [
+    { name: 'VDI-ACCT-07', pan: -1, level: 0, activity: 0, health: 'clear', lat: 32, loss: 0,
+      issue: 'Input silent for 12 min. The loopback device on the VDI may be wrong or the VDI is muted.' },
+    { name: 'VDI-DEV-02', pan: 0, level: -6, activity: .5, health: 'unstable', lat: 148, loss: 3.2 },
+    { name: 'VDI-QA-11', pan: 0.5, level: -3, activity: 0, health: 'lost', lat: 0, loss: 0, lostFor: 12 },
+    { name: 'VDI-OPS-04', pan: 1, level: -3, activity: 0, health: 'offline', lat: 0, loss: 0, lastSeen: '09:12' },
+  ]},
+  four: { conn: 'ok', unknown: 'bob-laptop', stations: [
+    { name: 'VDI-ACCT-07', pan: -1, level: 0, activity: .3, health: 'clear', lat: 32, loss: 0 },
+    { name: 'VDI-DEV-02', pan: -0.5, level: -6, activity: .2, health: 'clear', lat: 41, loss: 0 },
+    { name: 'VDI-QA-11', pan: 0.5, level: -3, activity: .1, health: 'clear', lat: 38, loss: 0 },
+    { name: 'VDI-OPS-04', pan: 1, level: -3, activity: .45, health: 'clear', lat: 29, loss: 0 },
+  ]},
+  connecting: { conn: 'connecting', stations: [] },
+};
+
+let S; // app state
+let sel = 0;
+
+function load(key) {
+  const sc = SCENARIOS[key];
+  S = {
+    conn: sc.conn, unknown: sc.unknown || null,
+    mic: { mode: 'open', on: true, ptt: false, level: 0 },
+    master: 0,
+    stations: sc.stations.map((s, i) => ({
+      mute: false, solo: false, talk: true, ...s, i, color: COLORS[i], raw: RAW[i],
+      env: 0, hist: new Array(64).fill(0), burst: 0,
+    })),
+  };
+  sel = 0;
+  build();
+}
+
+/* ---------- derived state ---------- */
+const anySolo = () => S.stations.some(s => s.solo);
+const isDimmed = s => anySolo() && !s.solo && !s.mute;
+const transmitting = () => S.mic.mode === 'open' ? S.mic.on : S.mic.ptt;
+// Solo also narrows the mic: while any station is soloed, only soloed ones hear you.
+const soloHeld = s => anySolo() && !s.solo;
+const down = s => s.health === 'lost' || s.health === 'offline';
+const hears = s => s.talk && !down(s) && !soloHeld(s);
+const live = s => transmitting() && hears(s);
+const fieldX = v => `calc(var(--pad) + (100% - 2 * var(--pad)) * ${(v + 1) / 2})`;
+const panText = p => Math.abs(p) < 0.01 ? 'Centre' : (p < 0 ? 'L ' : 'R ') + Math.round(Math.abs(p) * 100);
+const dbText = d => (d > 0 ? '+' : d < 0 ? '−' : '') + Math.abs(d).toFixed(1) + ' dB';
+
+/* ---------- build ---------- */
+const $ = id => document.getElementById(id);
+const micIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const micOffIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.9 2.3M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18"/></svg>';
+
+function build() {
+  const st = $('stations'); st.innerHTML = '';
+  if (S.conn === 'connecting') {
+    for (let i = 0; i < 3; i++) st.insertAdjacentHTML('beforeend', '<div class="skel">Waiting for stations…</div>');
+  }
+  S.stations.forEach(s => {
+    const el = document.createElement('article');
+    el.className = 'station'; el.dataset.i = s.i;
+    el.innerHTML = `
+      <div class="shead">
+        <span class="sw" style="background:${s.color}"></span>
+        <span class="sname">${s.name}</span>
+        <span class="badges"></span>
+        <span class="spacer"></span>
+        <span class="health"></span>
+      </div>
+      <div class="issue" hidden></div>
+      <canvas class="wave"></canvas>
+      <div class="row"><span class="label">Place</span>
+        <div class="pan" role="radiogroup" aria-label="Placement for ${s.name}">
+          <span class="pk"></span>
+          ${SNAPS.map(v => `<button role="radio" data-p="${v}" aria-label="${panText(v)}">${v === -1 ? 'L' : v === 1 ? 'R' : v === 0 ? 'C' : '·'}</button>`).join('')}
+        </div>
+        <span class="val num pv"></span></div>
+      <div class="row"><span class="label">Level</span>
+        <input type="range" class="lvl" min="-40" max="6" step="0.5" aria-label="Level for ${s.name}">
+        <span class="val num lv"></span></div>
+      <div class="actions">
+        <button class="tog mute" aria-pressed="false">Mute <kbd>M</kbd></button>
+        <button class="tog solo" aria-pressed="false" title="Dims the others by 18 dB, and only soloed stations hear your mic">Solo <kbd>S</kbd></button>
+        <button class="tog talk" aria-pressed="true"></button>
+      </div>`;
+    el.addEventListener('pointerdown', () => { sel = s.i; refresh(); });
+    el.querySelectorAll('.pan button').forEach(b => b.onclick = () => { s.pan = +b.dataset.p; refresh(); });
+    const lvl = el.querySelector('.lvl');
+    lvl.value = s.level;
+    lvl.oninput = () => { s.level = +lvl.value; refresh(); };
+    lvl.ondblclick = () => { s.level = 0; lvl.value = 0; refresh(); };
+    el.querySelector('.mute').onclick = () => { s.mute = !s.mute; refresh(); };
+    el.querySelector('.solo').onclick = () => { s.solo = !s.solo; refresh(); };
+    el.querySelector('.talk').onclick = () => { if (!soloHeld(s)) { s.talk = !s.talk; refresh(); } };
+    st.appendChild(el);
+    s.el = el; s.canvas = el.querySelector('canvas');
+  });
+
+  // stage pucks
+  const f = $('field');
+  f.innerHTML = '<div class="axis"></div>' +
+    SNAPS.map(v => `<div class="tick ${v === 0 ? 'c' : ''}" style="left:${fieldX(v)}"></div>`).join('') +
+    '<span class="end" style="left:0">L</span><span class="end" style="right:0">R</span>';
+  S.stations.forEach(s => {
+    const p = document.createElement('div');
+    p.className = 'puck'; p.tabIndex = 0;
+    p.setAttribute('role', 'slider'); p.setAttribute('aria-label', `${s.name} placement`);
+    p.innerHTML = `<span class="sw" style="background:${s.color}"></span>${s.name.replace(/^VDI-/, '')}<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`;
+    dragPuck(p, s, f);
+    f.appendChild(p); s.puck = p;
+  });
+
+  $('notices').innerHTML = S.unknown ? `<div class="notice"><span class="dot" style="margin-top:6px"></span>
+    <div><b>${S.unknown}</b> joined the group without a role, so no audio is exchanged with it.
+    <span style="color:var(--ink3)">It's probably running stock SonoBus.</span></div></div>` : '';
+  refresh();
+}
+
+function dragPuck(p, s, f) {
+  p.addEventListener('pointerdown', e => {
+    e.preventDefault(); sel = s.i; p.setPointerCapture(e.pointerId); p.classList.add('dragging');
+    const move = ev => {
+      const r = f.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(f).getPropertyValue('--pad'));
+      let v = ((ev.clientX - r.left - pad) / (r.width - 2 * pad)) * 2 - 1;
+      v = Math.max(-1, Math.min(1, v));
+      const snap = SNAPS.find(x => Math.abs(x - v) < 0.07);
+      s.pan = snap !== undefined ? snap : Math.round(v * 100) / 100;
+      refresh();
+    };
+    const up = () => { p.classList.remove('dragging'); p.removeEventListener('pointermove', move); p.removeEventListener('pointerup', up); refresh(); };
+    p.addEventListener('pointermove', move); p.addEventListener('pointerup', up);
+    refresh();
+  });
+  p.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.stopPropagation(); e.preventDefault(); nudge(s, e.key === 'ArrowLeft' ? -1 : 1); }
+  });
+}
+
+function nudge(s, dir) {
+  if (dir > 0) s.pan = SNAPS.find(x => x > s.pan + 1e-6) ?? 1;
+  else s.pan = [...SNAPS].reverse().find(x => x < s.pan - 1e-6) ?? -1;
+  refresh();
+}
+
+/* ---------- refresh (state → DOM) ---------- */
+function refresh() {
+  const tx = transmitting();
+  // connection
+  const n = S.stations.filter(s => !down(s)).length;
+  $('conn').innerHTML = S.conn === 'connecting'
+    ? '<span class="dot warn pulse"></span>Connecting to <b style="color:var(--ink)">ops</b>…'
+    : `<span class="dot good"></span><span>Connected</span><span class="grp">· ops · ${n} of ${S.stations.length} stations</span>`;
+
+  // live band
+  const targets = S.stations.filter(hears);
+  const band = $('liveband');
+  band.classList.toggle('on', S.conn !== 'connecting' && (tx || S.mic.mode === 'open'));
+  band.classList.toggle('quiet', !(tx && targets.length));
+  $('livetext').textContent = !tx ? (S.mic.on ? '' : 'Mic off. No station hears you.')
+    : targets.length === 0 ? 'Mic open, but no station is set to hear you.'
+    : targets.length === S.stations.length ? `All ${targets.length} stations hear you`
+    : anySolo() && targets.length ? `Solo: only ${listNames(targets)} hear${targets.length === 1 ? 's' : ''} you`
+    : `${listNames(targets)} hear${targets.length === 1 ? 's' : ''} you · ${listNames(S.stations.filter(s => !hears(s)))} ${S.stations.length - targets.length === 1 ? "doesn't" : "don't"}`;
+  if (!tx && S.mic.mode === 'ptt') { band.classList.add('on', 'quiet'); $('livetext').textContent = 'Push to talk: hold the mic button or Space. Nobody hears you now.'; }
+
+  // stations
+  S.stations.forEach(s => {
+    const el = s.el;
+    el.classList.toggle('sel', s.i === sel);
+    el.classList.toggle('lost', down(s));
+    const badges = [];
+    if (s.mute) badges.push('<span class="badge muted">MUTED</span>');
+    else if (isDimmed(s)) badges.push(`<span class="badge dim">DIMMED ${DIM_DB}</span>`);
+    el.querySelector('.badges').innerHTML = badges.join(' ');
+    const h = el.querySelector('.health');
+    if (s.health === 'clear') { h.innerHTML = `<span class="dot good"></span>Clear <span class="num">${s.lat} ms</span>`; h.title = `Latency ${s.lat} ms · loss ${s.loss}% · buffer auto`; }
+    if (s.health === 'unstable') { h.innerHTML = `<span class="dot warn"></span>Unstable <span class="num">${s.lat} ms · ${s.loss}% loss</span>`; h.title = 'Audio may break up. The network buffer is growing to compensate.'; }
+    if (s.health === 'offline') { h.innerHTML = `<span class="dot"></span>Offline <span class="num">last seen ${s.lastSeen}</span>`; h.title = 'A station this Console knows, but not connected now. Its settings are remembered.'; }
+    const iss = el.querySelector('.issue');
+    iss.hidden = !s.issue; if (s.issue) iss.innerHTML = `<b>VDI reports:</b> ${s.issue}`;
+    if (s.health === 'lost') { h.innerHTML = `<span class="dot crit pulse"></span>Lost <span class="num">reconnecting ${s.lostFor}s</span>`; h.title = 'No audio from this station. Retrying automatically.'; }
+    el.querySelectorAll('.pan button').forEach(b => { const on = Math.abs(+b.dataset.p - s.pan) < 0.01; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    el.querySelector('.pk').style.left = `calc(${(s.pan + 1) / 2 * 80}% + 3px)`;
+    el.querySelector('.pv').textContent = panText(s.pan);
+    const lvl = el.querySelector('.lvl');
+    lvl.style.setProperty('--p', ((s.level + 40) / 46 * 100) + '%');
+    el.querySelector('.lv').textContent = dbText(s.level);
+    el.querySelector('.mute').setAttribute('aria-pressed', s.mute);
+    el.querySelector('.solo').setAttribute('aria-pressed', s.solo);
+    const t = el.querySelector('.talk');
+    const held = soloHeld(s) && s.talk;
+    t.setAttribute('aria-pressed', s.talk && !held);
+    t.classList.toggle('hot', live(s));
+    t.classList.toggle('held', held);
+    t.innerHTML = held ? micOffIcon + 'Paused by solo'
+      : s.health === 'offline' && s.talk ? micIcon + 'Will hear you'
+      : (s.talk ? micIcon + (live(s) ? 'Hears you' : 'Will hear you') : micOffIcon + "Doesn't hear") + ' <kbd>T</kbd>';
+    t.title = held ? 'Another station is soloed, so only it hears you. Un-solo to restore.'
+      : s.talk ? 'Click so this station stops hearing your mic' : 'Click so this station hears your mic';
+    // stage puck
+    const p = s.puck;
+    p.classList.toggle('dim', isDimmed(s)); p.classList.toggle('muted', s.mute);
+    p.classList.toggle('live', live(s)); p.classList.toggle('sel', s.i === sel);
+    p.setAttribute('aria-valuetext', panText(s.pan));
+  });
+  layoutPucks();
+
+  // mic
+  const mic = $('mic');
+  mic.classList.toggle('hot', tx && targets.length > 0);
+  mic.classList.toggle('open-idle', tx && targets.length === 0);
+  mic.setAttribute('aria-pressed', tx);
+  if (S.mic.mode === 'open') {
+    mic.innerHTML = (S.mic.on ? micIcon : micOffIcon) + `<span>${S.mic.on ? 'Mic live' : 'Mic off'}<span class="sub">${S.mic.on ? 'Click to turn off' : 'Click to open mic'}</span></span>`;
+  } else {
+    mic.innerHTML = (tx ? micIcon : micOffIcon) + `<span>${tx ? 'Talking…' : 'Hold to talk'}<span class="sub">${tx ? 'Release to stop' : 'or hold Space'}</span></span>`;
+  }
+  $('micmeter').classList.toggle('hot', tx && targets.length > 0);
+  $('modeOpen').classList.toggle('on', S.mic.mode === 'open');
+  $('modePtt').classList.toggle('on', S.mic.mode === 'ptt');
+  $('targets').innerHTML = S.stations.length === 0 ? '' :
+    targets.length === S.stations.length ? 'Talking to <b>all stations</b>'
+    : targets.length === 0 ? 'Talking to <b>nobody</b>' : `Talking to <b>${listNames(targets)}</b>`;
+  $('allTalk').style.display = S.stations.some(s => !s.talk) ? '' : 'none';
+  $('masterVal').textContent = dbText(S.master);
+  $('master').style.setProperty('--p', ((S.master + 40) / 46 * 100) + '%');
+}
+
+function listNames(arr) {
+  const n = arr.map(s => s.name.replace(/^VDI-/, ''));
+  return n.length <= 1 ? n.join('') : n.slice(0, -1).join(', ') + ' and ' + n.at(-1);
+}
+
+function layoutPucks() {
+  // stack pucks that share a spot into rows so names never overlap
+  const f = $('field'), pad = parseFloat(getComputedStyle(f).getPropertyValue('--pad')) || 0;
+  const px = v => (v + 1) / 2 * (f.clientWidth - 2 * pad);
+  const sorted = [...S.stations].sort((a, b) => a.pan - b.pan);
+  const rows = []; // right edge (px) of the last puck placed in each row
+  sorted.forEach(s => {
+    const half = (s.puck.offsetWidth || 90) / 2 + 6;
+    let r = 0;
+    while (rows[r] !== undefined && px(s.pan) - half < rows[r]) r++;
+    rows[r] = px(s.pan) + half; s.row = r;
+  });
+  const nRows = Math.max(1, rows.length);
+  S.stations.forEach(s => {
+    s.puck.style.left = fieldX(s.pan);
+    const y = nRows === 1 ? 50 : 22 + s.row * (56 / (nRows - 1));
+    s.puck.style.top = y + '%';
+  });
+}
+
+/* ---------- simulated audio ---------- */
+function tick() {
+  const tx = transmitting();
+  S.stations.forEach(s => {
+    // speech-like bursts
+    if (down(s)) s.env *= 0.8;
+    else {
+      if (s.burst <= 0 && Math.random() < s.activity * 0.08) s.burst = 20 + Math.random() * 60;
+      const target = s.burst > 0 ? (0.35 + Math.random() * 0.65) * (s.activity > .6 ? 1 : .8) : Math.random() * 0.04;
+      s.burst--;
+      s.env += (target - s.env) * 0.35;
+      if (s.health === 'unstable' && Math.random() < 0.12) s.env = 0;
+    }
+    s.hist.push(Math.min(1, s.env));
+    s.hist.shift();
+    drawWave(s);
+  });
+  // mic level
+  const m = tx ? (Math.random() < 0.1 ? 0.1 : 0.25 + Math.random() * 0.6) : 0;
+  S.mic.level += (m - S.mic.level) * 0.4;
+  $('micmeter').firstChild.style.width = (S.mic.level * 100) + '%';
+}
+
+function drawWave(s) {
+  const c = s.canvas, dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const n = s.hist.length, bw = w / n;
+  // Activity shows what the station is sending (pre-fader), so a dimmed or
+  // muted call that starts talking is still noticed. Mute/dim lower emphasis.
+  const lost = down(s);
+  g.fillStyle = lost ? '#4a4e4b' : s.raw;
+  g.globalAlpha = lost ? 0.5 : s.mute ? 0.18 : isDimmed(s) ? 0.4 : 0.9;
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(0.02, s.hist[i]);
+    const bh = v * (h - 6);
+    g.fillRect(i * bw + 1, (h - bh) / 2, Math.max(1, bw - 2), bh);
+  }
+  if (s.mute) { g.globalAlpha = 1; g.fillStyle = '#a8a69d'; g.font = '600 11px ' + getComputedStyle(document.body).fontFamily; g.textAlign = 'center'; g.fillText('Muted', w / 2, h / 2 + 4); }
+  if (lost) { g.globalAlpha = 1; g.fillStyle = '#a8a69d'; g.font = '600 11px ' + getComputedStyle(document.body).fontFamily; g.textAlign = 'center'; g.fillText(s.health === 'offline' ? 'Not connected' : s.issue ? '' : 'No audio', w / 2, h / 2 + 4); }
+}
+
+/* ---------- global controls ---------- */
+$('mic').addEventListener('click', () => { if (S.mic.mode === 'open') { S.mic.on = !S.mic.on; refresh(); } });
+$('mic').addEventListener('pointerdown', () => { if (S.mic.mode === 'ptt') { S.mic.ptt = true; refresh(); } });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('mic').addEventListener(ev, () => { if (S.mic.ptt) { S.mic.ptt = false; refresh(); } }));
+$('modeOpen').onclick = () => { S.mic.mode = 'open'; refresh(); };
+$('modePtt').onclick = () => { S.mic.mode = 'ptt'; S.mic.ptt = false; refresh(); };
+$('allTalk').onclick = () => { S.stations.forEach(s => s.talk = true); refresh(); };
+$('master').oninput = e => { S.master = +e.target.value; refresh(); };
+$('spread').onclick = () => {
+  const k = S.stations.length;
+  S.stations.forEach((s, i) => s.pan = k === 1 ? 0 : Math.round((-1 + 2 * i / (k - 1)) * 100) / 100);
+  refresh();
+};
+$('center').onclick = () => { S.stations.forEach(s => s.pan = 0); refresh(); };
+$('openSettings').onclick = () => $('app').classList.add('settings');
+$('closeSettings').onclick = $('scrim').onclick = () => $('app').classList.remove('settings');
+$('scenario').onchange = e => load(e.target.value);
+$('view').onclick = () => {
+  const ph = $('wrap').classList.toggle('phone');
+  $('view').textContent = ph ? 'Desktop view' : 'Phone view';
+  refresh();
+};
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select')) return;
+  const s = S.stations[sel];
+  if (/^[1-4]$/.test(e.key) && S.stations[+e.key - 1]) { sel = +e.key - 1; refresh(); return; }
+  if (e.key === '`') { S.mic.on = !S.mic.on; refresh(); return; }
+  if (e.key === ' ' && S.mic.mode === 'ptt') { e.preventDefault(); if (!S.mic.ptt) { S.mic.ptt = true; refresh(); } return; }
+  if (!s) return;
+  const k = e.key.toLowerCase();
+  if (k === 'm') s.mute = !s.mute;
+  else if (k === 's') s.solo = !s.solo;
+  else if (k === 't') { if (!soloHeld(s)) s.talk = !s.talk; }
+  else if (e.key === 'ArrowLeft') return nudge(s, -1);
+  else if (e.key === 'ArrowRight') return nudge(s, 1);
+  else return;
+  refresh();
+});
+document.addEventListener('keyup', e => { if (e.key === ' ' && S.mic.ptt) { S.mic.ptt = false; refresh(); } });
+
+const q = new URLSearchParams(location.search);
+const sc0 = SCENARIOS[q.get('scenario')] ? q.get('scenario') : 'everyday';
+$('scenario').value = sc0;
+if (q.get('view') === 'phone') { $('wrap').classList.add('phone'); $('view').textContent = 'Desktop view'; }
+load(sc0);
+window.addEventListener('resize', layoutPucks);
+setInterval(tick, 50);
+</script>
+</body>
+</html>

@@ -75,7 +75,20 @@ because it is part of the public upstream story; nothing links to it.
 
 ## Building
 
-Desktop (Linux shown; macOS/Windows identical apart from toolchain):
+One command builds the desktop app and the connection server on macOS or
+Linux (macOS needs only the Command Line Tools plus `brew install cmake`; Xcode
+is not required):
+
+```bash
+scripts/build-desktop.sh            # Release, native arch -> build/desktop-release, build/aooserver-release
+scripts/build-desktop.sh --help     # --debug, --app-only, --server-only, --universal, --plugins
+```
+
+On Linux, install the prerequisites first (`sonobus/linux/deb_get_prereqs.sh`
+or `fedora_get_prereqs.sh`). `aooserver` builds via `aooserver/CMakeLists.txt`,
+which mirrors its Projucer Linux makefile.
+
+Upstream's own route also still works, desktop (Linux shown):
 
 ```bash
 cd sonobus/linux

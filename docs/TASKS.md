@@ -1,0 +1,882 @@
+# Task list — VDI remote audio
+
+The work queue for [ROADMAP.md](ROADMAP.md), in dependency order. Task IDs match
+the roadmap items, plus `F*` foundation tasks that unblock verification.
+**This file is the source of truth for task status**; the roadmap tracks phases.
+
+## How to work a task (humans and agents)
+
+1. **Pick** the first task in the [index](#index) whose status is `todo`, whose
+   `Depends on` tasks are all `done`, and that is not marked `human` or waiting
+   on an open question (`Q*` in the roadmap). Several tasks can be ready at once;
+   check the **Touches** line to avoid two people editing the same files.
+2. **Claim** it: set Status to `wip` and Owner to your name/agent id, on a branch
+   named `task/<ID>-<slug>` (e.g. `task/P1.2-role-peerinfo`).
+3. **Do only that task.** If you find more work, add a new task card at the
+   right place in dependency order (next free ID in that phase) instead of
+   widening scope.
+4. **Verify** against the task's *Done when* criteria. Every code task must at
+   least build (`F1`) and, from P1 on, pass the routing harness (`F2`).
+5. **Close** in the same PR: Status `done`, a one-line *Result* note (what
+   changed, anything surprising), commit messages prefixed with the ID:
+   `feat(roles): advertise role in peer info (P1.2)`.
+6. If blocked, set Status `blocked` and say why in *Result*.
+
+Status: `todo` · `wip` · `done` · `blocked` · `deferred`
+Size: S ≤ 0.5 d · M ≤ 2 d · L ≤ 5 d
+
+**Who:**
+- `any`: any agent or person can take it.
+- `human`: needs physical access (a VDI, a phone, listening by ear).
+- `design`: **owned by Claude, the lead/design session. Never delegated to
+  helper agents.**
+- `any + design review`: anyone can implement it, but it is only `done`
+  after Claude has reviewed the result (screenshots or a running build)
+  against the UX4 spec and approved it in the PR.
+
+## Design ownership
+
+All user-experience and visual design for this project is done by Claude
+(lead session). That means the UX1–UX4 tasks, plus approval of every task
+marked `design review`. The new UI is **designed from scratch for the VDI
+remote-audio purpose**. It is not a re-skin or a rearrangement of the SonoBus
+editor, and no SonoBus layout, control or panel carries over unless the UX
+spec says so. The ASCII sketch in the earlier discussion was only a
+feasibility illustration; it is not the design.
+
+Rules for implementers:
+- Build to the UX4 spec and prototype. Do not invent layout, controls,
+  copy, colours or interactions.
+- If the spec is missing something or can't be built as drawn, stop and add
+  a question to the task's *Result* (status `blocked`). Do not improvise.
+- `docs/design/` (Maia Mission Control palette) is an input to UX1. The UX4
+  spec supersedes it wherever they differ.
+
+## Index
+
+Ordered so that every task appears after everything it depends on.
+
+| ID | Task | Depends on | Size | Who | Status | Owner |
+|---|---|---|---|---|---|---|
+| F1 | Reproducible desktop build script (macOS + Linux) | — | S | any | done | Claude |
+| UX1 | Design brief: purpose, contexts, principles | — | S | design | done | Claude |
+| UX2 | Console experience design + interactive prototype | UX1 | L | design | wip | Claude |
+| UX3 | VDI agent experience design + prototype | UX1 | M | design | wip | Claude |
+| UX4 | Design spec + component kit for implementers | UX2, UX3 | M | design | todo | Claude |
+| P0.1 | Stock SonoBus on a VDI, join group from Mac | — | S | human | done | maelo |
+| P0.2 | Identify network path peers use (VPN vs internet) | P0.1 | S | human | done | maelo |
+| P0.3 | Wire VDI virtual devices, verify audio both ways | P0.1 | S | human | done | maelo |
+| P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
+| F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
+| P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
+| P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
+| P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
+| P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | todo | |
+| P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | todo | |
+| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4, Q3 | S | any | todo | |
+| P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | todo | |
+| P2.2 | Vendor a YAML parser | F1 | S | any | todo | |
+| P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | todo | |
+| P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | todo | |
+| P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
+| P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
+| P2.5 | Run as a service (Windows / systemd) | P2.4, Q1 | M | any | todo | |
+| P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
+| P2.10 | Packages per VDI OS | P2.5, Q1 | M | any | todo | |
+| P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | todo | |
+| P3.1 | Remove metronome | P1.4 | M | any | todo | |
+| P3.2 | Remove soundboard | P1.4 | M | any | todo | |
+| P3.3 | Remove chat | P1.4 | S | any | todo | |
+| P3.4 | Remove file playback + recording UI (keep recording engine) | P1.4 | M | any | todo | |
+| P3.5 | Remove monitor faders / input monitoring UI | P2.3 | S | any | todo | |
+| P3.6 | Remove latency match, beat grid, other jam options | P3.1 | M | any | todo | |
+| P3.7 | Trim effects to what UX2 specifies | P3.5, UX2 | S | any | todo | |
+| P3.8 | Move jitter/codec settings to where UX2 places them | P3.7 | S | any | todo | |
+| P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | todo | |
+| P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | todo | |
+| P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | todo | |
+| P4.2 | State snapshot + change events | P4.1 | M | any | todo | |
+| P4.3 | Meters stream | P4.1 | S | any | todo | |
+| P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
+| P2.6 | VDI agent web UI on localhost (D10), an occasional repair tool (D11) | P5.1, P4.2, P4.4, P2.3 | M | any + design review | deferred | |
+| P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | todo | |
+| P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | todo | |
+| P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | todo | |
+| P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | todo | |
+| P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | todo | |
+| P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
+| P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
+| P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | todo | |
+| P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | todo | |
+| P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
+| P7.4 | HTTPS with trusted cert | P7.2, Q4 | S | any | todo | |
+| P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
+| P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
+| P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
+| P8.1 | Dockerfile for `aooserver/` | F1 | S | any | deferred | |
+| P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | deferred | |
+| P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | deferred | |
+| P8.4 | Verify peers use VPN IPs | P8.3 | S | human | deferred | |
+| P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
+| P9.2 | Native Android Console (was P6.2–P6.4) | P5.6 | L | any | deferred | |
+| P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
+| P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
+| P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
+| P10.3 | UX addendum: recording + recaps | UX4 | M | design | deferred | Claude |
+| P10.6 | Storage, retention, privacy (Q7, Q8) | P10.1 | S | any | deferred | |
+| P10.4 | Transcription pipeline (external ASR) | P10.2, P10.6, Q7 | L | any | deferred | |
+| P10.5 | Meeting recap generation (external model) | P10.4 | M | any | deferred | |
+
+**Parallel tracks:** UX1–UX4 run from day one, alongside F1/F2/P1. Once P1.4
+is done: P2 (config/agent) · P3 (removal) · P4 (API). Mobile is the PWA
+(P7.7); native Android/iOS are deferred to P9 (D9). P3 tasks all touch `SonobusPluginEditor.cpp`, so run
+them one at a time.
+
+---
+
+## Foundation
+
+### F1 — Reproducible desktop build script
+- **Depends on:** — · **Size:** S · **Touches:** `scripts/` (new), `README.md`
+- **Why:** every later task must prove it builds; agents need one command.
+- **Do:** add `scripts/build-desktop.sh` that configures and builds
+  `sonobus/` with CMake (Release, out-of-tree dir `build/desktop`) on macOS and
+  Linux, using the hoisted `../juce` and `../aoo`. Same for `aooserver`
+  (`aooserver/Builds/LinuxMakefile` on Linux; macOS via its Xcode or CMake
+  equivalent — document what works). Print the binary paths at the end.
+- **Done when:** a clean checkout builds both binaries with one command on
+  macOS; README "Building" points to the script.
+- **Result:** `scripts/build-desktop.sh` (flags: `--debug`, `--app-only`,
+  `--server-only`, `--universal`, `--plugins`); outputs in
+  `build/desktop-<cfg>` and `build/aooserver-<cfg>`. New
+  `aooserver/CMakeLists.txt` mirrors the Linux Projucer makefile, so the
+  server builds on macOS without Xcode. Gotcha: JUCE's `juceaide` sub-build
+  ignores SonoBus's deployment target and fails on the macOS 15+ SDK
+  (`CGWindowListCreateImage` obsoleted); the script exports
+  `MACOSX_DEPLOYMENT_TARGET=11.0` to fix it. Verified on macOS 26 / arm64
+  (Command Line Tools only, CMake 4.4, ninja): app 189/189 linked,
+  `--version` → 1.7.2; aooserver listens on TCP+UDP. **Linux not yet run
+  through the script**; the app's Linux build is proven by `docker/`, but the
+  new aooserver CMake on Linux is untested.
+
+### F2 — Local multi-peer test harness
+- **Depends on:** F1 · **Size:** M · **Touches:** `scripts/` or `tests/` (new); may add a debug flag in `SonoStandaloneFilterApp.cpp`
+- **Why:** agents can't listen. Routing must be checked by a machine.
+- **Do:** a script that starts a local `aooserver` and N SonoBus instances
+  with `--headless --group test --server localhost:<port>` (and `--role` once
+  P1.1 exists), with distinct usernames. Add a debug output (e.g.
+  `--dump-peers <file>` written every second, or a log line) listing, per
+  remote peer: name, role, send-allowed, recv-allowed, receiving-audio. The
+  script waits for the group to settle, then compares that against an
+  expected matrix and exits non-zero on mismatch. Must run without real audio
+  devices (null/dummy device; check what headless mode does on macOS/Linux).
+- **Done when:** with stock behaviour (no roles), 3 peers report full mesh and
+  the script passes against a "full mesh" expectation.
+- **Result:** `tests/f2/` — `run.sh` (orchestrator: build check, free TCP+UDP
+  port, aooserver, N peers, settle, evaluate, teardown), `evaluate.py` (the
+  routing-matrix model + defensive dump parsing, usable standalone),
+  `scenarios.json` (5 scenarios), `fake-peer.sh` (stub + fault injection),
+  `ports.py`, `test-evaluate.sh`, `README.md`. Engine side: new
+  `--dump-peers <file>` writes an atomic JSON peer snapshot (name, role,
+  hasRole, sendAllow, recvAllow, sendActive, recvActive, receivingAudio) once a
+  second. Exit codes: 0 match, 1 mismatch, 2 usage/config error.
+  **Verified on macOS against the real binary:** `mesh-stock`,
+  `blocked-unknown`, `matrix-1v1`, `matrix-2v2` all pass (exit 0);
+  `evaluate.py` passes 67/67 unit assertions; injected faults exit 1; 3/3
+  repeat runs stable; teardown leaks no processes (no `pkill`/`killall` — every
+  PID is verified via its `lsof` cwd against the run dir). Runs headless with
+  no audio device contention: 4 concurrent peers (max planned scale) fine.
+  Gotchas worth knowing: (1) on macOS JUCE resolves its settings dir via
+  `NSHomeDirectory()`, which **ignores `$HOME`** — peers must be isolated with
+  `CFFIXED_USER_HOME`, else every peer loads the user's real settings
+  (`reconnectlast=1.0`) and fails with `login failed: access denied`;
+  (2) `--dump-peers` had to work around JUCE's `ArgumentList` reading a long
+  option's value only in `--opt=value` form; both forms work now.
+  Caveat: the real app reports `connected` asymmetrically/unstably (it tracks
+  AOO invite timing, not routing), so the harness asserts presence + booleans
+  by default; `--require-connected` opts in.
+  **Linux not yet run** (F2's card asks for it).
+
+## UX — Experience design (Claude only)
+
+Location: `docs/design/` (spec, decisions) and `design/prototypes/` (HTML
+prototypes). Every UX task ends with my review and approval before dependants
+start.
+
+### UX1 — Design brief
+- **Depends on:** — · **Size:** S · **Who:** design (Claude)
+- **Do:** write `docs/design/brief.md`. It covers: what the product is now (a
+  two-way audio link to VDIs, not a jam session), who uses it and where (Mac
+  at a desk, phone on the move, browser on any machine), the jobs to be done
+  (hear several VDIs, pick out one, talk to one or all, know at a glance
+  that each link is healthy), what is explicitly out of scope, and the design
+  principles. Review the Maia palette and decide what to keep.
+- **Inputs:** mesh topology (ROADMAP D8). Scale is 3 VDIs, at most 4, so
+  design for a handful of always-visible channels, not a scrolling list.
+- **Done when:** I have approved the brief.
+- **Result:** `docs/design/brief.md`. Reviewed by maelo on 2026-10-09: open mic
+  to all by default with per-station toggles, solo dims, global PTT hotkey in
+  scope (P6.5), menu-bar panel deferred (P9.1). Key use case added: two calls
+  at once.
+
+### UX2 — Console experience design + prototype
+- **Depends on:** UX1 · **Size:** L · **Who:** design (Claude)
+- **Do:** design the Console from scratch: information architecture, mixer
+  interaction (volume, pan, mute, solo, talk), talk-back model (per Q3),
+  health and latency display, connection/onboarding flow, empty, error,
+  degraded and unknown-peer states, keyboard shortcuts / push-to-talk,
+  desktop and phone layouts. Deliver a clickable HTML prototype on mock data
+  in `design/prototypes/console/`, plus a list of everything the UI needs
+  from the engine (input to P4.5).
+- **Done when:** I've reviewed and approved the prototype; open design
+  questions are resolved.
+- **Result:** (in progress) first prototype at
+  `design/prototypes/console/index.html`, opened locally. URL params:
+  `?scenario=everyday|twocalls|problem|four|connecting&view=phone`. Awaiting
+  maelo's feedback; the engine-needs list and VDI-side states are still to do.
+  Update (D11): the Console shows VDI-reported issues ("VDI reports: …",
+  from P1.7) and remembered stations that are offline ("Offline · last seen
+  09:12"). Health moved under the station name so names never truncate with
+  4 stations. See `?scenario=problem`.
+
+### UX3 — VDI agent experience design + prototype
+- **Depends on:** UX1 · **Size:** M · **Who:** design (Claude)
+- **Do:** design the VDI side: mostly unattended, so focus on at-a-glance
+  status, tray/menu-bar presence, config errors (bad device, wrong
+  password), reconnecting state, and the few actions it allows: reload
+  config, mute send, and **pick input and output devices** (brief job 9: live
+  level per device, save to YAML, picker offered when a configured device is
+  missing). Clickable prototype in `design/prototypes/vdi/`.
+- **Done when:** I've reviewed and approved the prototype.
+- **Result:** (in progress) prototype at `design/prototypes/vdi/index.html`
+  Note (D10): the tray mock is Windows-styled. On Linux the tray is optional
+  and the localhost web UI plus notifications are the primary surface; UX4
+  must specify both, and specify the agent UI as a browser page.
+  (`?scenario=listening|talking|waiting|paused|reconnecting|password|nodevice`):
+  agent window plus tray icon/menu with 5 badge states. Rules introduced:
+  the send meter is coloured only when audio is really sent and grey when the
+  level is local only; inputs are verified by live level, outputs by test tone;
+  errors embed their fix (picker, open config). Device names are Windows-style
+  placeholders until Q1 is answered. Awaiting maelo's feedback.
+
+### UX4 — Design spec + component kit
+- **Depends on:** UX2, UX3 · **Size:** M · **Who:** design (Claude)
+- **Do:** turn the approved prototypes into an implementation spec in
+  `docs/design/spec.md`: tokens (`tokens.json` updated), components with all
+  their states, layout grids and breakpoints, motion, copy, accessibility
+  (contrast, focus, touch targets, screen-reader labels), and notes for
+  building the VDI UI in JUCE vs the Console in HTML. The prototype's
+  HTML/CSS is the starting code for P5.1.
+- **Done when:** an implementer can build P2.6 and P5.x without asking design
+  questions.
+- **Result:**
+
+## P0 — Validation spike (human)
+
+### P0.1 — Stock SonoBus on a VDI, join group from Mac
+- **Depends on:** — · **Size:** S · **Who:** human
+- **Do:** install upstream SonoBus 1.7.2 on one VDI. Both VDI and Mac join the
+  same private group with a password on `aoo.sonobus.net`.
+- **Done when:** both see each other in the peer list.
+- **Result:** already a daily-use setup: stock SonoBus between Mac and VDI.
+
+### P0.2 — Identify network path
+- **Depends on:** P0.1 · **Size:** S · **Who:** human
+- **Do:** `lsof` is not enough: AOO uses unconnected UDP sockets, so it only
+  shows local listeners (`*:<port>`), never the remote peer. Instead:
+  1. Note the VPN interface and range: `ifconfig | grep -B3 'inet 10\.\|inet 172\.\|inet 100\.'`
+     (VPN is usually a `utunN` interface on macOS).
+  2. While audio is flowing, capture SonoBus's UDP ports (from `lsof`) on all
+     interfaces: `sudo tcpdump -ni any -c 40 'udp and (port <p1> or port <p2>)'`.
+  3. Read the remote IPs and the interface: VPN range/`utunN` → audio is on
+     the VPN; public IP on `en0` → audio goes over the internet.
+- **Done when:** path written in *Result*.
+- **Result:** skipped by decision. The current daily setup (VDIs → Ubuntu
+  Studio/Carla hub → Mac, all on private VPN IPs) works, which is enough.
+  Assumption carried forward: every device can reach every other over the
+  VPN. If a direct VDI → Console link fails during P1 testing, revisit this
+  and P8.
+
+### P0.3 — Wire VDI virtual devices
+- **Depends on:** P0.1 · **Size:** S · **Who:** human
+- **Do:** VDI SonoBus input = loopback device, output = virtual mic device.
+  Play audio on the VDI → hear it on the Mac. Speak on the Mac → appears on
+  the VDI virtual mic (check with a recorder app on the VDI).
+- **Done when:** both directions confirmed; device names recorded (needed for
+  P2.7's example YAML).
+- **Result:** done, part of the daily setup. Still to record: VDI device names (for P2.7) and VDI OS (Q1).
+
+### P0.4 — Record findings
+- **Depends on:** P0.2, P0.3 · **Size:** S · **Who:** human
+- **Do:** add a "P0 findings" note to ROADMAP.md: path, latency shown in
+  SonoBus, dropouts, VDI OS (answers Q1). If audio went over the internet or
+  failed, move P8 out of `deferred`.
+- **Result:** P0 closed. Network is proven by daily use; P8 stays
+  deferred. New finding: an existing Carla hub (see ROADMAP "Current setup")
+  raised Q5, resolved as D8: mesh, no hub. VDI OS (Q1) and device names are still to record.
+
+## P1 — Roles and routing
+
+Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
+`sonobus/Source/SonoStandaloneFilterApp.cpp`.
+
+### P1.1 — `Role` enum + CLI flag
+- **Depends on:** F1 · **Size:** S
+- **Do:** `enum class PeerRole { Unknown, VDI, Console }` on the processor with
+  get/set; persisted in the processor state. Add `--role vdi|console` CLI
+  option next to `--group` / `--headless`. Default for now: `Console`.
+- **Done when:** builds; `--role vdi` is reflected in a debug log at startup.
+- **Result:** `enum class PeerRole { Unknown, VDI, Console }` on the processor
+  (`SonobusPluginProcessor.h`), with `getRole`/`setRole`, `peerRoleToString` /
+  `peerRoleFromString`, and `std::atomic<PeerRole> mRole { Console }` (atomic
+  because it is written from the message thread and read from the network
+  thread). Persisted in the saved state as `ExtraState/Role` and restored on
+  load. New `--role vdi|console` CLI option, case-insensitive, with a clear
+  error and exit for a bad or missing value; `--role=vdi` also accepted.
+  `setRole()` writes a plain `std::cerr` line as well as `DBG`, because DBG is
+  compiled out of release builds — so `--role vdi` really does show at startup
+  in the shipped binary. Verified: `SonoBus role: vdi` on stderr; and with the
+  role injected into a saved state only (no `--role`), the peer reports
+  `selfRole: vdi`, i.e. persistence works both ways. Gotcha: role is applied
+  as soon as the processor exists, **before** connect/join, so the first
+  peer-info advertisement is already correct.
+
+### P1.2 — Role in peer-info JSON
+- **Depends on:** P1.1 · **Size:** S
+- **Do:** in `sendRemotePeerInfoUpdate` add `info->setProperty("role", ...)`.
+  In `handleRemotePeerInfoUpdate` read it and store on `RemotePeer` (new
+  field, default `Unknown`). Make sure info is sent on peer join (check when
+  it's currently sent; add a send on connect if needed). Include it in F2's
+  dump output.
+- **Done when:** F2 dump shows each peer's correct remote role.
+- **Result:** `sendRemotePeerInfoUpdate` sets `info->setProperty("role", …)`;
+  `handleRemotePeerInfoUpdate` parses it onto `RemotePeer::remoteRole` (+ a
+  `hasRemoteRole` flag), default `Unknown`, and an absent key leaves it
+  `Unknown` (so stock SonoBus peers stay unknown). Info is sent on peer join
+  via `connectRemotePeer` / `connectRemotePeerRaw`, and again on the first ping
+  (`haveSentFirstPeerInfo`), so no extra send was needed. Included in the F2
+  dump as `role` + `hasRole`. Verified with the harness: a console peer reports
+  `{"name":"v2","role":"vdi","hasRole":true}`; a peer started with
+  `SONOBUS_NO_ROLE_ADVERT=1` is reported as `{"role":"unknown","hasRole":false}`.
+  Note: peer-info and ping go through `sendPeerMessage` → `endpoint_send`,
+  which is **not** gated by the allow flags — that is what lets roles be
+  exchanged while peers are blocked (P1.3).
+
+### P1.3 — New peers start blocked
+- **Depends on:** P1.2 · **Size:** S
+- **Do:** when a `RemotePeer` is created, call `setRemotePeerSendAllow(false)`
+  and `setRemotePeerRecvAllow(false)` (or set the underlying fields directly)
+  until its role is known.
+- **Done when:** F2 shows peers blocked before info arrives (temporarily
+  disable the role-arrival step to observe it, or log the transitions).
+- **Result:** a new `RemotePeer` is created with `sendAllow = false` and
+  `recvAllow = false`, and `connectRemotePeer` / `connectRemotePeerRaw` no
+  longer open recv or start the source at invite time. **Important addition:**
+  a plain flag pair was not enough — two paths silently re-opened a blocked
+  peer, so `RemotePeer::roleBlocked` now gates them: (1) the global send/recv
+  mute handlers, which on un-mute restore the cached value and go through
+  `setRemotePeerSendActive`, and (2) the *automatic* mute→unmute dance that
+  `prepareToPlay`/`processBlock` trigger on a sample-rate or block-size change
+  (`mNeedsSampleSetup`). Both `setRemotePeerSendActive` and
+  `setRemotePeerRecvActive` now refuse to open a `roleBlocked` peer, whatever
+  asks. P1.4 is expected to clear `roleBlocked` when it applies the matrix.
+  Verified: with 1 console + 1 vdi, both peers stay
+  `sendAllow=false recvAllow=false` for a 39 s soak with no flips; and every
+  role in the F2 dump is `unknown`/blocked until P1.4 exists, which is the
+  intended intermediate state. Two env-var hatches for testing the pre-roles and
+  unknown-peer cases against this same build: `SONOBUS_NO_ROLE_BLOCK=1`
+  (new peers start open, pre-P1.3 behaviour) and `SONOBUS_NO_ROLE_ADVERT=1`
+  (advertise no role at all). Both verified: the first gives a true full mesh
+  (all `sendAllow`/`recvAllow` true, 3 peers), the second makes a peer appear
+  as `unknown` and blocked.
+
+### P1.4 — Apply routing matrix
+- **Depends on:** P1.3, F2 · **Size:** M
+- **Do:** on role arrival (and if our own role changes), for each peer:
+  opposite role → allow send + recv; same role → block both. Handle a peer
+  changing role. Add F2 scenario: 2 Consoles + 2 VDIs, expected matrix per
+  ROADMAP.
+- **Done when:** F2 passes for the 2+2 scenario, and for 1+1.
+- **Result:** *Not done — this is now the critical-path task.* F2, P1.1, P1.2
+  and P1.3 are `done`, so P1.4 is unblocked and everything else in P1/P2/P4/P7
+  waits on it. **Until it lands the engine passes no audio at all in the
+  default configuration**: P1.3 blocks every new peer, and only P1.4 opens the
+  console↔vdi paths. Do not cut over to daily use before this. Start here:
+  `RemotePeer::roleBlocked` (in `SonobusPluginProcessor.cpp`) is the single gate
+  to clear once the matrix decision is made for a peer — it is already honoured
+  by `setRemotePeerSendActive` / `setRemotePeerRecvActive`, so clearing it and
+  applying the allow flags is sufficient and no other open path needs patching.
+  F2 is ready and already encodes this: `matrix-1v1` / `matrix-2v2` currently
+  expect all-blocked and print the matrix target separately, and
+  `matrix-target-check` is designed to **fail until this task is done** (it is
+  the acceptance test). Also note: when our own role changes, the matrix must
+  be re-applied to every peer, and `setRole` is where that hook belongs.
+
+### P1.6 — Role-less peers
+- **Depends on:** P1.4 · **Size:** S
+- **Do:** peers that never send a role (stock SonoBus) stay blocked; expose
+  "unknown" role so UIs can show them greyed out. F2 scenario with one peer
+  started without `--role` (or an env var forcing old behaviour).
+- **Done when:** F2 passes with an unknown peer present.
+- **Result:**
+
+### P1.7 — VDI agent health in peer info · S
+- **Depends on:** P1.2
+- **Do:** VDI peers add an `agent` object to their peer-info JSON, re-sent
+  on every change: `input` (`ok` | `missing` | `silent`, where silent means
+  no signal above −60 dBFS for N minutes, default 10), `output` (`ok` |
+  `missing`), `paused` (bool), `config_error` (string or null). Consoles
+  parse it into the peer state (exposed later through P4.2) so the Console
+  card can show "VDI reports: …" (UX2).
+- **Done when:** F2 scenario: start a VDI peer with a missing input device;
+  the Console peer's dump shows `input: missing`.
+- **Result:**
+
+### P1.5 — Per-VDI talk toggle
+- **Depends on:** P1.4, **Q3** · **Size:** S
+- **Do:** on a Console, a per-peer `talk` flag (default per Q3 answer) that
+  gates Console → that VDI send. Keep it separate from the routing matrix so
+  the matrix still wins (talk can't open a blocked path). **Solo narrows
+  talk:** while any VDI is soloed, Console → VDI send goes only to soloed
+  VDIs, whatever their talk flag says; the talk flags are kept and restored
+  on un-solo. Solo also dims (not cuts) the other VDIs' playback by a
+  configurable amount, default −18 dB.
+- **Done when:** F2 scenarios: (a) Console talking to VDI-A only → VDI-B
+  recv-audio false; (b) all talk on, VDI-A soloed → only VDI-A receives the
+  mic; un-solo → all receive again.
+- **Result:**
+
+## P2 — VDI agent mode
+
+### P2.2 — Vendor a YAML parser
+- **Depends on:** F1 · **Size:** S · **Touches:** `sonobus/deps/`, `sonobus/CMakeLists.txt`
+- **Do:** vendor a small header-friendly parser (prefer `rapidyaml`
+  single-header, or `yaml-cpp`); wire into CMake for desktop builds. Android
+  is not required (VDI role is desktop-only).
+- **Done when:** builds on macOS and Linux with a trivial parse in a test or
+  startup debug path.
+- **Result:**
+
+### P2.1 — `--config` loader
+- **Depends on:** P1.1, P2.2 · **Size:** M · **Touches:** `SonoStandaloneFilterApp.cpp`, new `Config.{h,cpp}`
+- **Do:** `--config path.yaml` with keys: `server`, `group`, `password`,
+  `username`, `role`, `audio.input_device`, `audio.output_device`,
+  `audio.sample_rate`, `audio.buffer`, `codec` (opus/pcm + bitrate).
+  CLI flags override YAML. Fail with a clear message on unknown keys or
+  missing devices (list the available device names).
+  **Write-back:** a `Config::save()` that updates `audio.input_device` /
+  `audio.output_device` in the YAML when changed from the agent UI (P2.6).
+  It must keep the file's comments and key order (edit in place, don't
+  re-serialise everything) and write atomically (temp file + rename).
+- **Done when:** F2 can start peers from YAML files instead of flags.
+- **Result:**
+
+### P2.7 — Example YAML + docs
+- **Depends on:** P2.1 · **Size:** S · **Touches:** `docs/`, `sonobus/vdi.example.yaml`
+- **Do:** commented example using device names from P0.3 if available.
+- **Result:**
+
+### P2.3 — VDI role locks
+- **Depends on:** P1.4, P2.1 · **Size:** S
+- **Do:** when role is VDI: send channels forced to 1 (mono), input monitor
+  gains forced to 0 and ignored if set, Console-only features disabled.
+- **Done when:** F2 dump/log shows mono send and zero monitor for VDI peers.
+- **Result:**
+
+### P2.4 — Auto-connect + reconnect
+- **Depends on:** P2.1 · **Size:** M
+- **Do:** connect on launch from config; on server disconnect or audio device
+  loss, retry with exponential backoff (cap ~30 s), logging each attempt.
+- **Done when:** F2 variant: kill and restart the local `aooserver`; the peer
+  rejoins without intervention.
+- **Result:**
+
+### P2.6 — VDI agent web UI on localhost · deferred
+Deferred (D11): day to day the YAML is the only source and problems show on
+the Console. Kept as an occasional repair tool (status, device pickers).
+- **Depends on:** P5.1 (shared UI scaffold), P4.2 + P4.4 (state and commands), P2.3 · **Size:** M · **Who:** any + design review · **Touches:** `console-ui/` (agent view), engine static-file serving
+- **Do:** per ROADMAP D10, the agent has no native window. It serves an HTML
+  page on `http://localhost:<port>` (bound to localhost only), built from the
+  `console-ui/` components and following UX3/UX4 (`docs/design/spec.md`,
+  `design/prototypes/vdi/`): status, listeners, input/output device pickers
+  (live level per input, test tone per output), pause sending, reload
+  config. Device changes persist via `Config::save()` (P2.1). Add a PWA
+  manifest so it can be installed (localhost counts as secure).
+- **Note:** the agent works fully from YAML before this exists, so P2.8 does
+  not wait for it.
+- **Done when:** behaviour matches the spec, screenshots of every state are
+  attached to the PR, and Claude has approved the design review.
+- **Result:**
+
+### P2.5 — Run as a service
+- **Depends on:** P2.4, **Q1** · **Size:** M
+- **Do:** per the VDI OS: a systemd unit and/or Windows service (or a
+  scheduled task at logon if a service can't access the user's audio
+  session — check this first). Install/uninstall docs.
+- **Done when:** VDI reboot → agent connected without login interaction
+  (or with only the expected user login).
+- **Result:**
+
+### P2.9 — Minimal native tray icon · S · deferred
+Not a priority (D11): the agent is a service with fixed config, and problems
+surface on the Console via P1.7.
+- **Depends on:** P2.4, UX4 · **Who:** any + design review
+- **Do:** tray icon with the five UX3 badge states and a menu: open the
+  agent UI in the default browser, pause/resume sending, reload config,
+  quit. On Linux, use StatusNotifierItem/AppIndicator where available
+  (JUCE's `SystemTrayIconComponent` uses the legacy X11 tray, which GNOME and
+  many others don't show). Where no tray exists, raise a desktop
+  notification when the agent needs attention. Nothing may depend on the
+  tray being visible.
+- **Result:**
+
+### P2.10 — Packages per VDI OS · M
+- **Depends on:** P2.5, **Q1**
+- **Do:** a reproducible package for each VDI OS in use: Windows (installer
+  or zip + scheduled-task/service setup), Linux (AppImage or .deb + systemd
+  user unit). Include `vdi.example.yaml` and an install/uninstall guide.
+  Script it under `scripts/`.
+- **Done when:** a clean VDI goes from package to "Connected" by following
+  the guide.
+- **Result:**
+
+### P2.8 — Cut over from the Carla hub; retire it
+- **Depends on:** P2.5, P2.6 · **Size:** S · **Who:** human
+- **Do:** point all VDIs (3, possibly 4) at the mesh with the VDI role and
+  the Mac at the Console role. Run both setups side by side for a few days
+  of daily use, then shut down the Ubuntu Studio + Carla server. Install
+  from the P2.10 package; the agent web UI (P2.6) isn't required.
+- **Done when:** a full working day on the mesh with no fallback to the hub.
+- **Result:**
+
+## P3 — Strip jam features
+
+All P3 tasks touch `SonobusPluginEditor.cpp` and `SonobusPluginProcessor.cpp`:
+**one at a time**. Each must keep F1 build + F2 passing and must not break
+the mobile `.jucer` source list (remove deleted files from it too).
+
+### P3.1 — Remove metronome · M
+- **Depends on:** P1.4
+- **Do:** delete metronome UI, processor paths, params, saved-state keys
+  (tolerate old keys when loading).
+- **Result:**
+
+### P3.2 — Remove soundboard · M
+- **Depends on:** P1.4 · Files: `SoundboardView.*`, `Soundboard*`
+- **Result:**
+
+### P3.3 — Remove chat · S
+- **Depends on:** P1.4 · Files: `ChatView.*`, chat OSC messages
+- **Result:**
+
+### P3.4 — Remove file playback + recording UI · M
+- **Depends on:** P1.4 · Files: `SampleEditView.*`, file-playback paths, recording UI
+- **Do:** remove file playback completely. Remove the recording **UI**, but
+  **keep the recording engine** (`RecordFileOptions`, especially
+  `RecordIndividualUsers` and `RecordSelf`, the file writers and formats):
+  P10 builds on it. Leave it compiled and reachable from code.
+- **Result:**
+
+### P3.5 — Remove monitor faders / input monitoring UI · S
+- **Depends on:** P2.3
+- **Do:** remove from both roles; engine monitor gains fixed at 0.
+- **Result:**
+
+### P3.6 — Remove latency match, beat grid, jam-only options · M
+- **Depends on:** P3.1 · Files: `BeatToggleGrid.*`, latency-match code, `OptionsView.cpp`
+- **Result:**
+
+### P3.7 — Trim effects to what UX2 specifies · S
+- **Depends on:** P3.5, UX2
+- **Do:** keep only the mic processing the UX2 design calls for; remove the
+  rest from the engine.
+- **Result:**
+
+### P3.8 — Jitter/codec settings where UX2 places them · S
+- **Depends on:** P3.7
+- **Do:** engine side only: keep the settings UX2 exposes, fix the rest to
+  sensible defaults.
+- **Result:**
+
+## P4 — Control API
+
+### P4.5 — API schema (write first)
+- **Depends on:** P1.4, UX2 · **Size:** M · **Who:** any + design review · **Touches:** `docs/control-api.md`
+- **Do:** define the WebSocket JSON protocol before code: message envelope,
+  `state` snapshot, `event` deltas, `meters` frames, `cmd` requests and
+  replies, error format, versioning. It must cover everything on UX2's
+  "what the UI needs from the engine" list. If the engine can't provide
+  something on that list, flag it rather than dropping it.
+- **Done when:** Claude has confirmed it covers the design; P5.1 can build
+  mocks from it.
+- **Result:**
+
+### P4.1 — Embedded WebSocket server · M
+- **Depends on:** P4.5
+- **Do:** a WebSocket server inside the engine (small vendored lib, or JUCE
+  sockets + minimal WS framing), bound to `127.0.0.1` by default with a
+  configurable bind address/port (P7 needs non-localhost). Runs off the
+  audio thread. The same HTTP listener serves the static UI files (the VDI
+  agent UI, P2.6, and the Console UI in P6/P7).
+- **Done when:** `websocat ws://127.0.0.1:<port>` gets a hello message.
+- **Result:**
+
+### P4.2 — State snapshot + change events · M
+- **Depends on:** P4.1
+- **Do:** include each peer's VDI agent health (P1.7). The Console also
+  **remembers known stations** (name, colour, last placement and level,
+  last seen) in its settings, so a known VDI that isn't connected appears as
+  `offline` with `last_seen`, and its settings come back when it rejoins.
+- **Done when:** a test client receives a snapshot on connect and a delta when
+  a peer joins/leaves (use F2).
+- **Result:**
+
+### P4.3 — Meters stream · S
+- **Depends on:** P4.1
+- **Do:** ~30 fps peak/RMS per peer + mic + master; client can subscribe or
+  unsubscribe.
+- **Result:**
+
+### P4.4 — Commands · M
+- **Depends on:** P4.2, P1.5
+- **Done when:** a script drives connect → set pan/mute/solo/talk → disconnect
+  on a headless Console and the F2 dump shows the effects.
+- **Result:**
+
+## P5 — Console UI (HTML)
+
+Location: `console-ui/` (new, top level). Implements the UX2/UX4 design.
+The tech choice must not make the design harder to build; keep the build
+chain light unless the spec needs more. **Every P5 task is `any + design
+review`**: it is done only after Claude approves screenshots or a running
+build against the spec. Implementers don't make design decisions (see
+[Design ownership](#design-ownership)).
+
+### P5.1 — Scaffold `console-ui/` from the prototype · M
+- **Depends on:** UX4, P4.5
+- **Do:** start from the UX4 prototype HTML/CSS, apply the spec's tokens, and
+  add a mock API client that follows the P4.5 schema (fake peers, animated
+  meters) so P5.2–P5.5 can be built before the engine API exists.
+- **Done when:** the scaffold renders the prototype's screens on mock data;
+  design review passed.
+- **Result:**
+
+### P5.2 — Mixer view · M
+- **Depends on:** P5.1
+- **Do:** the per-VDI controls and health display exactly as specified in
+  UX4, including the unknown-peer, degraded and disconnected states.
+- **Result:**
+
+### P5.3 — Talk-back controls · M
+- **Depends on:** P5.1
+- **Do:** mic, mute / push-to-talk, talk targeting and master controls as
+  specified in UX4 (keyboard and touch).
+- **Result:**
+
+### P5.4 — Connection / onboarding flow · S
+- **Depends on:** P5.1
+- **Do:** as specified in UX4, including error states.
+- **Result:**
+
+### P5.5 — Phone layout · S
+- **Depends on:** P5.2, P5.3
+- **Do:** the UX4 phone breakpoints and touch behaviour.
+- **Result:**
+
+### P5.6 — Wire to the real API · M
+- **Depends on:** P5.2–P5.5, P4.2–P4.4
+- **Done when:** the UI drives a headless Console engine in F2 end to end,
+  with no visual differences from the mock-data build; design review passed.
+- **Result:**
+
+## P6 — Native shell (Mac)
+
+Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
+(P7.7). The old Android cards are kept under P9.2.
+
+### P6.1 — Mac shell · M
+- **Depends on:** P5.6
+- **Do:** replace the JUCE editor (Console role) with a `WebBrowserComponent`
+  loading the bundled `console-ui/` build, talking to the engine's local API.
+- **Done when:** Mac app works end to end against a VDI (or F2 VDI peer).
+- **Result:**
+
+### P6.5 — Mac global push-to-talk hotkey · S
+- **Depends on:** P6.1
+- **Do:** register a global hotkey with Carbon `RegisterEventHotKey`
+  (press + release events, no Accessibility permission needed). Hold = talk
+  while in push-to-talk mode. The key is configurable in settings, per UX4.
+- **Done when:** PTT works while another app is in front.
+- **Result:**
+
+## P7 — Web Console container
+
+Location: replaces `docker/`. Keep the old files until P7.6.
+
+### P7.1 — Headless engine in Console role · M
+- **Depends on:** P2.1, P1.4
+- **Do:** container image builds the engine and runs it headless from a YAML
+  config (role console), using a PulseAudio null sink/source as its devices
+  (reuse what works in the current `docker/`). Control API bound to the
+  container network.
+- **Done when:** the container appears as a Console in F2 against VDI peers.
+- **Result:**
+
+### P7.3 — WebRTC audio gateway · L
+- **Depends on:** P7.1
+- **Do:** sidecar process in the container (e.g. Go + pion, or Python +
+  aiortc) bridging PulseAudio ↔ one WebRTC peer connection with Opus both
+  ways. Signalling over the same HTTPS origin. Measure added latency.
+- **Done when:** browser hears engine output and engine receives browser mic;
+  latency recorded in *Result*.
+- **Result:**
+
+### P7.2 — Serve UI + proxy API · S
+- **Depends on:** P7.1, P5.6
+- **Result:**
+
+### P7.4 — HTTPS with trusted cert · S
+- **Depends on:** P7.2, **Q4**
+- **Result:**
+
+### P7.5 — Per-user containers, compose + docs · S
+- **Depends on:** P7.2, P7.3, P7.4
+- **Result:**
+
+### P7.6 — Remove VNC / Xvfb / raw-PCM bridge · S
+- **Depends on:** P7.5
+- **Result:**
+
+### P7.7 — Installable PWA · S
+- **Depends on:** P7.4 (HTTPS is required for install), UX4 (icon, name, theme colour)
+- **Do:** web app manifest (name, icons incl. maskable, `display:
+  standalone`, theme/background from tokens), and a service worker that
+  caches the UI shell only. Audio and the control API always go to the
+  network, and the app shows a clear "can't reach the Console server" state
+  when offline or off-VPN. Verify Chrome shows "Install" on macOS and
+  Android, and that the installed app opens in its own window. Also try
+  iOS Safari "Add to Home Screen" (mic + playback in standalone mode).
+- **Also measure on Android:** does audio (both directions) keep flowing with
+  the screen off or the app in the background? Record it in *Result*. If it
+  fails, that's the trigger to revive P9.2 (D9).
+- **Result:**
+
+## P9 — Later
+
+### P9.1 — Mac menu-bar panel · M · deferred
+- **Depends on:** P6.1, P6.5
+- **Do:** a menu-bar item showing station activity, talk toggles and mic
+  state, as a compact view of the same Console UI. Needs a UX addendum first.
+- **Result:**
+
+### P9.2 — Native Android Console · L · deferred
+Phones use the PWA for now (D9). Revive this if P7.7's latency or
+background-audio results are poor. Former cards:
+
+#### (was P6.3) — Android build pipeline · L
+- **Depends on:** F1 · **Touches:** `sonobus/mobile/`
+- **Do:** get the Android build working from the hoisted layout
+  (`sonobus/mobile/Builds/Android`), scripted (`scripts/build-android.sh`),
+  producing a debug APK. Stock UI is fine for this task.
+- **Done when:** APK installs and joins a group.
+- **Result:**
+
+#### (was P6.2) — Android shell · M
+- **Depends on:** P6.3, P5.6
+- **Result:**
+
+#### (was P6.4) — Android mic permission + background audio · M · human
+- **Depends on:** P6.2
+- **Done when:** audio keeps flowing with the screen off on my phone.
+- **Result:**
+
+### P9.3 — Native iOS Console · L · deferred
+- **Depends on:** P5.6
+- **Do:** iOS build from `sonobus/mobile/` in the monorepo layout (needs
+  Xcode), a web-view shell hosting the Console UI, mic permission and
+  background audio. Until then, iOS can use the PWA via Safari "Add to Home
+  Screen" (to verify in P7.7).
+- **Result:**
+
+## P10 — Recording and meeting recaps (deferred)
+
+Background and the "session record" idea are in ROADMAP P10. Nothing here
+starts until it's moved out of `deferred`.
+
+### P10.1 — Per-station recording · M · deferred
+- **Depends on:** P3.4 (recording engine kept), P4.4 (start/stop commands)
+- **Do:** expose per-station recording through the control API, built on
+  `RecordIndividualUsers`. Record each station **pre-fader** (my mute, dim
+  and level don't change the file), FLAC, with filenames carrying station
+  name and UTC start time. Engine stays real-time safe (disk writes off the
+  audio thread, as SonoBus already does).
+- **Done when:** F2 scenario: 3 stations record 3 files of the expected
+  length and content.
+- **Result:**
+
+### P10.2 — Session record mode · M · deferred
+- **Depends on:** P10.1, P1.5
+- **Do:** per station, one 2-channel (or 2-file, sample-aligned) recording:
+  ch1 = station audio (pre-fader); ch2 = my mic **multiplied by that
+  station's effective talk gate**, i.e. the exact signal sent to it (talk
+  toggle, solo narrowing, push-to-talk all apply). Write a sidecar JSON with
+  station name, start time and gate open/close timestamps.
+- **Done when:** F2 scenario with two stations and solo switching: each
+  file's mic channel holds audio only for the intervals that station heard me.
+- **Result:**
+
+### P10.3 — UX addendum: recording + recaps · M · design (Claude) · deferred
+- **Depends on:** UX4
+- **Do:** design record controls (per station and global, session-record
+  mode), a recording indicator as unmistakable as LIVE but distinct from it,
+  a consent reminder, and screens to browse sessions, transcripts and recaps.
+- **Result:**
+
+### P10.6 — Storage, retention, privacy · S · deferred
+- **Depends on:** P10.1, answers to Q7/Q8
+- **Do:** decide and implement where recordings go (Console machine vs
+  central store; web sessions record in the container), retention and
+  deletion, and document what data is sent to which provider.
+- **Result:**
+
+### P10.4 — Transcription pipeline · L · deferred
+- **Depends on:** P10.2, P10.6, Q7
+- **Do:** a service (container on my infra) that picks up finished session
+  records, transcribes each track with an external ASR model (word
+  timestamps), labels track 2 "Me" and track 1 the station name, diarizes
+  inside track 1 if several remote people spoke, and merges everything into
+  one timestamped dialogue (JSON + Markdown).
+- **Done when:** a recorded test session produces a correct, correctly
+  attributed transcript.
+- **Result:**
+
+### P10.5 — Meeting recap generation · M · deferred
+- **Depends on:** P10.4
+- **Do:** send each station's transcript to an external model and produce a
+  recap: summary, decisions, action items (with owner when stated), open
+  questions. Store it next to the transcript; show it in the UI per P10.3.
+- **Result:**
+
+## P8 — Self-hosted connection server (deferred)
+
+Start only when P0.4 says so, or when I decide to. See ROADMAP P8.
+
+### P8.1 — Dockerfile for `aooserver/` · S · deferred
+- **Depends on:** F1
+- **Do:** Linux build of `aooserver/` (its own vendored AOO under
+  `aooserver/deps/aoo`, **not** the top-level `aoo/`), expose 10998 TCP+UDP,
+  log dir volume.
+- **Result:**
+
+### P8.2 — Deploy on a VPN-reachable host · S · deferred · human
+- **Depends on:** P8.1
+- **Result:**
+
+### P8.3 — Point configs at it · S · deferred
+- **Depends on:** P8.2, P2.1
+- **Result:**
+
+### P8.4 — Verify VPN path · S · deferred · human
+- **Depends on:** P8.3
+- **Do:** repeat P0.2.
+- **Result:**
