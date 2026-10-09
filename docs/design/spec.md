@@ -266,6 +266,24 @@ While connecting with no known stations: 3 dashed skeleton cards "Waiting for
 stations…". Connected with no stations: one card "No stations connected yet.
 VDIs appear here when their agent joins **{group}**."
 
+### 3.9 Web audio link (web Console / PWA only)
+Shown only when the origin has an audio gateway (`rtc/config` answers, i.e. the
+web container), directly under the top bar. Hidden once audio is connected
+with a working mic. Browsers allow mic capture and playback only after a user
+gesture, which is why this exists at all.
+
+| State | Circle | Text | Button |
+|---|---|---|---|
+| idle | `ink4` | "Audio isn't connected in this browser." | **Start audio** (primary) |
+| starting | warning, pulsing | "Connecting audio…" | — |
+| failed | critical | "Audio connection failed: {reason}. Retrying…" | Retry now |
+| connected, mic blocked | warning | "Microphone blocked: you can listen, but stations can't hear you. Allow the mic in this site's settings." | — |
+
+Mic capture uses echo cancellation and noise suppression (speech, possibly
+phone speakers). The browser always sends its mic to the gateway; who hears it
+is still decided by the engine (§4.1). Reconnects with backoff (1 s → 15 s, 5
+tries) while the user wants audio.
+
 ---
 
 ## 4. Console behaviour

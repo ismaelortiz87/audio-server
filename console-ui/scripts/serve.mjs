@@ -17,8 +17,21 @@ const types = {
   '.png': 'image/png', '.svg': 'image/svg+xml',
 };
 
+// RTC_PROXY=http://127.0.0.1:8090 forwards /rtc/* to a running gateway
+// container, so the web-audio path can be tested with the mock engine.
+const rtcProxy = process.env.RTC_PROXY;
+
 createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
+  if (rtcProxy && url.pathname.startsWith('/rtc/')) {
+    const body = req.method === 'POST' ? await new Promise(r => { const c = []; req.on('data', d => c.push(d)); req.on('end', () => r(Buffer.concat(c))); }) : undefined;
+    try {
+      const up = await fetch(rtcProxy + url.pathname + url.search, { method: req.method, body, headers: { 'content-type': req.headers['content-type'] ?? 'application/json' } });
+      res.writeHead(up.status, { 'content-type': up.headers.get('content-type') ?? 'application/octet-stream' });
+      res.end(Buffer.from(await up.arrayBuffer()));
+    } catch (e) { res.writeHead(502).end(String(e)); }
+    return;
+  }
   let path = decodeURIComponent(url.pathname);
   if (path === '/') path = '/index.html';
   const file = normalize(join(root, path));

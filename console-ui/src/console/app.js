@@ -5,7 +5,8 @@ import { boot } from '../lib/boot.js';
 import { h } from '../lib/dom.js';
 import { AUDIO } from '../lib/tokens.js';
 import { ActivityHub } from './activity.js';
-import { topBar, liveBand, placement, notices, stations, youBar, settingsSheet, ordered } from './components.js';
+import { topBar, liveBand, placement, notices, stations, youBar, settingsSheet, audioLink, ordered } from './components.js';
+import { RtcLink } from '../lib/rtc.js';
 
 boot('console', client => {
   const ui = { selected: null, dragPan: null, settingsOpen: false, details: {} };
@@ -16,6 +17,7 @@ boot('console', client => {
     client,
     ui,
     activity: new ActivityHub(client),
+    rtc: new RtcLink(),
     render: () => state && render(state),
     select(id) { if (ui.selected !== id) { ui.selected = id; ctx.render(); } },
     openSettings() { ui.settingsOpen = true; ctx.render(); },
@@ -35,12 +37,15 @@ boot('console', client => {
     },
   };
 
+  // test/debug handles (smoke-rtc.mjs)
+  Object.assign(globalThis, { __rtcLink: ctx.rtc, __rtcLinkState: () => ctx.rtc.state });
+
   const parts = {
-    top: topBar(ctx), band: liveBand(), stage: placement(ctx), notices: notices(), stations: stations(ctx),
+    top: topBar(ctx), audio: audioLink(ctx), band: liveBand(), stage: placement(ctx), notices: notices(), stations: stations(ctx),
     you: youBar(ctx), settings: settingsSheet(ctx),
   };
   const app = h('div.app',
-    parts.top.el, parts.band.el,
+    parts.top.el, parts.audio.el, parts.band.el,
     h('main', parts.stage.el, parts.notices.el, parts.stations.el),
     parts.you.el, parts.settings.el);
   document.body.append(app);
@@ -55,6 +60,8 @@ boot('console', client => {
   if (new URLSearchParams(location.search).get('open') === 'settings') ui.settingsOpen = true;
   client.store.subscribe(st => { state = st; render(st); });
   client.subscribe('meters');
+  // Web Console only: is there an audio gateway on this origin? (never in mock mode)
+  if (!new URLSearchParams(location.search).has('mock') || new URLSearchParams(location.search).has('rtc')) ctx.rtc.probe();
   addEventListener('resize', () => ctx.render());
 
   // spec §4.2 keyboard map

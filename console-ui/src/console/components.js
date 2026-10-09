@@ -163,6 +163,30 @@ function layoutPucks(field, pucks) {
   for (const p of pucks) p.style.top = n === 1 ? '50%' : `${22 + p._row * (56 / (n - 1))}%`;
 }
 
+// --------------------------------------------------------------- 3.9 web audio link
+// Only in the web Console (a gateway on this origin). Hidden once connected.
+export function audioLink(ctx) {
+  const text = h('span');
+  const btn = h('button.btn.small.primary', { onclick: () => ctx.rtc.start() });
+  const el = h('div.audiolink', { role: 'status', 'aria-live': 'polite', hidden: true }, h('span.dot'), text, btn);
+  ctx.rtc.on(r => {
+    const show = r.state !== 'unavailable' && !(r.state === 'connected' && !r.micBlocked);
+    el.hidden = !show;
+    if (!show) return;
+    const dot = el.firstChild;
+    dot.className = 'dot' + (r.state === 'failed' ? ' crit' : r.state === 'starting' ? ' warn pulse' : r.micBlocked ? ' warn' : '');
+    const [msg, label] =
+      r.state === 'idle' ? ["Audio isn't connected in this browser.", 'Start audio']
+      : r.state === 'starting' ? ['Connecting audio…', null]
+      : r.state === 'failed' ? [`Audio connection failed: ${r.reason}. Retrying…`, 'Retry now']
+      : ["Microphone blocked: you can listen, but stations can't hear you. Allow the mic in this site's settings.", null];
+    setText(text, msg);
+    btn.hidden = !label;
+    if (label) setText(btn, label);
+  });
+  return { el, update() {} };
+}
+
 // --------------------------------------------------------------- 3.4 notices
 export function notices() {
   const el = h('div', { style: { display: 'contents' } });
