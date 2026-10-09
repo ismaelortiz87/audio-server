@@ -100,6 +100,22 @@ CONFIG=Release make -j4          # -> Builds/LinuxMakefile/build/aooserver
 ./build/aooserver -h             # -p port, -l logdir, -b blocklist
 ```
 
+## Browser / Docker
+
+`docker/` builds the app for Linux and serves it to a browser — the real
+unmodified application in a virtual display, plus a WebSocket audio bridge so
+the browser can hear the engine and talk back into it.
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+open http://localhost:6080/          # audio client
+open http://localhost:6080/vnc.html  # the app's own GUI
+```
+
+See `docker/README.md` for the architecture, what was verified and how, and the
+known limitations (notably: added latency, so it suits monitoring and
+conversation rather than tight remote jamming).
+
 ## Design
 
 The palette agreed for the next appearance pass on the app lives in
