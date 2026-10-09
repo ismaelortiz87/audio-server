@@ -117,7 +117,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
-| P8.1 | Dockerfile for `aooserver/` | F1 | S | any | wip | Claude (subagent D, sonnet) |
+| P8.1 | Dockerfile for `aooserver/` | F1 | S | any | done | Claude (subagent D, sonnet) |
 | P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | deferred | |
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | deferred | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | deferred | |
@@ -1183,7 +1183,17 @@ Start only when P0.4 says so, or when I decide to. See ROADMAP P8.
 - **Do:** Linux build of `aooserver/` (its own vendored AOO under
   `aooserver/deps/aoo`, **not** the top-level `aoo/`), expose 10998 TCP+UDP,
   log dir volume.
-- **Result:**
+- **Result:** `docker/aooserver/` (Dockerfile, compose, README). It builds
+  aooserver on `debian:trixie` from its own vendored AOO and runs it on
+  `trixie-slim` as non-root uid 10998 (arm64, 121 MB). It exposes 10998
+  TCP+UDP, logs to `/var/log/aooserver`, has a bash `/dev/tcp` healthcheck,
+  and takes `AOO_PORT`/`AOO_BLOCKLIST`. Build:
+  `docker build -f docker/aooserver/Dockerfile -t crosspoint-aooserver aooserver`
+  (the context is `aooserver/` only). New `tests/f2/run.sh --server-addr
+  HOST:PORT` runs F2 against an external server. Verified by the subagent
+  (matrix-1v1, mesh-stock) and re-verified in review (matrix-2v2, 4 peers,
+  container healthy). Open for P8.2: amd64 build if the host needs it; log
+  rotation; bind to the VPN IP; the blocklist is untested with a real file.
 
 ### P8.2 — Deploy on a VPN-reachable host · S · deferred · human
 - **Depends on:** P8.1
