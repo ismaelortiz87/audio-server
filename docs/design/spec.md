@@ -284,6 +284,18 @@ phone speakers). The browser always sends its mic to the gateway; who hears it
 is still decided by the engine (§4.1). Reconnects with backoff (1 s → 15 s, 5
 tries) while the user wants audio.
 
+### 3.10 Sign-in (web Console behind the proxy)
+When the engine requires a token (non-loopback, P7) and this browser has no
+valid session cookie, the page shows a centred card instead of the Console:
+title **"Sign in to this Console"**; text "Enter the access token for this
+Crosspoint server. You only need to do this once in this browser."; a password
+field "Access token"; **[Continue]** (primary). A wrong token shows "That token
+isn't right." under the field and keeps focus there; a network error shows
+"Can't reach the Console server.". On success the page reloads into the
+Console. The token is exchanged for an HttpOnly, SameSite=Strict cookie (30
+days), and the page never stores the token. Changing the server's token signs
+every browser out.
+
 ---
 
 ## 4. Console behaviour

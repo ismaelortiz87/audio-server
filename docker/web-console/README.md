@@ -77,3 +77,13 @@ CROSSPOINT_API_TOKEN=$(openssl rand -hex 24) RTC_PUBLIC_IP=10.8.0.2 \
 
 ## Latency (L1, fixed)
 Engine<->engine latency between two containers of this image is ~50-85 ms, both directions (`tests/latency/run.sh`, which also covers the P2.11 PipeWire path). It used to be seconds and grow with uptime (4-6 s after a minute, ~11-13 s after hours): the alsa-plugins `pulse` capture PCM queues up to 4 MiB (~11 s of float stereo) behind an `avail` clamped to the ALSA buffer, so every stall of the engine's read loop (device start-up; Pulse renegotiating latency when another client such as the gateway connects to a null sink) became permanent input latency. The engine's JUCE ALSA backend now drops that backlog whenever the capture delay exceeds two ALSA buffers (`juce_ALSA_linux.cpp`, `dropCaptureBacklog`). `PULSE_LATENCY_MSEC` is not needed.
+
+
+## Sign-in (P7.2)
+
+Browsers sign in once: the Console page shows "Sign in to this Console", the
+user pastes `CROSSPOINT_API_TOKEN`, and the engine answers `POST
+/api/v1/session` with an HttpOnly, SameSite=Strict cookie (30 days). The cookie
+is derived from the token, so rotating the token signs every browser out. The
+proxy must forward `/api/` (including `/api/v1/session`) to 7070 and should set
+`X-Forwarded-Proto: https`, so the cookie also gets the `Secure` flag.

@@ -114,7 +114,7 @@ Ordered so that every task appears after everything it depends on.
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | wip | Claude (subagent O, sonnet) |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
-| P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | wip | Claude |
+| P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
@@ -1255,7 +1255,18 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 
 ### P7.2 — Serve UI + proxy API · S
 - **Depends on:** P7.1, P5.6
-- **Result:**
+- **Result:** the container already serves the UI and API from the engine
+  (`--ui-dir`, P7.1). Added the **browser sign-in**: `POST/GET/DELETE
+  /api/v1/session` in `ApiServer`. The cookie is a hex HMAC-SHA1 of the token
+  (stateless, invalid after rotation), HttpOnly + SameSite=Strict, Secure
+  behind `X-Forwarded-Proto: https`, Origin-checked, constant-time compare, and
+  a delay on bad tokens. A WS upgrade with a valid cookie is authenticated.
+  UI: the client reports `needs-login` instead of sending an empty token; the
+  sign-in card is spec §3.10. Tests: `tests/api/p72.test.mjs` (endpoint, flags,
+  CSRF, WS by cookie, sign-out, rotation, and the real UI in headless Chrome:
+  card → bad token → good token → ready → survives reload; the cookie is
+  invisible to JS). Full API suite green. Proxy notes are in
+  `docker/web-console/README.md` and control-api §2.2.
 
 ### P7.4 — Publish via maelo's proxy · S
 - **Depends on:** P7.2

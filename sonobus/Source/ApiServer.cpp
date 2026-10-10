@@ -49,6 +49,37 @@ bool constantTimeEquals (const String& a, const String& b)
     return diff == 0;
 }
 
+/** P7.2: browser session cookie. Value = hex HMAC-SHA1(token, "crosspoint-session-v1"):
+    stateless (survives engine restarts) and invalid as soon as the token changes.
+    The token itself never reaches page JavaScript (HttpOnly). */
+const char* const kSessionCookie = "crosspoint_session";
+
+String sessionCookieValue (const String& token)
+{
+    const std::string key0 = token.toStdString(), msg = "crosspoint-session-v1";
+    std::string key = key0.size() > 64 ? [&] { auto d = Sha1::hash (key0.data(), key0.size()); return std::string ((const char*) d.data(), d.size()); }() : key0;
+    key.resize (64, '\0');
+    std::string ipad (64, 0), opad (64, 0);
+    for (int i = 0; i < 64; ++i) { ipad[(size_t) i] = (char) (key[(size_t) i] ^ 0x36); opad[(size_t) i] = (char) (key[(size_t) i] ^ 0x5c); }
+    const std::string inner = ipad + msg;
+    const auto ih = Sha1::hash (inner.data(), inner.size());
+    const std::string outer = opad + std::string ((const char*) ih.data(), ih.size());
+    const auto oh = Sha1::hash (outer.data(), outer.size());
+    return String::toHexString (oh.data(), (int) oh.size(), 0);
+}
+
+String cookieFrom (const String& cookieHeader, const String& name)
+{
+    StringArray parts; parts.addTokens (cookieHeader, ";", "");
+    for (auto& p : parts)
+    {
+        const auto kv = p.trim();
+        if (kv.upToFirstOccurrenceOf ("=", false, false).trim() == name)
+            return kv.fromFirstOccurrenceOf ("=", false, false).trim();
+    }
+    return {};
+}
+
 /** Nesting depth guard: JUCE's JSON parser is recursive, so a 1 MB message of
     '[' characters would otherwise overflow the thread's stack. */
 bool jsonDepthOk (const std::string& s)
@@ -151,10 +182,14 @@ const char* statusText (int code)
     {
         case 101: return "Switching Protocols";
         case 200: return "OK";
+        case 204: return "No Content";
         case 400: return "Bad Request";
+        case 401: return "Unauthorized";
         case 403: return "Forbidden";
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
+        case 409: return "Conflict";
+        case 411: return "Length Required";
         case 413: return "Payload Too Large";
         case 426: return "Upgrade Required";
         case 431: return "Request Header Fields Too Large";
@@ -419,6 +454,31 @@ private:
         respond (code, "text/plain; charset=utf-8", (msg + "\n").toStdString(), false, extraHeaders);
     }
 
+    // P7.2: read a small request body (Content-Length only, no chunked).
+    bool readBody (const Request& req, std::string& out, size_t maxBytes = 4096)
+    {
+        const auto lenStr = req.header ("content-length").trim();
+        if (lenStr.isEmpty() || ! lenStr.containsOnly ("0123456789")) { respondText (411, "Length required"); return false; }
+        const auto len = (size_t) lenStr.getLargeIntValue();
+        if (len > maxBytes) { respondText (413, "Body too large"); return false; }
+        const auto start = Time::getMillisecondCounter();
+        while (inBuf.size() < len)
+        {
+            if (threadShouldExit() || Time::getMillisecondCounter() - start > (uint32) kHeaderTimeoutMs) return false;
+            if (readSome (50) < 0) return false;
+        }
+        out = inBuf.substr (0, len);
+        inBuf.erase (0, len);
+        return true;
+    }
+
+    bool sessionCookieValid (const Request& req) const
+    {
+        if (server.config.token.isEmpty()) return false;
+        const auto c = cookieFrom (req.header ("cookie"), kSessionCookie);
+        return c.isNotEmpty() && constantTimeEquals (c, sessionCookieValue (server.config.token));
+    }
+
     bool readRequest (Request& req)
     {
         const auto start = Time::getMillisecondCounter();
@@ -518,6 +578,12 @@ private:
             return;
         }
 
+        if (req.path == "/api/v1/session")   // P7.2: browser sign-in (control-api §2.2)
+        {
+            serveSession (req);
+            return;
+        }
+
         if (! (isGet || isHead))
         {
             respondText (405, "Method not allowed", "Allow: GET, HEAD\r\n");
@@ -541,6 +607,51 @@ private:
         }
 
         serveStatic (req, isHead);
+    }
+
+    void serveSession (const Request& req)
+    {
+        const String json = "application/json; charset=utf-8";
+        const bool needToken = ! server.config.token.isEmpty() || ! server.config.isLoopbackBind();
+        // Same CSRF guard as the WebSocket: a present Origin must be allowed.
+        if (req.has ("origin") && ! server.originAllowed (req.header ("origin"), req.header ("host")))
+        {
+            respondText (403, "Origin not allowed");
+            return;
+        }
+        const bool secure = req.header ("x-forwarded-proto").trim().equalsIgnoreCase ("https");
+        const String attrs = String ("; HttpOnly; SameSite=Strict; Path=/") + (secure ? "; Secure" : "");
+
+        if (req.method == "GET")
+        {
+            respond (200, json, toJson (makeObject ({ { "required", needToken },
+                                                      { "authenticated", ! needToken || sessionCookieValid (req) } })).toStdString());
+            return;
+        }
+        if (req.method == "DELETE")
+        {
+            respond (204, json, "", false, "Set-Cookie: " + String (kSessionCookie) + "=; Max-Age=0" + attrs + "\r\n");
+            return;
+        }
+        if (req.method != "POST") { respondText (405, "Method not allowed", "Allow: GET, POST, DELETE\r\n"); return; }
+        if (server.config.token.isEmpty())
+        {
+            respond (409, json, toJson (makeObject ({ { "ok", false }, { "error", "no_token_configured" } })).toStdString());
+            return;
+        }
+        std::string body;
+        if (! readBody (req, body)) return;
+        const auto v = JSON::parse (String::fromUTF8 (body.data(), (int) body.size()));
+        const auto tok = v.getProperty ("token", var());
+        if (! tok.isString() || ! constantTimeEquals (tok.toString(), server.config.token))
+        {
+            Thread::sleep (300);   // slow down guessing
+            respond (401, json, toJson (makeObject ({ { "ok", false }, { "error", "bad_token" } })).toStdString());
+            return;
+        }
+        respond (200, json, toJson (makeObject ({ { "ok", true } })).toStdString(), false,
+                 "Set-Cookie: " + String (kSessionCookie) + "=" + sessionCookieValue (server.config.token)
+                 + "; Max-Age=2592000" + attrs + "\r\n");
     }
 
     void serveStatic (const Request& req, bool headOnly)
@@ -633,7 +744,8 @@ private:
         session = std::shared_ptr<ApiSession> (new ApiSession (server.nextSessionId++, socket->getHostName()));
         server.addSession (session);
 
-        const bool needToken = ! server.config.token.isEmpty() || ! server.config.isLoopbackBind();
+        const bool needToken = (! server.config.token.isEmpty() || ! server.config.isLoopbackBind())
+                               && ! sessionCookieValid (req);   // P7.2: a signed-in browser needs no auth message
         session->send (toJson (makeObject ({
             { "t", "hello" }, { "v", 1 }, { "app", server.config.appName }, { "version", server.config.version },
             { "role", server.config.role }, { "auth", needToken ? "token" : "none" },

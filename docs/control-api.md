@@ -76,6 +76,15 @@ Reply `{ "t": "auth", "ok": true }`, or `{ "t": "auth", "ok": false }` and
 close with code `4401`. The web container stores the token in an `HttpOnly`
 cookie set by the proxy-protected login page (P7); the UI never shows it.
 
+**Browser sign-in (P7.2, implemented):** `POST /api/v1/session` with
+`{ "token": "…" }` → `200` + `Set-Cookie: crosspoint_session=<hex
+HMAC-SHA1(token)>; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` (plus
+`Secure` when `X-Forwarded-Proto: https`); a bad token → `401` (delayed);
+a foreign Origin → `403`. `GET /api/v1/session` → `{ required, authenticated }`.
+`DELETE` clears the cookie. A WebSocket upgrade carrying a valid cookie gets
+`hello.auth: "none"` and its state immediately. Rotating the token
+invalidates all cookies.
+
 ### 2.3 Close codes
 `4400` bad message, `4401` auth failed, `4403` origin refused, `4409` protocol
 version unsupported, `1001` server shutting down. The UI reconnects with

@@ -80,7 +80,12 @@ export class Client {
           this.stop();
           return;
         }
-        if (msg.auth === 'token') this.send({ t: 'auth', token: this.opts.token ?? '' });
+        if (msg.auth === 'token') {
+          // No token on the page: the browser isn't signed in (P7.2 cookie).
+          // Ask the user once instead of sending an empty token.
+          if (!this.opts.token) { this.setStatus('needs-login'); this.stop(); return; }
+          this.send({ t: 'auth', token: this.opts.token });
+        }
         break;
       case 'auth':
         if (!msg.ok) this.setStatus('fatal', { code: 4401 });
