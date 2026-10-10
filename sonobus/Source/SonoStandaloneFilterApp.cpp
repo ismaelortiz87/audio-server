@@ -566,7 +566,7 @@ public:
         String binding = props != nullptr ? props->getValue (kPttHotkeyProp, {}) : String();
         String err;
         if (binding.isEmpty() || crosspoint::GlobalHotkey::canonicalise (binding, err).isEmpty())
-            binding = crosspoint::GlobalHotkey::kDefaultBinding;
+            binding = String::fromUTF8 (crosspoint::GlobalHotkey::kDefaultBinding);   // B2: the const char* would be read as Latin-1 and lose the ⌥
 
         // A held hotkey is one more PTT holder next to the API clients (same logic as mic.ptt).
         globalHotkey->onChange = [this] (bool down)
