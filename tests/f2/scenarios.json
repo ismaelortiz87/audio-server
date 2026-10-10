@@ -842,6 +842,438 @@
           ]
         }
       ]
+    },
+    "matrix-mixed": {
+      "description": "F2.1: 1 console + 1 vdi + 1 no-advert peer (stock look-alike). console<->vdi open both ways, with audio; every pair involving the unknown peer is blocked both ways as seen by the known peers (their sendAllow/recvAllow false) and no audio reaches or leaves the unknown peer. The unknown peer's own dump follows the matrix on what it observes (it still enforces its own side).",
+      "group": "f2-matrix-mixed",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660"}},
+        {"name": "v1", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "440"}},
+        {"name": "u1", "role": null, "advertise": false, "env": {"SONOBUS_TEST_TONE_HZ": "880"}}
+      ],
+      "steps": [
+        {
+          "name": "known-open-unknown-blocked",
+          "hold": 5,
+          "matrix": true,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "sendAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "role", "eq": "unknown"},
+            {"peer": "v1", "of": "u1", "field": "role", "eq": "unknown"},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "v1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        }
+      ]
+    },
+    "mute-held": {
+      "description": "F2.1: the console starts with global SEND mute on (SONOBUS_TEST_START_SEND_MUTE=1). While muted the VDI receives nothing from it; the permitted-but-muted pair keeps its permission in the cache. After a timed unmute console->vdi opens and the audio arrives, while the same-role console and the unknown peer (matrix-blocked, caches pinned false) stay blocked through the mute->unmute.",
+      "group": "f2-mute-held",
+      "routing": "matrix",
+      "expect": "matrix",
+      "no_settle": true,
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660", "SONOBUS_TEST_START_SEND_MUTE": "1"}},
+        {"name": "v1", "role": "vdi"},
+        {"name": "c2", "role": "console"},
+        {"name": "u1", "role": null, "advertise": false, "env": {"SONOBUS_TEST_TONE_HZ": "880"}}
+      ],
+      "steps": [
+        {
+          "name": "muted",
+          "hold": 6,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "role", "eq": "vdi"},
+            {"peer": "v1", "of": "c1", "field": "role", "eq": "console"},
+            {"peer": "c1", "of": "u1", "field": "role", "eq": "unknown"},
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "sendActive", "eq": false},
+            {"peer": "v1", "of": "c1", "field": "receivingAudio", "eq": false},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false}
+          ]
+        },
+        {
+          "name": "unmute",
+          "control": {"c1": {"globalSendMute": false}},
+          "hold": 4,
+          "matrix": true,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "sendActive", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        }
+      ]
+    },
+    "mute-cycles": {
+      "description": "F2.1: six global send+recv mute -> unmute cycles on the console, the second console and the vdi at once. Matrix-blocked peers (same-role console pair, unknown peer) never open at any point (checked while muted and after every unmute, with silence on their meters), and the permitted console<->vdi pair is open with audio after each unmute and at the end.",
+      "group": "f2-mute-cycles",
+      "routing": "matrix",
+      "expect": "matrix",
+      "no_settle": true,
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660"}},
+        {"name": "v1", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "440"}},
+        {"name": "c2", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "550"}},
+        {"name": "u1", "role": null, "advertise": false, "env": {"SONOBUS_TEST_TONE_HZ": "880"}}
+      ],
+      "steps": [
+        {
+          "name": "baseline",
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "sendAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-1",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-1",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-2",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-2",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-3",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-3",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-4",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-4",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-5",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-5",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "mute-6",
+          "control": {"c1": {"globalSendMute": true, "globalRecvMute": true}, "c2": {"globalSendMute": true, "globalRecvMute": true}, "v1": {"globalSendMute": true, "globalRecvMute": true}},
+          "hold": 2,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "unmute-6",
+          "control": {"c1": {"globalSendMute": false, "globalRecvMute": false}, "c2": {"globalSendMute": false, "globalRecvMute": false}, "v1": {"globalSendMute": false, "globalRecvMute": false}},
+          "hold": 3,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "c2", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "c2", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c2", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "c1", "of": "c2", "field": "preFaderPeakDb", "max": -60}
+          ]
+        },
+        {
+          "name": "final-matrix",
+          "hold": 3,
+          "matrix": true,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "sendAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16}
+          ]
+        }
+      ]
     }
   }
 }

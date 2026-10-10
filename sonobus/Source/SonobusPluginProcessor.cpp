@@ -1056,6 +1056,14 @@ mState (*this, &mUndoManager, "SonoBusAoO",
         mTestToneHz = (hz > 0.0f && hz < 20000.0f) ? hz : 0.0f;
     }
 
+    // F2.1 TEST ONLY: SONOBUS_TEST_START_SEND_MUTE / _RECV_MUTE = 1 start with the
+    // global send / receive mute on, through the real parameter (so the same
+    // listener the UI button reaches runs).
+    if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_SEND_MUTE", "") == "1")
+        mState.getParameter(paramMainSendMute)->setValueNotifyingHost(1.0f);
+    if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_RECV_MUTE", "") == "1")
+        mState.getParameter(paramMainRecvMute)->setValueNotifyingHost(1.0f);
+
     mFreshInit = true;
 }
 
@@ -6176,6 +6184,19 @@ bool SonobusAudioProcessor::applyTestControlFile(const File & file)
     const var dim = root.getProperty("soloDimDb", var());
     if (dim.isInt() || dim.isInt64() || dim.isDouble()) {
         setSoloDimDb((float) (double) dim);
+    }
+
+    // F2.1 TEST ONLY: {"globalSendMute": bool, "globalRecvMute": bool} drive the
+    // real global mute parameters (the UI buttons' path). Only on change, since
+    // this file is re-applied every tick.
+    for (auto & kv : { std::make_pair(String("globalSendMute"), paramMainSendMute),
+                       std::make_pair(String("globalRecvMute"), paramMainRecvMute) }) {
+        const var v = root.getProperty(kv.first, var());
+        if (v.isBool() || v.isInt()) {
+            auto * param = mState.getParameter(kv.second);
+            const float want = ((bool) v) ? 1.0f : 0.0f;
+            if (param != nullptr && param->getValue() != want) param->setValueNotifyingHost(want);
+        }
     }
 
     const var talk = root.getProperty("talk", var());
