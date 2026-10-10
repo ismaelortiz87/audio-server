@@ -392,6 +392,11 @@ now." Hidden while reconnecting or in error.
   "✓ Saved to vdi.yaml · Undo" (Undo restores the previous device). No Undo
   when the previous device was missing, since switching back to it would only fail.
 
+**Launcher (Debian package):** the VDI package installs a menu entry
+**"Crosspoint agent"** that opens `http://localhost:7071/` in the default
+browser (`xdg-open`). There is no GUI app on a VDI; the page is the agent's
+panel.
+
 **Behaviour:** Pause affects sending only. Reload re-reads the YAML and shows
 errors in the state card. Everything here is also reflected on the Console
 via P1.7 (D11).

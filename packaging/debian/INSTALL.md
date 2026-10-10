@@ -89,6 +89,16 @@ Debian default) or add the user to the `systemd-journal` group.
 
 Reboot test: after `reboot`, the agent should reach "Connected" with no login.
 
+### The agent page
+
+The agent has no window of its own: it runs as the service above. Its status
+page is **`http://localhost:7071/`** (shows Connected/Waiting, which Consoles are
+listening, the input and output devices, Pause sending, Reload config). Open it
+in the VDI's browser, or use the **"Crosspoint agent"** launcher in the app
+menu, which opens that same URL. (Typing `open crosspoint` doesn't work:
+browsers treat the bare word as a web address.) If you changed `api.port` in
+`vdi.yaml`, use that port instead.
+
 ## 6. Reload config, upgrade, uninstall
 
 - Config change: edit the YAML, then `systemctl --user restart crosspoint-agent`.

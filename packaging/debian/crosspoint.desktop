@@ -1,10 +1,11 @@
 [Desktop Entry]
-Name=Crosspoint
-Comment=Crosspoint audio agent
-GenericName=Network Audio Streaming
-Exec=crosspoint %u
+Type=Application
+Name=Crosspoint agent
+GenericName=VDI audio agent status
+Comment=Open this VDI's Crosspoint agent page: status, who is listening, audio devices
+Exec=xdg-open http://localhost:7071/
 Icon=crosspoint
 Terminal=false
-Type=Application
-Categories=AudioVideo;Audio;
-Keywords=audio;streaming;vdi;
+StartupNotify=false
+Categories=AudioVideo;Audio;Network;
+Keywords=audio;vdi;crosspoint;agent;status;

@@ -892,6 +892,10 @@ UI is for checking and fixing a VDI when needed.
   the VDI package, and add a line to `packaging/debian/INSTALL.md` §5 giving the
   URL explicitly. Left alone here because it is UI/copy, and D7 keeps design
   decisions with the design session.
+  **Decided and implemented (Claude, design, 2026-10-10):** the VDI package's
+  menu entry is now **"Crosspoint agent"** with `Exec=xdg-open
+  http://localhost:7071/` (no GUI launcher on a VDI). `INSTALL.md` §5 gives the
+  URL and explains `open crosspoint`; spec §6 records the launcher.
 
 ### P2.5 — Run as a service
 - **Depends on:** P2.4 · **Size:** M
@@ -1059,9 +1063,9 @@ surface on the Console via P1.7.
   `sb_system_out.monitor` and `sb_virtual_mic`.
   **Gotcha worth recording:** the flatpak settings had three different
   `groupPassword` values recorded for `lagreca`; the newest-looking one
-  (`Plaermo22990613`, a typo of `Palermo…`) is wrong and gives
-  `could not join group 'lagreca': wrong password`. The correct one is
-  `Palermo22990613`.
+  (a typo of the real one) is wrong and gives
+  `could not join group 'lagreca': wrong password`. The correct value is in the
+  VDI's `vdi.yaml` (redacted: secrets don't belong in the repo).
   **Remaining (needs a human):** install the `.deb` system-wide with `sudo` if
   the packaged path is wanted (this test used the user-local binary), and the
   multi-day side-by-side run before retiring the Carla hub.

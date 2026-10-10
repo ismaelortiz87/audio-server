@@ -37,9 +37,9 @@ Device mapping (established from the VDI's own `~/sonobus-runbook.md` and
 
 Group/server: **`lagreca` on `aoo.sonobus.net:10998`**. The flatpak settings
 recorded **three different `groupPassword` values** for that group; the
-newest-looking one (`Plaermo22990613`, a typo of `Palermo…`) is **wrong** and
-fails with `could not join group 'lagreca': wrong password`. The correct one is
-`Palermo22990613`.
+newest-looking one (a typo of the real one) is **wrong** and fails with
+`could not join group 'lagreca': wrong password`. The correct value is in the
+VDI's `vdi.yaml` (redacted here: secrets don't belong in the repo).
 
 ---
 
