@@ -529,6 +529,21 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   mute→unmute cycles never open a blocked peer.
 - **Done when:** the new scenarios pass, and each fails against a build with
   the corresponding P1.4 protection removed (counterfactual noted in Result).
+- **Also fix here — `agent-silent` is environment-dependent (found
+  2026-10-10).** That scenario declares no `input_device`, so on macOS the
+  headless VDI opens the **real microphone** ("MacBook Pro Microphone"). Its
+  ambient noise floor is above −60 dBFS, so the engine correctly reports
+  `input: "ok"` and the scenario fails **5/5 runs**: `expected "silent", got
+  "ok"`. It is **not a product regression** — the same scenario passed earlier
+  the same day when the room was quieter, and P1.7's detector is sound (a
+  probe with an unknown `input_device` reports `status: "missing"` as
+  designed, and the Linux test drives the same detector with a −70 dBFS tone
+  and passes). The assertion depends on the room, so it will flake wherever a
+  live mic is present. **Do:** make it deterministic — give the VDI peer a
+  `config` with an `input_device` that genuinely carries no signal, so
+  `silent` comes from the signal path rather than from luck. Do **not** mask
+  it with `SONOBUS_AGENT_INPUT=silent`: that override bypasses the very
+  detector this scenario exists to exercise.
 - **Result:**
 
 ### P1.6 — Role-less peers
