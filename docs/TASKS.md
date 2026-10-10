@@ -972,6 +972,14 @@ surface on the Console via P1.7.
   maintainer-script-calls-systemctl (deliberate: prerm stops the user service)
   and no-manual-page. None are release-blocking; the libpng error is inherent
   to the JUCE build.
+  **When installing on a VDI, use a package built AFTER `47f6f738`.** The first
+  amd64 artifact (`+git9a237e6f`) predates the P2.6 UI fix, so a VDI installed
+  from it has **no `/usr/share/crosspoint/ui`** and a unit with **no `--ui-dir`**
+  — `http://localhost:7071/` then 404s (confirmed on the real VDI: package
+  `1.7.2+git9a237e6f` is installed there and is missing both). Rebuild with
+  `scripts/build-deb.sh` (or `PLATFORM=linux/amd64`) before deploying, and
+  verify with `dpkg -L crosspoint | grep crosspoint/ui` and
+  `grep ui-dir /usr/lib/systemd/user/crosspoint-agent.service`.
 
 ### P2.8 — Cut over from the Carla hub; retire it
 - **Depends on:** P2.5, P2.6 · **Size:** S · **Who:** human
