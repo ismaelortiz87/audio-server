@@ -104,7 +104,7 @@ Ordered so that every task appears after everything it depends on.
 | P4.2 | State snapshot + change events | P4.1 | M | any | done | Claude (subagent I, sonnet) |
 | P4.3 | Meters stream | P4.1 | S | any | done | Claude (subagent K, sonnet) |
 | P4.4 | Commands | P4.2, P1.5 | M | any | done | Claude (subagent K, sonnet) |
-| P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | wip | Claude |
+| P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | done | Claude |
 | P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | done | Claude |
 | P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | done | Claude |
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
@@ -817,7 +817,21 @@ UI is for checking and fixing a VDI when needed.
   not wait for it.
 - **Done when:** behaviour matches the spec, screenshots of every state are
   attached to the PR, and Claude has approved the design review.
-- **Result:**
+- **Result:** the agent page (`console-ui/agent.html`) runs against a **real
+  VDI engine**: the engine serves it on its API port (`--ui-dir`; `/` is
+  agent.html for the vdi role). `console-ui/scripts/smoke-real-agent.mjs`
+  starts aooserver + a Console + a VDI (isolated homes) and checks in headless
+  Chrome: real state (role, name, Connected), "Listening now" shows the real
+  Console, the config path, Pause/Resume change the engine, the picker lists
+  the machine's real devices, no page errors, and the config isn't touched by
+  browsing. 4/4 runs at load avg 13–17. **Design review fixes:** (1) the
+  picker's secondary line showed a redundant "Name:" on macOS (node == name, no
+  hint), so it now shows only extra info (node id if different, hint); (2) a
+  real intermittent crash: the API can send the P4.1 placeholder state (`self`
+  only) before the engine registers, so both UIs now wait for the full state.
+  Not yet exercised: device switching through PipeWire nodes on Linux
+  (P4.4 path untested on Linux), and the YAML write-back from the page (covered
+  at API level by p43p44).
 
 ### P2.5 — Run as a service
 - **Depends on:** P2.4 · **Size:** M

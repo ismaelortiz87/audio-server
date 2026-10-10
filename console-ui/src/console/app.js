@@ -51,6 +51,9 @@ boot('console', client => {
   document.body.append(app);
 
   function render(st) {
+    // First snapshot may be the API placeholder ({ self } only) while the engine
+    // starts; render once the full Console state (spec §3.2) has arrived.
+    if (!st.connection || !st.stations || !st.stationOrder || !st.mic) return;
     const ids = st.stationOrder.filter(id => st.stations[id]);
     if (!ids.includes(ui.selected)) ui.selected = ids[0] ?? null;
     for (const p of Object.values(parts)) p.update(st, ui);

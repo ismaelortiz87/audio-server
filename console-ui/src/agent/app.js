@@ -44,6 +44,13 @@ boot('vdi', client => {
     for (const [node, db] of Object.entries(levels.devices)) set(`[data-meter="${CSS.escape(node)}"] > i`, db);
   }
 
+  // Secondary line: only what the name doesn't already say (spec §6). On macOS
+  // the node id is the device name and there's no hint, so the line is omitted.
+  function hintLine(d) {
+    const parts = [d.node !== d.description ? d.node : null, d.hint || null].filter(Boolean);
+    return parts.length ? `<span class="hint">${esc(parts.join(' · '))}</span>` : '';
+  }
+
   function stateInfo() {
     const c = st.connection;
     if (c.state === 'reconnecting') return { cls: 'warn', dot: 'warn pulse', big: 'Reconnecting…',
@@ -87,7 +94,9 @@ boot('vdi', client => {
   }
 
   function render() {
-    if (!st) return;
+    // The engine's API can answer before the engine registers its state, so the
+    // first snapshot may be the placeholder ({ self } only). Wait for the full one.
+    if (!st || !st.connection || !st.input || !st.output) return;
     setText(name, st.self.name);
     document.title = `${st.self.name} · Crosspoint agent`;
     const info = stateInfo();
@@ -118,7 +127,7 @@ boot('vdi', client => {
       <div class="devfoot"><span>${inFoot}</span><span class="num" id="db-in"></span></div>`}
       ${inOpen ? `<div class="picker" role="radiogroup" aria-label="Input device">${st.devices.inputs.map(d => `
         <button class="opt" role="radio" aria-checked="${d.node === st.input.node && !missing}" data-in="${esc(d.node)}"><span class="radio"></span>
-          <span class="on">${esc(d.description)}<span class="hint">${esc(d.node)}: ${esc(d.hint ?? '')}</span></span>
+          <span class="on">${esc(d.description)}${hintLine(d)}</span>
           <span class="meter" data-meter="${esc(d.node)}"><i></i></span></button>`).join('')}
         <div class="devfoot">Live level per device: pick the one that moves when the VDI plays sound.</div></div>` : ''}`);
 
@@ -134,7 +143,7 @@ boot('vdi', client => {
         <button class="btn small" data-tone="${esc(st.output.node)}">${ui.tone === st.output.node ? 'Playing…' : 'Play test tone'}</button></div>
       ${outOpen ? `<div class="picker" role="radiogroup" aria-label="Output device">${st.devices.outputs.map(d => `
         <div class="opt" role="radio" tabindex="0" aria-checked="${d.node === st.output.node}" data-out="${esc(d.node)}"><span class="radio"></span>
-          <span class="on">${esc(d.description)}<span class="hint">${esc(d.node)}: ${esc(d.hint ?? '')}</span></span>
+          <span class="on">${esc(d.description)}${hintLine(d)}</span>
           <button class="btn small tone" data-tone="${esc(d.node)}">${ui.tone === d.node ? 'Playing…' : 'Test tone'}</button></div>`).join('')}
         <div class="devfoot">Outputs can't show a level. Play a tone and check it arrives in the VDI app's mic input.</div></div>` : ''}`);
 
