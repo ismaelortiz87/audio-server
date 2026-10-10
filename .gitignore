@@ -5,3 +5,7 @@ build*/
 
 # Claude Code subagent worktrees
 .claude/worktrees/
+
+# macOS / editor noise
+.DS_Store
+**/.DS_Store

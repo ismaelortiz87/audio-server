@@ -4,6 +4,13 @@ The work queue for [ROADMAP.md](ROADMAP.md), in dependency order. Task IDs match
 the roadmap items, plus `F*` foundation tasks that unblock verification.
 **This file is the source of truth for task status**; the roadmap tracks phases.
 
+**Live deployment:** the VDI agent, a self-hosted `aooserver` and the web Console
+are running on `maelosdebian` (192.168.0.71 / VPN 10.248.233.7). Read
+[HANDOFF-vdi-package-web-console.md](HANDOFF-vdi-package-web-console.md) before
+touching the Linux packaging, the F2 harness, the web Console container, or that
+box — it records what is verified, the one remaining step (P7.4's vhost), and the
+gotchas that cost time.
+
 ## How to work a task (humans and agents)
 
 1. **Pick** the first task in the [index](#index) whose status is `todo`, whose
@@ -87,7 +94,7 @@ Ordered so that every task appears after everything it depends on.
 | P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | done | Claude (subagent M, sonnet) |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
 | P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | done | Claude (subagent M, sonnet) |
-| P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | wip | |
+| P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | wip | Claude (helper): 1st VDI installed; cutover is human |
 | P3.1 | Remove metronome | P1.4 | M | any | todo | |
 | P3.2 | Remove soundboard | P1.4 | M | any | todo | |
 | P3.3 | Remove chat | P1.4 | S | any | todo | |
@@ -115,7 +122,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
-| P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | wip | |
+| P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | wip | Claude (helper): vhost config ready, needs proxy access |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | done | Claude |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | done | Claude |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
@@ -1595,6 +1602,11 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   re-confirming over VPN once the tunnel is back, but it is not a deployment
   failure — the container, API and UI were continuously up
   (`Result=success`, `NRestarts=0`).
+- **→ See `docs/HANDOFF-vdi-package-web-console.md`** for the deployment as it
+  stands, the exact remaining steps (apply `docker/web-console/nginx-crosspoint.conf`
+  on 192.168.0.6), and the gotchas (`--network host` is mandatory; HTTPS is
+  required for the mic; the test needs its own group; the VDI still runs the
+  pre-UI-fix `.deb`).
 
 ### P7.5 — Per-user containers, compose + docs · S
 - **Depends on:** P7.2, P7.3, P7.4
