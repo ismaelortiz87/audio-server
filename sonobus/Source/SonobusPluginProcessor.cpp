@@ -3498,8 +3498,12 @@ SonobusAudioProcessor::AgentHealth SonobusAudioProcessor::computeAgentHealth() c
                                  ? agentSilentSecondsOverride()
                                  : AGENT_SILENCE_DEFAULT_SECS;
         const double lastAudible = mAgentLastAudibleMs.load();
-        const bool measured = peakDb > -std::numeric_limits<float>::infinity();
-        const bool belowThreshold = measured && peakDb <= AGENT_SILENCE_DBFS;
+        // "Measured" comes from the raw sentinel (-1 = no block yet), NOT from
+        // the dB value: exact digital silence is peak 0 = -inf dB, which is the
+        // most important "silent" case (a dead loopback) and must not read as
+        // "not measured". (Found in the P2.11 PipeWire test.)
+        const bool measured = mAgentInputPeak.load() >= 0.0f;
+        const bool belowThreshold = measured && peakDb <= AGENT_SILENCE_DBFS;  // -inf <= -60 holds
 
         // "silent" requires BOTH that we have measured at least one block and
         // that nothing has exceeded the threshold for the whole window. Before

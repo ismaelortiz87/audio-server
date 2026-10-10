@@ -297,7 +297,9 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
             _WIN32_WINNT=0x0601)
     else()
         # Linux
-        list (APPEND PlatSourceFiles  Source/CrossPlatformUtilsLinux.cpp)
+        list (APPEND PlatSourceFiles  Source/CrossPlatformUtilsLinux.cpp
+                                      Source/PipeWireDevices.cpp   # P2.11
+                                      Source/PipeWireDevices.h)
 	list ( APPEND PLAT_COMPILE_DEFS
 		JUCE_USE_MP3AUDIOFORMAT=1 )
     endif()

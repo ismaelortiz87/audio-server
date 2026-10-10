@@ -67,6 +67,9 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #if !(JUCE_IOS || JUCE_ANDROID)
  #define CROSSPOINT_HAS_CONFIG 1
  #include "Config.h"
+ #if JUCE_LINUX
+  #include "PipeWireDevices.h"   // P2.11
+ #endif
 #else
  #define CROSSPOINT_HAS_CONFIG 0
 #endif
@@ -146,6 +149,11 @@ public:
     crosspoint::Config yamlConfig;
     crosspoint::Config effectiveConfig;
     bool haveConfig = false;
+ #if JUCE_LINUX
+    // P2.11: the JUCE device names of the generated crosspoint_in/out PCMs
+    // (empty = that direction is not pinned to a PipeWire node).
+    crosspoint::pipewire::Resolved pipewirePins;
+ #endif
 #endif
 
     // P4.1: control API (HTTP + WebSocket). CLI only for now; P2.1 can fill
@@ -415,6 +423,9 @@ public:
         apiConfig.selfName = cmdlineConnInfo.userName.isNotEmpty() ? cmdlineConnInfo.userName
                                                                    : SystemStats::getComputerName();
 
+        // An earlier failure (e.g. a bad --config, exit 1) must keep its status;
+        // only a problem found by THIS function is an API option error (exit 2).
+        const bool quitBeforeApi = doImmediateQuit;
         bool given = false;
         auto portStr = removeLongOptionValue(arglist, "--api-port", &given);
         if (given) {
@@ -475,7 +486,7 @@ public:
                       << " is not a loopback address; refusing to start without --api-token" << std::endl;
             doImmediateQuit = true;
         }
-        if (doImmediateQuit) apiOptionError = true;
+        if (doImmediateQuit && !quitBeforeApi) apiOptionError = true;
     }
 
     // P4.1: start the control API. An explicit --api-port that cannot be bound is
@@ -564,6 +575,27 @@ public:
         if (eff.role) {
             cmdlineRole = String(*eff.role); // the CLI role, if any, already won the merge
         }
+
+       #if JUCE_LINUX
+        // P2.11: audio.input_device / audio.output_device name PipeWire nodes. This
+        // has to happen now, while --config is read: it points ALSA_CONFIG_PATH at
+        // a generated config, which libasound only honours if it has not loaded its
+        // global config yet (i.e. before the AudioDeviceManager exists).
+        if (eff.inputDevice || eff.outputDevice) {
+            std::string pwErr, pwNote;
+            const auto confPath = File::getSpecialLocation(File::userHomeDirectory)
+                                      .getChildFile(".config/" APP_ID_LINUX_DIR "/asound.conf").getFullPathName().toStdString();
+            if (!crosspoint::pipewire::prepare(eff.inputDevice, eff.outputDevice, confPath, pipewirePins, pwErr, pwNote)) {
+                std::cerr << "Error in --config: " << pwErr << std::endl;
+                return false;
+            }
+            if (!pwNote.empty()) std::cerr << "Config: " << pwNote << std::endl;
+            if (!pipewirePins.inputJuceName.empty() || !pipewirePins.outputJuceName.empty())
+                std::cerr << "Config: PipeWire pinning via " << pipewirePins.asoundConfPath
+                          << " (input=" << (pipewirePins.inputJuceName.empty() ? "-" : *eff.inputDevice)
+                          << " output=" << (pipewirePins.outputJuceName.empty() ? "-" : *eff.outputDevice) << ")" << std::endl;
+        }
+       #endif
         return true;
     }
 
@@ -617,14 +649,17 @@ public:
 
         // --- audio devices / sample rate / buffer ---
         if (dm != nullptr && (cfg.inputDevice || cfg.outputDevice || cfg.sampleRate || cfg.buffer)) {
-            // P2.11 hook: on Linux, audio.input_device / audio.output_device are
-            // meant to name PipeWire nodes (D12). That needs a generated ALSA config
-            // pinning crosspoint_in / crosspoint_out PCMs to the nodes before JUCE
-            // opens them; it is NOT implemented yet. Until P2.11 lands, Linux
-            // behaves like every other platform: the names are matched against the
-            // devices JUCE lists (the ALSA PCMs).
+            // P2.11: on Linux a PipeWire node name was already validated and turned
+            // into the generated crosspoint_in / crosspoint_out PCM while --config
+            // was read (loadConfigFile); select those PCMs by their JUCE names.
+            // Names that are not PipeWire nodes are matched as before.
+            crosspoint::Config audioCfg = cfg;
+           #if JUCE_LINUX
+            if (!pipewirePins.inputJuceName.empty())  audioCfg.inputDevice = pipewirePins.inputJuceName;
+            if (!pipewirePins.outputJuceName.empty()) audioCfg.outputDevice = pipewirePins.outputJuceName;
+           #endif
             String err;
-            if (!applyAudioConfig(*dm, cfg, err)) {
+            if (!applyAudioConfig(*dm, audioCfg, err)) {
                 std::cerr << "Error in --config: " << err << std::endl;
                 return false;
             }

@@ -25,7 +25,7 @@
 //   role:     vdi | console
 //   audio:
 //     input_device:  name         JUCE device name (macOS/generic); on Linux a
-//                                 PipeWire node name (P2.11, not implemented)
+//                                 PipeWire node name (P2.11)
 //     output_device: name
 //     sample_rate:   48000
 //     buffer:        256          samples
