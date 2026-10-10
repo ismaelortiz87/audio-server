@@ -539,11 +539,20 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   probe with an unknown `input_device` reports `status: "missing"` as
   designed, and the Linux test drives the same detector with a −70 dBFS tone
   and passes). The assertion depends on the room, so it will flake wherever a
-  live mic is present. **Do:** make it deterministic — give the VDI peer a
-  `config` with an `input_device` that genuinely carries no signal, so
-  `silent` comes from the signal path rather than from luck. Do **not** mask
-  it with `SONOBUS_AGENT_INPUT=silent`: that override bypasses the very
-  detector this scenario exists to exercise.
+  live mic is present. **Fixed 2026-10-10** — the VDI peer now gets a `config`
+  whose `input_device_candidates` resolves to a device that genuinely carries no
+  signal, so `silent` comes from the signal path and **not** from
+  `SONOBUS_AGENT_INPUT` (which would bypass the detector this scenario exists to
+  exercise). Verified **3/3 PASS** in a row; the generated config resolves to
+  `input_device: "Global Mic"` and the device is picked without enumerating the
+  host, because the silent device differs per machine. To keep it portable the
+  scenario lists candidates (`Global Mic`, `eqMac`, `loopback_sink.monitor`)
+  and `tests/f2/peerprep.py` turns `*_candidates` into the concrete key, with
+  `F2_INPUT_DEVICE` / `F2_OUTPUT_DEVICE` as an explicit override. **Caveat:** if
+  none of the candidates exists on a host the agent reports that device
+  `missing` (not `silent`) and the scenario **fails loudly** rather than passing
+  by luck — set the override there. A true auto-detect would need a device
+  enumeration the engine does not expose yet.
 - **Result:**
 
 ### P1.6 — Role-less peers

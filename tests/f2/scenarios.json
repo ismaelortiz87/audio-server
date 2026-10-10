@@ -122,7 +122,7 @@
       ]
     },
     "agent-silent": {
-      "description": "P1.7 silence detection on the REAL path: a VDI with no input override and a 2 s silence window (default is 10 min). Headless peers feed silence, so the real detector must flip input to 'silent'.",
+      "description": "P1.7 silence detection on the REAL path: a VDI whose input device carries no signal (a virtual input, not the built-in mic) and a 2 s silence window (default is 10 min). No SONOBUS_AGENT_INPUT override, so the real detector must flip input to 'silent'.",
       "group": "f2-agent-silent",
       "routing": "matrix",
       "expect": "matrix",
@@ -136,6 +136,9 @@
           "role": "vdi",
           "env": {
             "SONOBUS_AGENT_SILENT_SECS": "2"
+          },
+          "config": {
+            "audio": { "input_device_candidates": ["Global Mic", "eqMac", "loopback_sink.monitor"] }
           },
           "agent": {
             "input": "silent",
