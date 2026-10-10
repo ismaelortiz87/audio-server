@@ -9,7 +9,8 @@ ARCH="$(dpkg --print-architecture)"
 P=/tmp/pkgroot
 rm -rf "$P"
 mkdir -p "$P/DEBIAN" "$P/usr/bin" "$P/usr/lib/systemd/user" \
-  "$P/usr/share/doc/crosspoint" "$P/usr/share/icons/hicolor/256x256/apps" "$P/usr/share/applications"
+  "$P/usr/share/doc/crosspoint" "$P/usr/share/icons/hicolor/256x256/apps" "$P/usr/share/applications" \
+  "$P/usr/share/crosspoint/ui"
 
 install -m 0755 "$BIN" "$P/usr/bin/crosspoint"
 strip --strip-unneeded "$P/usr/bin/crosspoint"
@@ -18,6 +19,12 @@ install -m 0644 "$SRC/sonobus/vdi.example.yaml" "$P/usr/share/doc/crosspoint/vdi
 install -m 0644 "$SRC/packaging/debian/README.Debian" "$P/usr/share/doc/crosspoint/README.Debian"
 install -m 0644 "$SRC/design/icon/crosspoint-256.png" "$P/usr/share/icons/hicolor/256x256/apps/crosspoint.png"
 install -m 0644 "$SRC/packaging/debian/crosspoint.desktop" "$P/usr/share/applications/crosspoint.desktop"
+# The agent's localhost web UI (P2.6). The engine serves whatever --ui-dir points
+# at, and crosspoint-agent.service passes /usr/share/crosspoint/ui, so the VDI's
+# http://localhost:7071/ shows the real agent page instead of 404.
+cp -R "$SRC/console-ui/." "$P/usr/share/crosspoint/ui/"
+find "$P/usr/share/crosspoint/ui" -type d -exec chmod 0755 {} +
+find "$P/usr/share/crosspoint/ui" -type f -exec chmod 0644 {} +
 cat > "$P/usr/share/doc/crosspoint/copyright" <<'C'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Crosspoint (fork of SonoBus)

@@ -975,12 +975,57 @@ surface on the Console via P1.7.
   started headless on the real amd64 hardware, it serves
   `GET /api/v1/health` → `{"ok": true, "app": "Crosspoint", "version": "1.7.2",
   "role": "vdi"}`. That also settles P7.1's amd64 question (no emulation in
-  play). **Blocker: `sudo` needs a password on this VDI** (`sudo -n true`
-  fails), and install needs `sudo apt install ./crosspoint_*.deb`. Remaining
-  steps once that is available: write `~/.config/crosspoint/vdi.yaml` (input
-  `sb_system_out.monitor`, output `sb_mic_in`, group `lagreca`), install the
-  package, `systemctl --user enable --now crosspoint-agent` (linger is already
-  on), then a reboot test.
+  play).
+- **Installed and verified on the VDI (2026-10-10), without sudo.** `sudo` needs
+  a password on this box, but **none is required for a systemd *user* unit**, so
+  the agent was installed user-locally and the *real* service was exercised:
+  binary at `~/.local/bin/crosspoint`, config at
+  `~/.config/crosspoint/vdi.yaml` (mode 600), unit at
+  `~/.config/systemd/user/crosspoint-agent.service` with
+  `ExecStart=%h/.local/bin/crosspoint --headless --config
+  %h/.config/crosspoint/vdi.yaml` (the only change from the packaged unit is
+  the binary path; `Documentation=` dropped). `systemctl --user enable --now
+  crosspoint-agent` → **active, `NRestarts=0`**, symlinked into
+  `default.target.wants`, and `loginctl` already had **`Linger=yes`**, so it
+  starts at boot with no login. `stop` → **`Result=success`** within the 10 s
+  `TimeoutStopSec`; `start` → active again.
+  **Live state proves the whole path works:**
+  `{"self":{"name":"maelosdebian","role":"vdi"},
+  "connection":{"state":"connected","server":"aoo.sonobus.net:10998",
+  "group":"lagreca"},"input":{"node":"Crosspoint input: sb_system_out",
+  "status":"ok"},"output":{"node":"Crosspoint output: sb_mic_in","status":"ok"}}`
+  — i.e. P2.11's PipeWire node addressing resolved both named devices, and the
+  agent joined the existing daily group.
+  **End-to-end with a real Console:** a Mac Console peer joined the same group
+  and the VDI appeared as
+  `maelosdebian: presence "online", latencyMs 63, lossPct 0.5, jitterBufferMs
+  49, agent {input "ok", output "ok", paused false}` — so P1.4 routing, P1.7
+  health reporting and P2.11 device pinning all work over the real internet.
+  `pactl` showed the agent's live streams: a sink-input
+  (`PipeWire ALSA [crosspoint]` → `sb_mic_in`) and source-outputs capturing
+  `sb_system_out.monitor` and `sb_virtual_mic`.
+  **Gotcha worth recording:** the flatpak settings had three different
+  `groupPassword` values recorded for `lagreca`; the newest-looking one
+  (`Plaermo22990613`, a typo of `Palermo…`) is wrong and gives
+  `could not join group 'lagreca': wrong password`. The correct one is
+  `Palermo22990613`.
+  **Remaining (needs a human):** install the `.deb` system-wide with `sudo` if
+  the packaged path is wanted (this test used the user-local binary), and the
+  multi-day side-by-side run before retiring the Carla hub.
+- **Packaging bug found and fixed while installing (P2.6).** On a real VDI,
+  `http://localhost:7071/` returned **404**: the `.deb` shipped **no UI assets**
+  and the systemd unit passed **no `--ui-dir`**, so P2.6's agent page was
+  unreachable on an installed box even though the engine serves `agent.html`
+  for the vdi role and the container image had always done the right thing
+  (`docker/web-console/Dockerfile` copies `console-ui/` and passes
+  `--ui-dir`). Fixed: `packaging/debian/Dockerfile.build` now copies
+  `console-ui/`, `make-deb.sh` installs it to `/usr/share/crosspoint/ui`, and
+  `crosspoint-agent.service` passes
+  `--ui-dir /usr/share/crosspoint/ui`. Verified on the VDI (using a user-local
+  copy of the same layout at `~/.local/share/crosspoint/ui`): `/` and
+  `/agent.html` both return **200** and the page is
+  `<title>Crosspoint agent</title>`, with the agent still
+  `connected` and `input`/`output` both `ok`.
 
 ## P3 — Strip jam features
 

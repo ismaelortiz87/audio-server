@@ -13,7 +13,7 @@ Wants=pipewire.service pipewire-pulse.service wireplumber.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/crosspoint --headless --config %h/.config/crosspoint/vdi.yaml
+ExecStart=/usr/bin/crosspoint --headless --config %h/.config/crosspoint/vdi.yaml --ui-dir /usr/share/crosspoint/ui
 # SIGTERM makes the app leave its group in order and save its state (P4.1).
 KillSignal=SIGTERM
 TimeoutStopSec=10

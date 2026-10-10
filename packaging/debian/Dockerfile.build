@@ -15,6 +15,9 @@ COPY juce/    /src/juce/
 COPY aoo/     /src/aoo/
 COPY design/icon/ /src/design/icon/
 COPY sonobus/ /src/sonobus/
+# The agent's localhost web UI (P2.6). The engine serves it from --ui-dir, so the
+# package installs it to /usr/share/crosspoint/ui and the systemd unit passes it.
+COPY console-ui/ /src/console-ui/
 RUN cmake -S /src/sonobus -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
  && cmake --build /build --target SonoBus_Standalone -j"$(nproc)" \
  && ls /build/SonoBus_artefacts/Release/Standalone/
