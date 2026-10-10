@@ -930,10 +930,21 @@ surface on the Console via P1.7.
   `crosspoint_1.7.2+git6d74eca1_arm64.deb`, 8 937 772 B, contents confirmed
   from the archive; installed with apt in the systemd container so `Depends`
   resolved, all 21 checks in `tests/linux/deb-systemd.sh` passed (see P2.5).
-  **Two caveats:** (1) the artifact is **arm64 only** — the VDIs are x86_64, so
-  an `amd64` build is still needed (`PLATFORM=linux/amd64
-  scripts/build-deb.sh`, native builder preferred; a full qemu build takes
-  hours). (2) `lintian` reports one error, `embedded-library libpng
+  **amd64 built too (2026-10-10)** — the VDIs are x86_64, so the arm64 artifact
+  alone is not shippable: `crosspoint_1.7.2+git9a237e6f_amd64.deb`, 9 145 060 B,
+  sha256 `20e97bc9ab49ba9399ee502fb0607eb53e9b34f6a8b30779c2a6e222c2d8964d`,
+  `Architecture: amd64`, x86-64 ELF (`0x3e`), `Depends` resolving to trixie
+  packages (libasound2t64, libc6 >= 2.38, libfreetype6, libopus0, libstdc++6,
+  pipewire-audio, pipewire-bin, ca-certificates). Built on the **native amd64
+  builder** (`docker buildx --builder buildkit-priv --platform linux/amd64`),
+  not under qemu, which is the difference between minutes and hours. Transferred
+  to the real VDI `maelosdebian` (192.168.0.71, Debian 13 trixie amd64) and the
+  sha256 was verified there; extracted unprivileged, `crosspoint --help` on the
+  VDI lists `--headless`, `--role`, `--config`, `--api-port`, so the binary
+  loads on a real amd64 trixie box. **Also fixed the reason builds were slow:**
+  the repo had no `.dockerignore`, so each root-context build uploaded the whole
+  repo (2.8 GB on disk) before compiling; added one (commit `d49c5f75`).
+  **Caveat:** `lintian` reports one error, `embedded-library libpng
   [usr/bin/crosspoint]` (upstream JUCE links its own libpng), plus warnings for
   maintainer-script-calls-systemctl (deliberate: prerm stops the user service)
   and no-manual-page. None are release-blocking; the libpng error is inherent
@@ -946,7 +957,24 @@ surface on the Console via P1.7.
   of daily use, then shut down the Ubuntu Studio + Carla server. Install
   from the P2.10 package; the agent web UI (P2.6) isn't required.
 - **Done when:** a full working day on the mesh with no fallback to the hub.
-- **Result:**
+- **Result:** *In progress — first VDI surveyed 2026-10-10.* Target:
+  `maelosdebian` = **192.168.0.71**, Debian 13 trixie **amd64**, kernel
+  6.12.86, 8 cores, user `maelo` (uid 1000). Already correct for D12:
+  `pipewire`/`pipewire-pulse`/`wireplumber` active, `pipewire-alsa` and
+  `dbus-user-session` installed, and **`Linger=yes` already enabled**. Its
+  virtual devices (created by the user's own `sonobus-sinks.service`, documented
+  in `~/sonobus-runbook.md`) map cleanly onto the agent:
+  - `sb_system_out` (+ `.monitor`) — where apps play; **agent input**.
+  - `sb_mic_in` — **agent output**; `sb_virtual_mic` is a
+    `module-remap-source` re-presenting `sb_mic_in.monitor` to apps as a real
+    mic, so apps still see a microphone.
+  Existing daily-use group is **`lagreca` on `aoo.sonobus.net:10998`** (from the
+  flatpak `net.sonobus.SonoBus` settings), so the cutover can reuse it. The
+  amd64 `.deb` was transferred and checksum-verified on the box, and the binary
+  loads there. **Blocker: `sudo` needs a password on this VDI** (`sudo -n true`
+  fails), and install needs `sudo apt install ./crosspoint_*.deb`. Remaining
+  steps once that is available: config from `packaging/debian/INSTALL.md`,
+  `systemctl --user enable --now crosspoint-agent`, then a reboot test.
 
 ## P3 — Strip jam features
 
