@@ -365,6 +365,61 @@ public:
     // debug dump of peer state, used by the F2 test harness (see tests/f2)
     void dumpPeersToFile(const File & file);
 
+    // P1.5: Console mix controls (control-api 3.2 / 5.1). Every one of these is
+    // a GAIN, never a stream start/stop: the send/recv allow flags and the
+    // *Active setters belong to the P1.4 routing matrix and are not touched.
+    // All setters are safe to call from the message thread; the audio thread
+    // only reads atomics and ramps each gain over ~10 ms.
+    enum class MicMode { Open = 0, PushToTalk = 1 };
+    // Switching mode releases any PTT hold (control-api 5.1 mic.setMode).
+    void setMicMode(MicMode mode);
+    MicMode getMicMode() const { return mMicMode.load() == (int) MicMode::PushToTalk ? MicMode::PushToTalk : MicMode::Open; }
+    // Stored in either mode; it only matters in open mode (P4.4 enforces wrong_mode).
+    void setMicOn(bool on) { mMicOn.store(on); }
+    bool getMicOn() const { return mMicOn.load(); }
+    void setPttHeld(bool held) { mPttHeld.store(held); }
+    bool getPttHeld() const { return mPttHeld.load(); }
+    // mode == open ? on : pttHeld
+    bool isMicTransmitting() const;
+
+    // Playback dim applied to non-soloed peers while anything is soloed
+    // (spec 3.5; default -18 dB). Clamped to -60..0 dB.
+    void setSoloDimDb(float db);
+    float getSoloDimDb() const { return mSoloDimDb.load(); }
+
+    // Per-peer talk flag (default true): gates what we send to that peer. While
+    // any peer is soloed, sending goes to soloed peers only, whatever their talk
+    // flag says; the flags are kept and apply again on un-solo. Only gates when
+    // our role is Console (a VDI's system audio is never gated by these).
+    void setRemotePeerTalk(int index, bool talk);
+    bool getRemotePeerTalk(int index) const;
+    // Per-peer playback mute: gain 0 in our output, the receive stream stays up
+    // (so the pre-fader meter keeps showing activity).
+    void setRemotePeerMuted(int index, bool muted);
+    bool getRemotePeerMuted(int index) const;
+    // Level in dB (wraps setRemotePeerLevelGain, which is linear).
+    void setRemotePeerLevelDb(int index, float db);
+    float getRemotePeerLevelDb(int index) const;
+    // Engine-computed control-api `hearsYou`: talk && online && micTransmitting
+    // && !(anySolo && !solo), where online = role-allowed and our send stream to
+    // that peer is up. The UI displays it and never re-derives it.
+    bool getRemotePeerHearsYou(int index) const;
+    // Current (ramped) gate gain on what we send to that peer, 0..1.
+    float getRemotePeerSendGateGain(int index) const;
+    // Pre-fader receive meter: measured on what the peer sends, before level,
+    // mute, solo dim and channel-group processing (for P4.3 station meters).
+    // getRemotePeerRecvMeterSource stays the post-gain one.
+    foleys::LevelMeterSource * getRemotePeerPreFaderMeterSource(int index);
+    // -1 when no peer has that username.
+    int getRemotePeerIndexByName(const String & name) const;
+
+    // TEST ONLY (F2): apply a --test-control JSON file, e.g.
+    // {"mic":{"mode":"open","on":true,"ptt":false},"talk":{"v2":false},
+    //  "solo":["v1"],"mute":["v3"],"soloDimDb":-18}
+    // keyed by peer username. "solo"/"mute" are declarative (peers not listed
+    // are un-soloed/unmuted). Message thread only. Returns false if unreadable.
+    bool applyTestControlFile(const File & file);
+
     // peer stuff
     
     EndpointState * findOrAddEndpoint(const String & host, int port);
@@ -1059,6 +1114,19 @@ private:
     std::atomic<PeerRole> mRole { PeerRole::Console };
     // P2.1: when set, restoring state must not change mRole (see setRoleAndLock).
     std::atomic<bool> mRoleLocked { false };
+
+    // P1.5: Console mic state and solo dim. Written from the message thread,
+    // read once per block by processBlock (gain gates only, see setMicMode).
+    std::atomic<int>   mMicMode { (int) MicMode::Open };
+    std::atomic<bool>  mMicOn { true };
+    std::atomic<bool>  mPttHeld { false };
+    std::atomic<float> mSoloDimDb { -18.0f };
+    // P1.5 TEST ONLY: SONOBUS_TEST_TONE_HZ, read once in the constructor (never
+    // on the audio thread). 0 = off. The phase is audio-thread state.
+    float  mTestToneHz = 0.0f;
+    double mTestTonePhase = 0.0;
+    // hearsYou for one peer; caller holds mCoreLock (read).
+    bool computeHearsYou(const RemotePeer * peer, bool anyPeerSoloed) const;
 
     Atomic<float>   mInputReverbLevel  { 1.0f };
     Atomic<float>   mInputReverbSize  { 0.15f };

@@ -172,6 +172,12 @@ public:
         }
     } quitSignalWatcher;
 
+    // P1.5 TEST ONLY: --test-control <file>, a JSON file polled ~1/s on the
+    // message thread and applied with applyTestControlFile (F2 drives talk,
+    // solo, mute and mic state of a running headless peer through it).
+    String testControlFilename;
+    bool testcontrolWasGiven = false;
+
     virtual StandalonePluginHolder* createHeadlessPlugin ()
     {
 #ifdef JucePlugin_PreferredChannelConfigurations
@@ -717,6 +723,9 @@ public:
         const String configSpec("--config");
         const String configSpecDesc("--config <file.yaml>");
 
+        const String testControlSpec("--test-control");
+        const String testControlSpecDesc("--test-control <filename>");
+
         
 
         app.addCommand ({ helpSpec, helpSpec, TRANS("Prints the list of commands"), {}, nullptr });
@@ -787,6 +796,12 @@ public:
             TRANS("Extra browser origin allowed to open the WebSocket, e.g. https://crosspoint.example.com. Repeatable."), {}, nullptr });
         app.addCommand ({ "--ui-dir", "--ui-dir <path>",
             TRANS("Folder of web UI files served at / (for example the repo's console-ui folder)."), {}, nullptr });
+
+        app.addCommand ({ testControlSpec, testControlSpecDesc,
+            TRANS("Test only: poll a JSON file about once per second and apply its mic/talk/solo/mute settings. Used by the local test harness."),
+            {},
+            nullptr
+        });
 
 
 
@@ -913,6 +928,16 @@ public:
         }
 
         applyApiOptions (arglist);   // P4.1 (after --config, so YAML api:/role/username feed its defaults)
+
+        auto testcontrol = removeLongOptionValue(arglist, testControlSpec, &testcontrolWasGiven);
+        if (testcontrolWasGiven && testcontrol.isEmpty()) {
+            std::cerr << "Error: --test-control requires a filename" << std::endl;
+            doImmediateQuit = true;
+        }
+        else if (testcontrol.isNotEmpty()) {
+            testControlFilename = testcontrol;
+        }
+
 
         if (arglist.removeOptionIfFound(headlessSpec)) {
 
@@ -1112,7 +1137,7 @@ public:
 
         // F2: start the peer-table dump timer when --dump-peers was given. The
         // timer runs on the message thread; the dump itself takes the core lock.
-        if (dumpPeersFilename.isNotEmpty()) {
+        if (dumpPeersFilename.isNotEmpty() || testControlFilename.isNotEmpty()) {
             startTimer(1000);
         }
 
@@ -1223,19 +1248,25 @@ public:
         return;
 #endif
 
-        // F2: periodic peer-table dump for the test harness.
-        if (dumpPeersFilename.isNotEmpty()) {
-            SonobusAudioProcessor * dumpProc = nullptr;
-            if (mainWindow.get() != nullptr && mainWindow->pluginHolder != nullptr) {
-                dumpProc = dynamic_cast<SonobusAudioProcessor*>(mainWindow->pluginHolder->processor.get());
-            } else if (pluginHolder != nullptr) {
-                dumpProc = dynamic_cast<SonobusAudioProcessor*>(pluginHolder->processor.get());
-            }
+        SonobusAudioProcessor * dumpProc = nullptr;
+        if (mainWindow.get() != nullptr && mainWindow->pluginHolder != nullptr) {
+            dumpProc = dynamic_cast<SonobusAudioProcessor*>(mainWindow->pluginHolder->processor.get());
+        } else if (pluginHolder != nullptr) {
+            dumpProc = dynamic_cast<SonobusAudioProcessor*>(pluginHolder->processor.get());
+        }
 
-            if (dumpProc != nullptr) {
-                dumpProc->dumpPeersToFile(File::getCurrentWorkingDirectory()
-                                              .getChildFile(dumpPeersFilename));
-            }
+        // P1.5 TEST ONLY: apply the control file first, so the dump written
+        // right after reflects it. Re-applied every tick (the setters are
+        // idempotent) so peers that join later pick it up too.
+        if (testControlFilename.isNotEmpty() && dumpProc != nullptr) {
+            dumpProc->applyTestControlFile(File::getCurrentWorkingDirectory()
+                                               .getChildFile(testControlFilename));
+        }
+
+        // F2: periodic peer-table dump for the test harness.
+        if (dumpPeersFilename.isNotEmpty() && dumpProc != nullptr) {
+            dumpProc->dumpPeersToFile(File::getCurrentWorkingDirectory()
+                                          .getChildFile(dumpPeersFilename));
         }
     }
 

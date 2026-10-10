@@ -44,6 +44,9 @@
 #   --verbose           verbose harness + evaluator output
 #   -h | --help         this help
 #
+# Scenarios with "steps" (P1.5) start every peer with --test-control and, once
+# routing has settled, run `evaluate.py steps` (see README "Control steps").
+#
 # Only processes this script started are ever signalled, and each is verified to
 # still be ours (via lsof cwd) before a forced kill. No pkill/killall is used.
 set -euo pipefail
@@ -88,7 +91,7 @@ PEER_EXTRAS=()  # the peer's scenario entry as compact JSON (config/setup_role/c
 PEER_ARGS=()
 PEER_ARGS_SET=0
 
-usage() { sed -n '2,40p' "$0"; exit "${1:-0}"; }
+usage() { sed -n '2,48p' "$0"; exit "${1:-0}"; }
 
 log()  { printf '>>> %s\n' "$*" >&2; }
 vlog() { [ "$VERBOSE" = 1 ] && printf '>>> %s\n' "$*" >&2 || true; }
@@ -282,6 +285,8 @@ print("GROUP\t%s" % (scen.get("group") or ""))
 print("ROUTING\t%s" % (scen.get("routing") or "mesh"))
 print("EXPECT\t%s" % (scen.get("expect") or scen.get("routing") or "mesh"))
 print("DESC\t%s" % (scen.get("description") or ""))
+# P1.5: scenarios with timed control steps need --test-control on every peer.
+print("STEPS\t%d" % len(scen.get("steps") or []))
 for entry in scen.get("peers", []):
     role = entry.get("role")
     advertise = entry.get("advertise", True)
@@ -301,12 +306,14 @@ GROUP=""
 ROUTING=""
 EXPECT=""
 DESC=""
+NSTEPS=0
 while IFS=$'\t' read -r kind a b c d e; do
     case "$kind" in
         GROUP)   GROUP="$a" ;;
         ROUTING) ROUTING="$a" ;;
         EXPECT)  EXPECT="$a" ;;
         DESC)    DESC="$a" ;;
+        STEPS)   NSTEPS="$a" ;;
         PEER)
             PEER_NAMES[${#PEER_NAMES[@]}]="$a"
             PEER_ROLES[${#PEER_ROLES[@]}]="$b"
@@ -417,6 +424,11 @@ esac
 if [ "$PEER_ARGS_SET" = 0 ] && [ "$APP_IS_STUB" = 1 ]; then
     PEER_ARGS=("--fake-role" "%ROLE%" "--fake-routing" "%EXPECT%")
 fi
+# P1.5: timed steps drive the app through --test-control and assert mix/level
+# fields only the real app produces, so the stub cannot run them.
+if [ "$NSTEPS" -gt 0 ] && [ "$APP_IS_STUB" = 1 ]; then
+    die "scenario '$SCENARIO' has $NSTEPS control step(s), which need the real app (--test-control); the stub cannot run it"
+fi
 
 # ---------------------------------------------------------------------------
 # run directory
@@ -431,8 +443,9 @@ fi
 # never match in pid_is_ours and no peer would be recognised as ours.
 RUN_DIR="$(cd "$RUN_DIR" && pwd -P)"
 DUMP_DIR="$RUN_DIR/dumps"
+CONTROL_DIR="$RUN_DIR/control"
 SERVER_LOG_DIR="$RUN_DIR/server-logs"
-mkdir -p "$DUMP_DIR" "$SERVER_LOG_DIR"
+mkdir -p "$DUMP_DIR" "$CONTROL_DIR" "$SERVER_LOG_DIR"
 
 log "scenario : $SCENARIO ($ROUTING, group=$GROUP)"
 [ -n "$DESC" ] && log "desc     : $DESC"
@@ -585,6 +598,10 @@ for i in "${!PEER_NAMES[@]}"; do
             *)    cmd+=( --role "$prep_role" ) ;;
         esac
     fi
+    # P1.5: the control file need not exist yet; evaluate.py writes it per step.
+    if [ "$NSTEPS" -gt 0 ]; then
+        cmd+=( --test-control "$CONTROL_DIR/$name.json" )
+    fi
     if [ "${#PEER_ARGS[@]}" -gt 0 ]; then
         for extra in "${PEER_ARGS[@]}"; do
             [ -n "$extra" ] || continue
@@ -661,6 +678,18 @@ python3 "$SCRIPT_DIR/evaluate.py" settle \
     --interval "$INTERVAL" \
     ${EVAL_EXTRA[@]+"${EVAL_EXTRA[@]}"}
 RC=$?
+# P1.5: once the routing model holds, run the scenario's timed control steps.
+if [ "$RC" -eq 0 ] && [ "$NSTEPS" -gt 0 ]; then
+    log "routing settled; running $NSTEPS control step(s)"
+    python3 "$SCRIPT_DIR/evaluate.py" steps \
+        --dir "$DUMP_DIR" \
+        --control-dir "$CONTROL_DIR" \
+        --scenario "$SCENARIO" \
+        --scenarios "$SCENARIOS_FILE" \
+        --peers "$EVAL_PEERS" \
+        --interval "$INTERVAL"
+    RC=$?
+fi
 set -e
 
 if [ -n "$FAULT" ]; then
