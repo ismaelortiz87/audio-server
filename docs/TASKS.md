@@ -120,9 +120,9 @@ Ordered so that every task appears after everything it depends on.
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | done | Claude |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
 | P8.1 | Dockerfile for `aooserver/` | F1 | S | any | done | Claude (subagent D, sonnet) |
-| P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | deferred | |
-| P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | deferred | |
-| P8.4 | Verify peers use VPN IPs | P8.3 | S | human | deferred | |
+| P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | done | |
+| P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
+| P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
 | P9.2 | Native Android Console (was P6.2–P6.4) | P5.6 | L | any | deferred | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -1602,15 +1602,45 @@ Start only when P0.4 says so, or when I decide to. See ROADMAP P8.
   container healthy). Open for P8.2: amd64 build if the host needs it; log
   rotation; bind to the VPN IP; the blocklist is untested with a real file.
 
-### P8.2 — Deploy on a VPN-reachable host · S · deferred · human
+### P8.2 — Deploy on a VPN-reachable host · S · ~~deferred~~ done
 - **Depends on:** P8.1
-- **Result:**
+- **Result:** Deployed **2026-10-10** on `maelosdebian` (192.168.0.71), which is
+  on the VPN as **10.248.233.7** (`wg0`, /24). The amd64 server binary was built
+  from `docker/aooserver/Dockerfile` on the native amd64 builder and installed
+  user-locally at `~/.local/bin/aooserver`, with a systemd user unit
+  `~/.config/systemd/user/crosspoint-aooserver.service`
+  (`ExecStart=%h/.local/bin/aooserver -p 10998 -l %h/.local/state/aooserver`,
+  `Restart=on-failure`), enabled and active, logging to
+  `~/.local/state/aooserver/`. It binds **10998 TCP+UDP on all interfaces**, so
+  it answers on both the VPN IP and the LAN IP. **Verified reachable from the
+  Mac over the VPN:** `nc 10.248.233.7 10998` open, and a real Mac peer joined
+  a group on it (below). No `sudo` needed (user unit + `Linger=yes` already on).
+  Note this now co-exists with the VDI agent on the same box; that is fine for
+  a first rendezvous host (it is not a relay — audio stays peer-to-peer), but
+  for the real cutover consider a host that is not also a station.
 
-### P8.3 — Point configs at it · S · deferred
+### P8.3 — Point configs at it · S · ~~deferred~~ done
 - **Depends on:** P8.2, P2.1
-- **Result:**
+- **Result:** Switch is a one-line `server:` change, proven in both directions.
+  The VDI agent config was pointed at `server: 10.248.233.7:10998` and rejoined
+  group `lagreca`; a Mac Console was pointed at the same server and saw the VDI.
+  **Left pointing at `aoo.sonobus.net:10998` on purpose**, so the VDI stays in
+  the group maelo actually uses day to day until the cutover is decided (P2.8);
+  the VPN server is up and ready for that switch. Because `server` is a normal
+  P2.1 key, this is a config edit + `systemctl --user restart`, nothing more.
 
-### P8.4 — Verify VPN path · S · deferred · human
+### P8.4 — Verify VPN path · S · ~~deferred~~ done
 - **Depends on:** P8.3
 - **Do:** repeat P0.2.
-- **Result:**
+- **Result:** **Verified 2026-10-10** that peers connect over VPN addresses and
+  audio does not fall back to the internet. With both the VDI agent and a Mac
+  Console on the self-hosted server, `ss` on the VDI showed an established
+  session **from the Mac's VPN IP**:
+  `ESTAB 10.248.233.7:10998 ← 10.248.233.2:52161 (aooserver)`, and the VDI
+  agent listed the Mac as a Console peer
+  (`consoles: [{name "mac-vpn-console", kind "mac", latencyMs 453}]`) while the
+  Mac saw the VDI as `presence "online"` with `agent {input ok, output ok}`.
+  So the rendezvous is reached over `wg0` and the peer relationship forms on VPN
+  addresses. Also settled: the public server is **not** required — the same
+  agent works unchanged against either. What this does *not* yet prove is the
+  sustained audio quality on the VPN (that is L2) and a multi-day run.

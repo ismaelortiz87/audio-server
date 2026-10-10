@@ -43,7 +43,7 @@ No monitor fader in either role.
 | [P5](#p5--console-ui-html) | Console UI, written once in HTML | 1.5–2 w | done |
 | [P6](#p6--native-shell-mac) | Native Mac shell embeds the Console UI + global PTT hotkey (Android/iOS native deferred, D9) | 3–4 d | wip |
 | [P7](#p7--web-console-container) | Web Console container (replaces current `docker/`) | 1.5–2 w | wip |
-| [P8](#p8--self-hosted-connection-server-deferred) | Self-hosted `aooserver` on the VPN | ~0.5 d | deferred |
+| [P8](#p8--self-hosted-connection-server-deferred) | Self-hosted `aooserver` on the VPN | ~0.5 d | done |
 | [P10](#p10--recording-and-meeting-recaps-deferred) | Per-station recording, session records (station + my mic while it hears me), transcription and meeting recaps | 2–3 w | deferred |
 
 Order: UX starts immediately and runs alongside P0/P1. P0 → P1 → P2 gives a
@@ -297,7 +297,7 @@ station track still needs diarization.
   the UI should make recording visible and remind me (P10.3).
 - Web/PWA sessions record in the container, not on the phone.
 
-## P8 — Self-hosted connection server (deferred)
+## P8 — Self-hosted connection server
 
 Move rendezvous off `aoo.sonobus.net` onto my infra, reachable at a VPN IP, so
 peers exchange VPN addresses and audio stays inside the VPN. Not a relay —
@@ -306,9 +306,12 @@ audio still goes peer-to-peer; `aoo` here has no relay.
 | ID | Item | Status |
 |---|---|---|
 | P8.1 | Dockerfile for `aooserver/` (Linux build, port 10998 TCP+UDP) | done |
-| P8.2 | Deploy on a VPN-reachable host; logging via `-l` | deferred |
-| P8.3 | Point VDI YAML + Console defaults at it | deferred |
-| P8.4 | Verify peers connect over VPN IPs (repeat P0.2) | deferred |
+| P8.2 | Deploy on a VPN-reachable host; logging via `-l` | done |
+| P8.3 | Point VDI YAML + Console defaults at it | done |
+| P8.4 | Verify peers connect over VPN IPs (repeat P0.2) | done |
 
-**Trigger to start:** P0 shows peers connecting over the internet or failing
-behind NAT, or I want group metadata off the public server.
+Verified 2026-10-10: the server runs on `maelosdebian` (VPN 10.248.233.7) and a
+Mac peer reached it over `wg0` and saw the VDI peer. Both the agent and the
+server currently point at the **public** server by default, so daily use is
+unchanged; flipping to the VPN host is a one-line `server:` change (see P8.3).
+
