@@ -531,7 +531,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
     
     target_compile_definitions("${target_name}"
         PUBLIC
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=$<IF:$<BOOL:${needs_web_browser}>,1,0>
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
