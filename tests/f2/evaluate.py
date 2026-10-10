@@ -1137,8 +1137,14 @@ def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
                 if hold_start is None:
                     hold_start = now
                     hold_polls = 0
+                    # A baseline is captured on the first poll where everything
+                    # else holds, and then kept for the rest of the step. It must
+                    # NOT be re-captured after a failed poll: a counter that
+                    # never moves would otherwise pass and fail on alternating
+                    # polls, and whether the report names the real reason would
+                    # depend on which phase the deadline happened to land in.
                     for i, a in enumerate(step["expect"]):
-                        if a.get("increases"):
+                        if a.get("increases") and i not in baselines:
                             baselines[i] = _lookup(docs, a)[1]
                 else:
                     hold_polls += 1
@@ -1153,8 +1159,13 @@ def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
                         print("    ok   %s" % desc, file=out)
                     break
             else:
+                # The hold window restarts, but the "increases" baselines stay:
+                # the comparison is against the start of the step's first healthy
+                # window, so a stalled counter keeps failing on every later poll
+                # instead of alternating pass/fail. That is what makes the
+                # reported reason deterministic: the last poll before the
+                # deadline is always a failing one for a counter that never moves.
                 hold_start = None
-                baselines = {}
             if now >= deadline:
                 print("step %d %-14s FAIL: not satisfied within %.0fs%s"
                       % (sidx + 1, step["name"], step["timeout"],

@@ -662,24 +662,24 @@ cat > "$STEPS_SCEN" <<'JSON'
     "steps": [{"expect": [{"peer": "c1", "field": "x", "eq": 1}], "bogus": 1}]}
 }}
 JSON
-steps_dump() {  # DIR POST PRE
+steps_dump() {  # DIR POST PRE [PACKETS]
     mkdir -p "$1"
-    python3 - "$1" "$2" "$3" <<'PY'
+    python3 - "$1" "$2" "$3" "${4:-10}" <<'PY'
 import json, os, sys
-d, post, pre = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
+d, post, pre, packets = sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4])
 json.dump({"self": "c1", "selfRole": "console", "micTransmitting": True, "soloDimDb": -18,
-           "peers": [{"name": "v2", "role": "vdi", "hearsYou": False, "packetsReceived": 10,
+           "peers": [{"name": "v2", "role": "vdi", "hearsYou": False, "packetsReceived": packets,
                       "postGainPeakDb": post, "preFaderPeakDb": pre}]},
           open(os.path.join(d, "c1.json"), "w"))
 PY
 }
-# run_steps NAME EXPECTED_RC SCENARIO NEEDLE
+# run_steps NAME EXPECTED_RC SCENARIO NEEDLE [INTERVAL]
 run_steps() {
-    local name="$1" want="$2" scen="$3" needle="$4" out rc
+    local name="$1" want="$2" scen="$3" needle="$4" interval="${5:-0.1}" out rc
     mkdir -p "$WORK/$name/ctl"
     set +e
     out="$(python3 "$EVAL" steps --dir "$WORK/$name" --control-dir "$WORK/$name/ctl" \
-        --scenario "$scen" --scenarios "$STEPS_SCEN" --peers c1 --interval 0.1 2>&1)"
+        --scenario "$scen" --scenarios "$STEPS_SCEN" --peers c1 --interval "$interval" 2>&1)"
     rc=$?
     set -e
     LAST_OUT="$out"
@@ -713,6 +713,45 @@ run_steps steps-frozen 1 counter "expected to increase from 10"
 # Malformed steps are a usage error.
 steps_dump "$WORK/steps-bad" -12 -12
 run_steps steps-bad 2 badstep "unknown key 'bogus'"
+
+# B3 regression: a frozen counter must report the reason no matter which poll
+# the deadline lands on. The old code re-captured the "increases" baseline after
+# every failed poll, so the check alternated pass/fail and the reason reached the
+# report only when the last poll happened to be a failing one -- i.e. the outcome
+# depended on the poll count at the deadline. Sweeping the interval moves that
+# count across both parities, so an oscillation cannot hide.
+frozen_ok=1
+for interval in 0.10 0.11 0.12 0.13 0.14 0.15; do
+    steps_dump "$WORK/steps-frozen-$interval" -12 -12
+    run_steps "steps-frozen-$interval" 1 counter "expected to increase from 10" "$interval"
+    if ! printf '%s' "$LAST_OUT" | grep -qF "expected to increase from 10"; then
+        frozen_ok=0
+    fi
+done
+if [ "$frozen_ok" -eq 1 ]; then
+    PASS_COUNT=$((PASS_COUNT + 1)); printf 'ok   %-26s reason always reported\n' steps-frozen-sweep
+else
+    FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s reason missing for some poll parity\n' steps-frozen-sweep
+fi
+
+# ...and keeping the baseline must not turn "increases" into a check that can
+# never be satisfied: a counter that really did rise still passes, and the reason
+# is reported again once it stops. Checked directly against check_assertion,
+# because the mock dumps above are static files and cannot rise on their own.
+if python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from evaluate import check_assertion
+a = {"peer": "c1", "of": "v2", "field": "packetsReceived", "increases": True}
+docs = {"c1": {"peers": [{"name": "v2", "packetsReceived": 40}]}}
+ok_rise, _ = check_assertion(docs, a, {}, 10)      # 40 > 10 -> passes
+ok_stall, desc = check_assertion(docs, a, {}, 40)  # 40 > 40 -> fails, with reason
+sys.exit(0 if (ok_rise and not ok_stall and "increase from 40" in desc) else 1)
+' "$SCRIPT_DIR"; then
+    PASS_COUNT=$((PASS_COUNT + 1)); printf 'ok   %-26s rise passes, stall still fails\n' steps-increases
+else
+    FAIL_COUNT=$((FAIL_COUNT + 1)); printf 'FAIL %-26s baseline handling is wrong\n' steps-increases
+fi
 
 # The stub cannot run step scenarios; run.sh refuses before starting anything.
 set +e
