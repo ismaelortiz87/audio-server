@@ -62,6 +62,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "ApiServer.h"   // P4.1
 #include "EngineState.h" // P4.2
 #include "AgentConnect.h" // P2.4
+#include "ApiCommands.h" // P4.3, P4.4
 #include <csignal>
 
 // P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
@@ -70,6 +71,9 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
  #include "Config.h"
  #if JUCE_LINUX
   #include "PipeWireDevices.h"   // P2.11
+  #if __has_include(<alsa/asoundlib.h>)
+   #include <alsa/asoundlib.h>   // P4.4: snd_config_update_free_global()
+  #endif
  #endif
 #else
  #define CROSSPOINT_HAS_CONFIG 0
@@ -149,6 +153,7 @@ public:
     // which also carries the audio/codec keys the CLI has no flags for.
     crosspoint::Config yamlConfig;
     crosspoint::Config effectiveConfig;
+    crosspoint::Config cliConfig;            // P4.4: what the command line gave (agent.reloadConfig re-merges)
     bool haveConfig = false;
  #if JUCE_LINUX
     // P2.11: the JUCE device names of the generated crosspoint_in/out PCMs
@@ -165,6 +170,7 @@ public:
     bool apiOptionError = false;   // an invalid API option: quit with a non-zero status
     std::unique_ptr<crosspoint::ApiServer> apiServer;
     std::unique_ptr<crosspoint::EngineState> engineState;   // P4.2 (declared after apiServer: destroyed first)
+    std::unique_ptr<crosspoint::ApiCommands> apiCommands;   // P4.3/P4.4 (declared after engineState: destroyed first)
     String loadedConfigPath;                                 // P4.2: agent state configPath
 
     // P2.4: headless only. Connect on launch and keep reconnecting; reopen a lost audio device.
@@ -425,6 +431,9 @@ public:
         apiConfig.features.clear();
         // P4.2: what the state really carries (clients ignore unknown features)
         apiConfig.features.add (isVdi ? "consoles" : "stations");
+        apiConfig.features.add ("meters");     // P4.3
+        apiConfig.features.add ("commands");   // P4.4
+        if (!isVdi) apiConfig.features.add ("ptt");
         apiConfig.selfName = cmdlineConnInfo.userName.isNotEmpty() ? cmdlineConnInfo.userName
                                                                    : SystemStats::getComputerName();
 
@@ -532,7 +541,152 @@ public:
         o.selfName = apiConfig.selfName;
         o.configPath = loadedConfigPath;
         engineState = std::make_unique<crosspoint::EngineState>(*proc, dm, *apiServer, o);
+
+        // P4.3 / P4.4: meters stream and command handler
+        crosspoint::ApiCommands::Hooks hooks;
+        hooks.retryNow = [this]() { if (!agentConnector) return false; agentConnector->retryNow(); return true; };
+        hooks.takeOverConnection = [this, proc]() {
+            if (!agentConnector) return;
+            agentConnector.reset();
+            proc->clearAgentConnStatus();   // the state falls back to the live view
+        };
+        hooks.initialConnection = cmdlineConnInfo;
+        hooks.hasInitialConnection = cmdlineConnInfo.serverHost.isNotEmpty() && cmdlineConnInfo.groupName.isNotEmpty();
+       #if CROSSPOINT_HAS_CONFIG
+        hooks.setAgentDevice = [this, dm](bool isInput, const String & node, String & previous, String & code, String & msg) {
+            return apiSetAgentDevice(dm, isInput, node, true, previous, code, msg);
+        };
+        hooks.reloadConfig = [this, proc, dm](String & code, String & msg) { return apiReloadConfig(proc, dm, code, msg); };
+       #endif
+        apiCommands = std::make_unique<crosspoint::ApiCommands>(*proc, dm, *apiServer, *engineState, apiConfig.role, std::move(hooks));
     }
+
+#if CROSSPOINT_HAS_CONFIG
+    //==========================================================================
+    // P4.4: agent.setInput / agent.setOutput / agent.reloadConfig
+
+    static String firstLine (const String & s) { return s.upToFirstOccurrenceOf("\n", false, false).trim(); }
+
+    // Switches one audio device live and, with --config, writes it to the YAML
+    // (Config::setAudioDevices + save(), comments kept). `previous` is the name
+    // that was in use (the PipeWire node on Linux when the YAML named one).
+    bool apiSetAgentDevice (AudioDeviceManager * dm, bool isInput, const String & node, bool writeYaml,
+                            String & previous, String & code, String & msg)
+    {
+        if (dm == nullptr) { code = "not_supported"; msg = "No audio device manager"; return false; }
+        const auto before = dm->getAudioDeviceSetup();
+        previous = isInput ? before.inputDeviceName : before.outputDeviceName;
+
+        crosspoint::Config cfg;   // only the direction being changed
+        std::string wanted = node.toStdString();
+       #if JUCE_LINUX
+        {
+            // P2.11: node names are PipeWire nodes. Validate against pw-dump and
+            // regenerate the pinned ALSA PCMs (crosspoint_in / crosspoint_out), keeping
+            // the other direction pinned as it was. UNTESTED on Linux (no PipeWire here).
+            const auto & eff = effectiveConfig;
+            if (isInput && eff.inputDevice) previous = String(*eff.inputDevice);
+            if (!isInput && eff.outputDevice) previous = String(*eff.outputDevice);
+            std::optional<std::string> wantIn = eff.inputDevice, wantOut = eff.outputDevice;
+            (isInput ? wantIn : wantOut) = wanted;
+            crosspoint::pipewire::Resolved pins;
+            std::string pwErr, pwNote;
+            const auto confPath = File::getSpecialLocation(File::userHomeDirectory)
+                                      .getChildFile(".config/" APP_ID_LINUX_DIR "/asound.conf").getFullPathName().toStdString();
+            if (!crosspoint::pipewire::prepare(wantIn, wantOut, confPath, pins, pwErr, pwNote)) {
+                code = "not_found"; msg = firstLine(String(pwErr)); return false;
+            }
+            pipewirePins = pins;
+            const auto & juceName = isInput ? pins.inputJuceName : pins.outputJuceName;
+            if (!juceName.empty()) wanted = juceName;
+           #if __has_include(<alsa/asoundlib.h>)
+            // libasound caches its config; make it re-read the regenerated file, and
+            // force the device to reopen (same JUCE name, different node behind it).
+            snd_config_update_free_global();
+           #endif
+            dm->closeAudioDevice();
+        }
+       #endif
+        if (isInput) cfg.inputDevice = wanted; else cfg.outputDevice = wanted;
+
+        String err;
+        if (!applyAudioConfig(*dm, cfg, err)) {
+            const bool openFailed = err.startsWith("could not open");
+            if (openFailed) dm->setAudioDeviceSetup(before, true);   // go back to what worked
+            code = openFailed ? "internal" : "not_found";
+            msg = firstLine(err);
+            return false;
+        }
+
+        if (isInput) { effectiveConfig.inputDevice = node.toStdString(); yamlConfig.setAudioDevices(node.toStdString(), std::nullopt); }
+        else         { effectiveConfig.outputDevice = node.toStdString(); yamlConfig.setAudioDevices(std::nullopt, node.toStdString()); }
+
+        if (writeYaml && haveConfig && !yamlConfig.path.empty()) {
+            std::string saveErr;
+            if (!yamlConfig.save(saveErr)) {
+                code = "io_error";
+                msg = "Switched, but could not write the config: " + String(saveErr);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Re-reads the --config file. A broken file leaves the running setup alone and
+    // lands in state.configError / connection.error (and the peer-info agent block).
+    bool apiReloadConfig (SonobusAudioProcessor * proc, AudioDeviceManager * dm, String & code, String & msg)
+    {
+        if (!haveConfig || yamlConfig.path.empty()) { code = "not_supported"; msg = "Started without --config"; return false; }
+        crosspoint::Config fresh;
+        std::string err;
+        if (!crosspoint::Config::load(yamlConfig.path, fresh, err)) {
+            proc->setApiConfigError(String(err));
+            if (engineState) engineState->setConfigError(String(err));
+            code = "bad_request"; msg = firstLine(String(err));
+            return false;
+        }
+        proc->setApiConfigError({});
+        if (engineState) engineState->setConfigError({});
+
+        const auto old = effectiveConfig;
+        yamlConfig = fresh;
+        effectiveConfig = crosspoint::Config::merge(cliConfig, fresh);
+        const auto & eff = effectiveConfig;
+
+        // devices that differ from what is open now
+        String prev, c2, m2;
+        if (dm != nullptr) {
+            const auto setup = dm->getAudioDeviceSetup();
+            if (eff.inputDevice && String(*eff.inputDevice) != (old.inputDevice ? String(*old.inputDevice) : setup.inputDeviceName))
+                apiSetAgentDevice(dm, true, String(*eff.inputDevice), false, prev, c2, m2);
+            if (eff.outputDevice && String(*eff.outputDevice) != (old.outputDevice ? String(*old.outputDevice) : setup.outputDeviceName))
+                apiSetAgentDevice(dm, false, String(*eff.outputDevice), false, prev, c2, m2);
+        }
+        // codec / bitrate (without re-applying the audio keys)
+        if (eff.codec != old.codec || eff.bitrate != old.bitrate) {
+            const auto keep = effectiveConfig;
+            effectiveConfig.inputDevice.reset(); effectiveConfig.outputDevice.reset();
+            effectiveConfig.sampleRate.reset(); effectiveConfig.buffer.reset();
+            applyConfigRuntime(proc, nullptr);
+            effectiveConfig = keep;
+        }
+        // server / group / name / password changed: reconnect
+        // (with the P2.4 connector the session target is fixed at start: a changed
+        // server/group needs a restart)
+        if (apiCommands && !agentConnector && eff.server && eff.group
+            && (eff.server != old.server || eff.group != old.group || eff.password != old.password || eff.username != old.username)) {
+            AooServerConnectionInfo ci = cmdlineConnInfo;
+            std::string host, e2; int port = 0;
+            crosspoint::Config::splitServer(*eff.server, host, port, e2);
+            ci.serverHost = host; ci.serverPort = port > 0 ? port : DEFAULT_SERVER_PORT;
+            ci.groupName = String(*eff.group).trim();
+            ci.groupPassword = eff.password ? String(*eff.password) : String();
+            if (eff.username) ci.userName = String(*eff.username).trim();
+            try { apiCommands->connectWith(ci); } catch (...) {}
+        }
+        return true;
+    }
+#endif
 
 #if CROSSPOINT_HAS_CONFIG
     //==========================================================================
@@ -551,6 +705,7 @@ public:
         }
         haveConfig = true;
         loadedConfigPath = f.getFullPathName();
+        cliConfig = cli;
         effectiveConfig = crosspoint::Config::merge(cli, yamlConfig);
         const auto & eff = effectiveConfig;
 
@@ -1370,6 +1525,7 @@ public:
     {
         //DBG("shutdown");
         quitSignalWatcher.stopTimer();
+        apiCommands.reset(); // P4.3/P4.4: before the state and the server
         agentConnector.reset();        // P2.4: before the processor goes away
         agentDeviceWatcher.reset();
         engineState.reset(); // P4.2: before the server it publishes to

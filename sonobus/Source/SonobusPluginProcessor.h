@@ -945,6 +945,17 @@ public:
     // One consistent read (single mCoreLock hold) of what the public getters don't expose.
     bool getRemotePeerApiInfo(int index, ApiPeerInfo & ret) const;
     AgentHealth getSelfAgentHealth() const { return computeAgentHealth(); }
+
+    // P4.4: agent controls (control-api 5.2).
+    // pause = our send gates close (fade ~10 ms), streams stay up; reported in
+    // the agent health (peer info + state `sending`).
+    void setSendPaused(bool paused) { mSendPaused.store(paused); }
+    bool getSendPaused() const { return mSendPaused.load(); }
+    // Arms a 440 Hz, -18 dBFS tone into the main output for `seconds`. Message
+    // thread; the audio thread renders it from atomics (no allocation).
+    void armApiTestTone(double seconds);
+    // Reported as agent.config_error in the peer info; empty = none.
+    void setApiConfigError(const String & err);
     String getSelfConsoleKind() const;
     bool isRecoveringFromServerLoss() const { return mRecoveringFromServerLoss; }
     bool getServerEndpointInfo(String & host, int & port) const;
@@ -982,6 +993,7 @@ public:
         String reason;
     };
     void setAgentConnStatus(const AgentConnStatus& s);
+    void clearAgentConnStatus();   // P4.4: back to valid = false
     AgentConnStatus getAgentConnStatus() const;
     // end P2.3 / P2.4 ========================================================
 
@@ -1176,6 +1188,14 @@ private:
     std::atomic<bool>  mMicOn { true };
     std::atomic<bool>  mPttHeld { false };
     std::atomic<float> mSoloDimDb { -18.0f };
+    // P4.4
+    std::atomic<bool>  mSendPaused { false };
+    std::atomic<int>   mApiToneArm { 0 };         // samples to play, set by armApiTestTone()
+    int                mApiToneRemaining = 0;     // audio thread only
+    int                mApiToneElapsed = 0;       // audio thread only
+    double             mApiTonePhase = 0.0;       // audio thread only
+    mutable SpinLock   mApiConfigErrorLock;
+    String             mApiConfigError;
     // P1.5 TEST ONLY: SONOBUS_TEST_TONE_HZ, read once in the constructor (never
     // on the audio thread). 0 = off. The phase is audio-thread state.
     float  mTestToneHz = 0.0f;

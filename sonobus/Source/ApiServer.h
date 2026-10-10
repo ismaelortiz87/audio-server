@@ -132,6 +132,14 @@ public:
     void broadcast (const String& json);
     /** Only authenticated sessions subscribed to `topic` and not hidden. */
     void broadcastTopic (const String& topic, const String& json);
+    /** As above, and only for sessions that also pass `extraFilter` (P4.3: the
+        agent's per-device meters go only to sessions subscribed to deviceMeters). */
+    void broadcastTopic (const String& topic, const String& json,
+                         const std::function<bool (const ApiSession&)>& extraFilter);
+    /** True when at least one authenticated, visible session subscribed to `topic`
+        (and passes `extraFilter`). Cheap enough for a 30 Hz timer. */
+    bool hasSubscribers (const String& topic,
+                         const std::function<bool (const ApiSession&)>& extraFilter = {}) const;
 
     //== P4.4: commands =========================================================
     using CommandHandler = std::function<void (std::shared_ptr<ApiSession>, const var& message)>;

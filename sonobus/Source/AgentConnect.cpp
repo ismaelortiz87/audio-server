@@ -66,6 +66,11 @@ void AgentConnector::aooClientGroupJoined (SonobusAudioProcessor*, bool success,
     events.add ({ Ev::Joined, success, msg });
 }
 
+void AgentConnector::retryNow()
+{
+    if (phase == Phase::Backoff) nextAttemptMs = Time::getMillisecondCounterHiRes();
+}
+
 void AgentConnector::timerCallback()
 {
     const double now = Time::getMillisecondCounterHiRes();
