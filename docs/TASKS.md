@@ -69,16 +69,17 @@ Ordered so that every task appears after everything it depends on.
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
 | F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | todo | |
+| L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | todo | |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
 | P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
 | P1.4 | Apply routing matrix on role arrival | P1.3, F2 | M | any | done | Claude (helper) |
 | P1.6 | Role-less peers stay blocked, shown as "unknown" | P1.4 | S | any | done | Claude (helper) |
-| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | M | any | wip | Claude (subagent F, opus) |
+| P1.5 | Per-VDI talk toggle (Console → VDI gate) | P1.4 | M | any | done | Claude (subagent F, opus) |
 | P1.7 | VDI agent health in peer info (D11) | P1.2 | S | any | done | Claude (subagent A, sonnet; finished the previous agent's WIP) |
 | P2.2 | Vendor a YAML parser | F1 | S | any | done | Claude (helper) |
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | done | Claude (subagent B, sonnet) |
-| P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | wip | Claude (subagent H, sonnet) |
+| P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | done | Claude (subagent H, sonnet) |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
@@ -99,7 +100,7 @@ Ordered so that every task appears after everything it depends on.
 | P4.5 | Control API schema (doc first), covering everything UX2 needs | P1.4, UX2 | M | any + design review | done | Claude |
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | done | Claude (subagent C, sonnet) |
-| P4.2 | State snapshot + change events | P4.1 | M | any | wip | Claude (subagent I, sonnet) |
+| P4.2 | State snapshot + change events | P4.1 | M | any | done | Claude (subagent I, sonnet) |
 | P4.3 | Meters stream | P4.1 | S | any | todo | |
 | P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
 | P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
@@ -110,7 +111,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
-| P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | wip | Claude (subagent G, sonnet) |
+| P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
@@ -464,6 +465,27 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   path; the mute counterfactuals used a temporary env-gated probe that was
   removed before committing, so F2 does not cover mute interaction.
 
+### L1 — Linux engine latency (~10–12 s) · M · priority
+- **Depends on:** P7.1 (reproduction: two engine containers + the gateway,
+  `docker/web-console/test/e2e-engine.mjs`)
+- **Found in P7.1:** a tone into the VDI container's `engine_in` reaches the
+  Console container's output ~10–12 s late, both directions, while PulseAudio
+  alone is instant. `PULSE_LATENCY_MSEC=20` sometimes cut it to 2.5–7 s. The
+  likely culprits are JUCE's ALSA backend through the pulse/pipewire ALSA
+  plugin (period/buffer sizes; capture fragments accumulating), AOO's auto
+  jitter buffer growing after underruns, or clock drift with no resampling.
+  **The Debian VDIs use a similar path (JUCE ALSA → pipewire-alsa, P2.11),**
+  so this may affect the main product too.
+- **Do:** measure each stage (engine input → AOO send → AOO recv → engine
+  output) with timestamps or impulse probes, find where the delay
+  accumulates, fix it (e.g. explicit small ALSA period/buffer for the
+  pulse/pipewire PCMs, a fixed small receive buffer in headless roles, a
+  drift-correction/flush), and re-measure. Target < 150 ms engine↔engine on
+  loopback containers.
+- **Done when:** a rerunnable latency test reports the end-to-end delay, and
+  it's under target in the container pair and in the P2.11 PipeWire setup.
+- **Result:**
+
 ### F2.1 — F2 coverage gaps from the P1.4 review · S
 - **Depends on:** F2, P1.4
 - **Why:** P1.4 proved two mute-cache traps with a temporary probe that was
@@ -564,7 +586,20 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   is −18 dB while VDI-A is soloed. Needs a way to drive talk/solo in a
   running headless peer: either P4.4 commands, or a test-only control (env or
   CLI script) that's removed or kept out of release builds.
-- **Result:**
+- **Result:** talk, solo narrowing, solo dim and mute are **gains** in `processBlock`; the
+  P1.4 allow/active flags are untouched. A per-peer send gate (target =
+  micTransmitting && (anySolo ? solo : talk), Console role only) feeds each AOO
+  source, so toggling never restarts a stream. Solo dims by `soloDimDb`
+  (default −18, measured −18.0 dB) instead of cutting; mute is a 0 playback
+  gain with recv kept. All ramp over ~10 ms. Fixed: peer gain was applied twice
+  (g → g²). Pre-fader meter per peer (`getRemotePeerPreFaderMeterSource`,
+  P4.3). `hearsYou` is engine-computed. API for P4.4: mic mode/on/ptt,
+  soloDimDb, talk/mute/solo/levelDb, hearsYou, getRemotePeerIndexByName.
+  Test-only: `--test-control <json>` (polled), `SONOBUS_TEST_TONE_HZ`. F2 has
+  timed steps and `talk-gate`, `solo-narrow`, `solo-dim`, `mute-prefader`,
+  `ptt` (3/3 each, counterfactual verified). P4.4 notes: restrict solo to
+  stations; the engine stores micOn in either mode, so P4.4 returns
+  `wrong_mode`.
 
 ## P2 — VDI agent mode
 
@@ -689,7 +724,18 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   null sinks, the agent captures from the configured monitor and plays into
   the configured sink (measured with `pw-record`/levels), and a wrong node
   name produces the listed-valid-nodes error.
-- **Result:**
+- **Result:** `sonobus/Source/PipeWireDevices.{h,cpp}` (Linux only) validates
+  `audio.*_device` as PipeWire node names via `pw-dump` (sink monitor =
+  `<sink>.monitor`), writes `~/.config/crosspoint/asound.conf` with hinted
+  `pcm.crosspoint_in/out` of `type pipewire` (including the system alsa.conf),
+  and sets `ALSA_CONFIG_PATH` at config time (libasound caches it). JUCE then
+  lists "Crosspoint input/output: <node>" and the unchanged
+  `applyAudioConfig` opens them. Non-node names keep P2.1 behaviour; an
+  unknown name exits 1 listing the valid nodes. Also fixed a config error
+  exiting 2. At merge: digital silence now reports `silent` (the P1.7 sentinel
+  bug). Verified: `tests/linux/pipewire-pin.sh` in debian:trixie. Risks: null
+  sinks need a driver (`node.driver=true` in the test), names resolve once at
+  start, WirePlumber move policies untested.
 
 ### P2.7 — Example YAML + docs
 - **Depends on:** P2.1 · **Size:** S · **Touches:** `docs/`, `sonobus/vdi.example.yaml`
@@ -935,7 +981,20 @@ the mobile `.jucer` source list (remove deleted files from it too).
   `offline` with `last_seen`, and its settings come back when it rejoins.
 - **Done when:** a test client receives a snapshot on connect and a delta when
   a peer joins/leaves (use F2).
-- **Result:**
+- **Result:** `sonobus/Source/EngineState.{h,cpp}` builds Console (§3.2) and agent (§3.3)
+  state at 10 Hz on the message thread, diffs it into set/del JSON-pointer ops
+  (patch.js semantics) and publishes them; it is also the server's state
+  provider (an early-client race is fixed: setStateProvider re-sends state).
+  Presence online/lost (3 s)/offline; health per spec with 10 s hysteresis;
+  agent health mapped; unknownPeers/otherConsoles. Remembered stations
+  (`ExtraState/Stations`: colorIndex, level, pan, mute, talk, lastSeen),
+  colorIndex assigned once, mix restored on rejoin; `forgetStation()` ready
+  for P4.4. Integrated at merge with the P1.5 API (talk, mute, levelDb,
+  mic.*, soloDimDb; hearsYou = engine gate AND online). Tests:
+  `tests/api/p42.test.mjs` (real client Store, zero resyncs, lost→offline,
+  stable colour, persistence across restart, agent state). Gaps:
+  inputNode/outputNode/silentForMin null; agent `consoles[].talking` always
+  false; restore-on-rejoin untested until P4.4 commands exist.
 
 ### P4.3 — Meters stream · S
 - **Depends on:** P4.1
@@ -1068,7 +1127,18 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   (reuse what works in the current `docker/`). Control API bound to the
   container network.
 - **Done when:** the container appears as a Console in F2 against VDI peers.
-- **Result:**
+- **Result:** `docker/web-console/` (Dockerfile, supervisor.sh, compose,
+  console.example.yaml, README, test/e2e-engine.mjs): a trixie image (arm64,
+  ~957 MB) with the Linux engine headless as Console plus the P7.3 gateway on
+  one PulseAudio, under tini; the supervisor exits if either process dies. The
+  gateway entrypoint cleans a stale pulse dir, so restarts work. Verified:
+  health role console, `/` serves the UI, WS token auth, engine on Pulse
+  `engine_out`/`engine_in.monitor`; with a second engine container as VDI,
+  audio reaches Chrome over WebRTC and Chrome's mic reaches the VDI. **Blocker
+  L1: ~10–12 s end-to-end latency** through the engine pair (Pulse alone is
+  instant). A host macOS VDI can't reach container UDP under Docker Desktop
+  NAT, so use container peers for tests. Next: P7.2 (UI base and token
+  hand-off), P7.4 (proxy routes, ICE on the VPN), P7.5, P7.6.
 
 ### P7.3 — WebRTC audio gateway · L
 - **Depends on:** P7.1
