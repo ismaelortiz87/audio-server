@@ -81,8 +81,8 @@ Ordered so that every task appears after everything it depends on.
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | done | Claude (subagent B, sonnet) |
 | P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | done | Claude (subagent H, sonnet) |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
-| P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | wip | Claude (subagent L, sonnet) |
-| P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | wip | Claude (subagent L, sonnet) |
+| P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | done | Claude (subagent L, sonnet) |
+| P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | done | Claude (subagent L, sonnet) |
 | P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | todo | |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
 | P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | todo | |
@@ -747,7 +747,12 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
 - **Do:** when role is VDI: send channels forced to 1 (mono), input monitor
   gains forced to 0 and ignored if set, Console-only features disabled.
 - **Done when:** F2 dump/log shows mono send and zero monitor for VDI peers.
-- **Result:**
+- **Result:** `applyVdiRoleLocks()` (on setRole, after every state restore, and on a
+  locked parameter change) forces send channels to 1 and input monitoring to 0
+  on a VDI; `setInputMonitor` is ignored. A Console is unchanged. The routing
+  matrix already restricts a VDI to Consoles. F2 `vdi-mono-lock`: a stereo /
+  monitor-1 setup file still yields mono and 0 on a VDI, and stays stereo on a
+  Console.
 
 ### P2.4 — Auto-connect + reconnect
 - **Depends on:** P2.1 · **Size:** M
@@ -755,7 +760,16 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   loss, retry with exponential backoff (cap ~30 s), logging each attempt.
 - **Done when:** F2 variant: kill and restart the local `aooserver`; the peer
   rejoins without intervention.
-- **Result:**
+- **Result:** `sonobus/Source/AgentConnect.{h,cpp}`. `AgentConnector` (headless) is a
+  message-thread state machine. Backoff 1→2→4… capped at 30 s, with jitter
+  that only shortens; one stderr line per attempt; a bad password waits the
+  cap and sets `config_error`/`bad_password`. The stock ServerReconnectTimer is
+  off while it runs; peers are kept across outages. `AgentDeviceWatcher`
+  reports `missing` and reopens devices on the same ladder. EngineState shows
+  real `connecting/reconnecting/failed`, `attempt` and `retryInSec`. Test
+  hatches: `SONOBUS_BACKOFF_SCALE`, control-file `audioLoss`. F2:
+  `reconnect-server` (rejoin 2.0 s after the server returns),
+  `reconnect-backoff`, `bad-password`, `reconnect-device`.
 
 ### P2.6 — VDI agent web UI on localhost
 In scope (maelo, 2026-10-09): the agent has no native window, but its
@@ -792,6 +806,14 @@ UI is for checking and fixing a VDI when needed.
   persisted and peers see an orderly leave.
 - **Done when:** VDI reboot → agent connected without login interaction
   (or with only the expected user login).
+- **Decision (Claude, 2026-10-10, from D11):** at boot, a **missing audio
+  device must not be fatal** for a VDI. The agent stays up, reports
+  `input/output: missing` (the Console shows it) and lets `AgentDeviceWatcher`
+  retry. **Config errors stay fatal** (bad YAML, unknown keys), so systemd's
+  `Restart=on-failure` plus the journal surface them. Implement this
+  startup-path change as part of P2.5.
+- **Already done elsewhere:** SIGTERM/SIGINT clean quit (P4.1); reconnect
+  (P2.4).
 - **Result:**
 
 ### P2.9 — Minimal native tray icon · S · deferred
