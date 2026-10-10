@@ -1484,19 +1484,25 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   jitterBufferMs 22, agent {input "silent", ...}` — and it listed a genuinely
   unknown peer (`audosrv`) in `unknownPeers`, so P1.6/P1.7 read correctly
   through the whole stack.
-- **Still open for P7.4: the public vhost.** `crosspoint.app.lagreca.io`
-  resolves to **192.168.0.6**, which runs **nginx** and answers 443, but returns
-  **404** for our hostname (identical to a nonexistent name) while
-  `app.lagreca.io` returns **200** — so the wildcard/TLS is fine and only the
-  **vhost + proxy_pass is missing**. That host rejects our SSH keys
-  (`maelo`/`root`/`ubuntu`/`admin`), so the route must be added by maelo or with
-  credentials. Needed: `/` + `/api/` → `http://10.248.233.7:7070` with
-  **WebSocket upgrade** (`/api/v1/ws`), long `proxy_read_timeout`, no buffering,
-  `X-Forwarded-Proto: https`; `/rtc/` → `http://10.248.233.7:8090`;
-  `CROSSPOINT_API_ORIGIN=https://crosspoint.app.lagreca.io`; and **UDP
-  40000–40019 must reach 10.248.233.7 directly** (media bypasses the proxy).
-  Then the on-phone ICE check (currently unverified — the gateway is up and
-  answers `/rtc/health`, but no browser has negotiated media yet).
+- **Still open for P7.4: the public vhost — config now written and validated, so
+  what remains is only applying it.** `crosspoint.app.lagreca.io` resolves to
+  **192.168.0.6**, which runs **nginx** and answers 443, but returns **404** for
+  our hostname (identical to a nonexistent name) while `app.lagreca.io` returns
+  **200** — so the wildcard/TLS is fine and only the **vhost + proxy_pass is
+  missing**. That host rejects our SSH keys (`maelo`/`root`/`ubuntu`/`admin`),
+  so it needs maelo or credentials. The block is ready at
+  `docker/web-console/nginx-crosspoint.conf`: **`nginx -t` passes**, and it was
+  exercised against the running Console container through the real config (`/`,
+  `/api/v1/health` and `/rtc/config` all route correctly). Apply it by copying to
+  `sites-available`, setting `UPSTREAM_HOST` (= `10.248.233.7` or `127.0.0.1`)
+  and the certificate paths, adding the documented
+  `map $http_upgrade $connection_upgrade` to the `http {}` scope, then
+  `nginx -t && systemctl reload nginx`. Also set
+  `CROSSPOINT_API_ORIGIN=https://crosspoint.app.lagreca.io` on the container and
+  make sure **UDP 40000–40019 reaches 10.248.233.7 directly** (media bypasses
+  the proxy). Then the on-phone ICE check, which is the last unverified step —
+  the gateway is up and answers `/rtc/health`, but no browser has negotiated
+  media yet.
 - **Browser-verified, and `/rtc/` on the SAME ORIGIN is load-bearing
   (2026-10-10).** The real Console UI was loaded in headless Chrome from the
   live container: `title` is `Crosspoint` and the full UI renders
