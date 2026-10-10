@@ -36,6 +36,7 @@
 
 // HACK
 #include "SonobusPluginEditor.h"
+#include "ConsoleShell.h"   // P6.1
 
 #include <limits>
 #include <algorithm>
@@ -914,10 +915,12 @@ public:
        #if (! JUCE_IOS) && (! JUCE_ANDROID)
         if (auto* props = pluginHolder->settings.get())
         {
-            props->setValue ("windowX", getX());
-            props->setValue ("windowY", getY());
-            props->setValue ("windowW", getWidth());
-            props->setValue ("windowH", getHeight());
+            // P6.1: the web-view shell keeps its own geometry, so --legacy-ui still has the old one
+            const String prefix = shellMode ? "shell" : "window";
+            props->setValue (prefix + "X", getX());
+            props->setValue (prefix + "Y", getY());
+            props->setValue (prefix + "W", getWidth());
+            props->setValue (prefix + "H", getHeight());
         }
        #endif
 
@@ -925,6 +928,34 @@ public:
         clearContentComponent();
         pluginHolder = nullptr;
     }
+
+   #if CROSSPOINT_HAS_WEB_SHELL
+    /** P6.1: swaps the SonoBus editor for the web-view shell (the editor stays alive but
+        hidden: it still carries the command-line connection and the saved state).
+        Title "Crosspoint", minimum 360 x 560, last size and position restored. */
+    void showWebShell (const String& url, const String& fatalError)
+    {
+        auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent());
+        if (mc == nullptr) return;
+
+        shellMode = true;
+        optionsButton.setVisible (false);
+        setResizeLimits (360, 560, 10000, 10000);
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), 440, 760);
+
+        int x = -100, y = -100, w = -100, h = -100;
+        if (auto* props = pluginHolder->settings.get())
+        {
+            x = props->getIntValue ("shellX", -100);  y = props->getIntValue ("shellY", -100);
+            w = props->getIntValue ("shellW", -100);  h = props->getIntValue ("shellH", -100);
+        }
+        if (w == -100 || h == -100) { w = 440; h = 760; }
+        w = jmax (w, 360);
+        h = jmax (h, 560);
+        if (x != -100 && y != -100) setBoundsConstrained ({ x, y, w, h });
+        else                        centreWithSize (w, h);
+    }
+   #endif
 
     AudioProcessorEditor * getEditor() const {
         auto maincontent = dynamic_cast<MainContentComponent *>(getContentComponent());
@@ -1103,8 +1134,12 @@ private:
         }
 
         void resized() override
-        {         
+        {
             auto r = getLocalBounds();
+
+           #if CROSSPOINT_HAS_WEB_SHELL
+            if (shell != nullptr) { shell->setBounds (r); return; }
+           #endif
 
             bool portrait = getWidth() < getHeight();
             bool tall = getHeight() > 500;
@@ -1143,7 +1178,21 @@ private:
         }
 
         AudioProcessorEditor * getEditor() const { return editor.get(); }
-        
+
+       #if CROSSPOINT_HAS_WEB_SHELL
+        // P6.1: show the web-view shell in place of the (kept, hidden) editor.
+        void setShell (std::unique_ptr<Component> newShell, int w, int h)
+        {
+            shell = std::move (newShell);
+            if (editor != nullptr) editor->setVisible (false);
+            notification.setVisible (false);
+            shouldShowNotification = false;
+            addAndMakeVisible (*shell);
+            setSize (w, h);
+            resized();
+        }
+       #endif
+
     private:
         
         bool isPortrait = false;
@@ -1202,6 +1251,9 @@ private:
         //==============================================================================
         void inputMutedChanged (bool newInputMutedValue)
         {
+           #if CROSSPOINT_HAS_WEB_SHELL
+            if (shell != nullptr) return;   // the shell owns the whole window
+           #endif
             shouldShowNotification = newInputMutedValue;
             notification.setVisible (shouldShowNotification);
 
@@ -1227,6 +1279,9 @@ private:
         //==============================================================================
         void componentMovedOrResized (Component&, bool, bool wasResized) override
         {
+           #if CROSSPOINT_HAS_WEB_SHELL
+            if (shell != nullptr) return;
+           #endif
             if (wasResized && editor != nullptr)
                 setSize (editor->getWidth() + leftInset + rightInset,
                          editor->getHeight() + topInset + bottomInset);
@@ -1236,6 +1291,9 @@ private:
         StandaloneFilterWindow& owner;
         NotificationArea notification;
         std::unique_ptr<AudioProcessorEditor> editor;
+       #if CROSSPOINT_HAS_WEB_SHELL
+        std::unique_ptr<Component> shell;   // P6.1
+       #endif
         bool shouldShowNotification = false;
 
         int topInset = 0;
@@ -1248,6 +1306,7 @@ private:
 
     //==============================================================================
     TextButton optionsButton;
+    bool shellMode = false;   // P6.1
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StandaloneFilterWindow)
 };

@@ -38,6 +38,10 @@ public:
         std::function<void()> takeOverConnection;
         /** agent.retryNow when a connector owns the session; returns false if none. */
         std::function<bool()> retryNow;
+        /** settings.set { pttHotkey } (P6.5). Validates and applies the binding and
+            persists it; returns false with a message when it cannot. Unset = the
+            engine has no global hotkey, and the key answers `not_supported`. */
+        std::function<bool (const String& spec, String& errMessage)> setPttHotkey;
         /** The connection the app was started with (headless -c/-g/-n or the YAML). */
         AooServerConnectionInfo initialConnection;
         bool hasInitialConnection = false;
@@ -51,6 +55,11 @@ public:
         the values are saved to the recent connections when the join was issued.
         Used by connection.connect, agent.retryNow and agent.reloadConfig. */
     void connectWith (const AooServerConnectionInfo& info);
+
+    /** P6.5: the global hotkey as one more push-to-talk holder (the same per-holder
+        logic as a client's mic.ptt, so a UI hold and the hotkey combine: the mic is
+        held while either is down). Ignored unless the mic is in push-to-talk mode. */
+    void setHotkeyPtt (bool down);
 
     /** Frame builders, exposed for tests of the dB mapping. */
     static var levelPair (float peak, float rms);

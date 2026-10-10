@@ -248,6 +248,14 @@ void ApiCommands::setStationSolo (const String& id, bool on)
     processor.setRemotePeerSoloed (idx, on);
 }
 
+void ApiCommands::setHotkeyPtt (bool down)
+{
+    constexpr int64 kHotkeyHolder = -1;          // session ids are positive
+    if (down && processor.getMicMode() != Proc::MicMode::PushToTalk) return;   // open mode: does nothing
+    if (down) pttHolders.insert (kHotkeyHolder); else pttHolders.erase (kHotkeyHolder);
+    applyPtt();
+}
+
 void ApiCommands::applyPtt()
 {
     // A hold only counts in ptt mode (mock: pttHeld = mode == ptt && any holder).
@@ -396,6 +404,7 @@ void ApiCommands::setSettings (const var& a)
     auto* o = a.getDynamicObject();
     std::optional<float> dim;
     std::optional<int> format;
+    std::optional<String> hotkey;
     String unsupported;
 
     for (auto& kv : o->getProperties())
@@ -405,6 +414,11 @@ void ApiCommands::setSettings (const var& a)
         {
             if (! isNumber (kv.value)) throw CmdError { "bad_request", "soloDimDb must be a number" };
             dim = (float) (double) kv.value;
+        }
+        else if (key == "pttHotkey" && hooks.setPttHotkey)
+        {
+            if (! kv.value.isString()) throw CmdError { "bad_request", "pttHotkey must be a string such as \"alt+Space\"" };
+            hotkey = kv.value.toString();
         }
         else if (key == "pttHotkey" || key == "networkBuffer")
         {
@@ -453,6 +467,11 @@ void ApiCommands::setSettings (const var& a)
         format = found;
     }
 
+    if (hotkey)
+    {
+        String err;
+        if (! hooks.setPttHotkey (*hotkey, err)) throw CmdError { "bad_request", err };   // before anything else is applied
+    }
     if (dim) processor.setSoloDimDb (*dim);
     if (format) processor.setDefaultAudioCodecFormat (*format);   // the send format of new connections
 }

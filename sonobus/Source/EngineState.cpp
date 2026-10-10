@@ -651,7 +651,7 @@ var EngineState::buildConsoleState (double now)
         { "mic", obj ({ { "mode", mic.mode }, { "on", mic.on }, { "pttHeld", mic.pttHeld },
                         { "transmitting", mic.transmitting }, { "device", deviceName (true) } }) },
         { "output", obj ({ { "device", deviceName (false) }, { "level", (double) gainToLevelDb ((float) wet) } }) },
-        { "settings", obj ({ { "soloDimDb", soloDimDb() }, { "pttHotkey", var() },
+        { "settings", obj ({ { "soloDimDb", soloDimDb() }, { "pttHotkey", strOrNull (options.pttHotkey ? options.pttHotkey() : String()) },
                              { "codec", codec }, { "bitrateKbps", bitrate },
                              { "networkBuffer", obj ({ { "mode", autoBuf ? "auto" : "manual" },
                                                        { "currentMs", bufNow } }) } }) },
