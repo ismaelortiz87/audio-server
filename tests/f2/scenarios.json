@@ -435,5 +435,410 @@
         }
       ]
     }
+  ,
+    "vdi-mono-lock": {
+      "description": "P2.3: a VDI whose setup file says stereo send, Dry Level 1 and input monitor gain 1 still sends mono with monitoring 0 (selfSendChannels 1, selfMonitorGain 0, v1's stream to c1 has 1 channel). The Console c1 loads the SAME setup and keeps stereo/monitor 1 (counterfactual: the locks are role-driven).",
+      "group": "f2-vdi-mono-lock",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console",
+          "setup_state": {
+            "params": {
+              "sendchannels": 2,
+              "dry": 1
+            },
+            "monitor": 1
+          }
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "setup_state": {
+            "params": {
+              "sendchannels": 2,
+              "dry": 1
+            },
+            "monitor": 1
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "locks",
+          "hold": 3,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfSendChannels",
+              "eq": 1
+            },
+            {
+              "peer": "v1",
+              "field": "selfMonitorGain",
+              "eq": 0
+            },
+            {
+              "peer": "v1",
+              "of": "c1",
+              "field": "sendChannels",
+              "eq": 1
+            },
+            {
+              "peer": "c1",
+              "field": "selfSendChannels",
+              "eq": 2
+            },
+            {
+              "peer": "c1",
+              "field": "selfMonitorGain",
+              "min": 1
+            }
+          ]
+        }
+      ]
+    },
+    "reconnect-server": {
+      "description": "P2.4: kill the harness's own aooserver, keep it down, restart it on the same port. v1 (VDI, 440 Hz tone) and c1 rejoin with no intervention, the routing matrix holds again and audio flows. 'PASS after Ns' of the last step is the time-to-rejoin.",
+      "group": "f2-reconnect-server",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console"
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "env": {
+            "SONOBUS_TEST_TONE_HZ": "440"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "up",
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "connected"
+            },
+            {
+              "peer": "v1",
+              "field": "selfConn.ups",
+              "min": 1
+            },
+            {
+              "peer": "c1",
+              "field": "selfConn.state",
+              "eq": "connected"
+            },
+            {
+              "peer": "c1",
+              "field": "selfConn.ups",
+              "min": 1
+            },
+            {
+              "peer": "c1",
+              "of": "v1",
+              "field": "packetsReceived",
+              "increases": true
+            }
+          ]
+        },
+        {
+          "name": "server-down",
+          "harness": "server-stop",
+          "wait": 4,
+          "hold": 1,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "reconnecting"
+            },
+            {
+              "peer": "c1",
+              "field": "selfConn.state",
+              "eq": "reconnecting"
+            }
+          ]
+        },
+        {
+          "name": "server-up",
+          "harness": "server-start",
+          "timeout": 60,
+          "hold": 3,
+          "matrix": true,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "connected"
+            },
+            {
+              "peer": "v1",
+              "field": "selfConn.ups",
+              "min": 2
+            },
+            {
+              "peer": "c1",
+              "field": "selfConn.state",
+              "eq": "connected"
+            },
+            {
+              "peer": "c1",
+              "field": "selfConn.ups",
+              "min": 2
+            },
+            {
+              "peer": "c1",
+              "of": "v1",
+              "field": "sendAllow",
+              "eq": true
+            },
+            {
+              "peer": "c1",
+              "of": "v1",
+              "field": "packetsReceived",
+              "increases": true
+            }
+          ]
+        }
+      ]
+    },
+    "reconnect-backoff": {
+      "description": "P2.4: with the server down, v1's retry delays grow 1,2,4,8,16 and cap at 30 s (jitter only shortens). SONOBUS_BACKOFF_SCALE=0.2 runs the same ladder 5x faster (cap 6 s).",
+      "group": "f2-reconnect-backoff",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console"
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "env": {
+            "SONOBUS_BACKOFF_SCALE": "0.2"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "up",
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "connected"
+            },
+            {
+              "peer": "v1",
+              "field": "selfConn.ups",
+              "min": 1
+            }
+          ]
+        },
+        {
+          "name": "server-down",
+          "harness": "server-stop",
+          "timeout": 60,
+          "hold": 0,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "reconnecting"
+            },
+            {
+              "peer": "v1",
+              "field": "selfConn.retryInSec",
+              "min": 0
+            }
+          ],
+          "logs": [
+            {
+              "peer": "v1",
+              "log": "retry_ladder",
+              "scale": 0.2,
+              "min": 7
+            }
+          ]
+        }
+      ]
+    },
+    "bad-password": {
+      "description": "P2.4: v1's YAML has the wrong group password (c1 created the group with the right one). v1 must not hammer the server: attempts are spaced at the cap (SONOBUS_BACKOFF_SCALE=0.1 -> ~3 s instead of 30 s), selfConn says failed/bad_password and agent.config_error is set.",
+      "group": "f2-bad-password",
+      "routing": "matrix",
+      "expect": "matrix",
+      "no_settle": true,
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console",
+          "cli_flags": false,
+          "cli_role": null,
+          "config": {
+            "server": "%HOST%:%PORT%",
+            "group": "%GROUP%",
+            "password": "right",
+            "username": "%NAME%",
+            "role": "console"
+          }
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "cli_flags": false,
+          "cli_role": null,
+          "config": {
+            "server": "%HOST%:%PORT%",
+            "group": "%GROUP%",
+            "password": "wrong",
+            "username": "%NAME%",
+            "role": "vdi"
+          },
+          "env": {
+            "SONOBUS_BACKOFF_SCALE": "0.1"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "rejected",
+          "timeout": 40,
+          "hold": 1,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfConn.state",
+              "eq": "failed"
+            },
+            {
+              "peer": "v1",
+              "field": "selfConn.errorCode",
+              "eq": "bad_password"
+            },
+            {
+              "peer": "v1",
+              "field": "selfAgent.config_error",
+              "notnull": true
+            }
+          ],
+          "logs": [
+            {
+              "peer": "v1",
+              "log": "retry_spacing",
+              "scale": 0.1,
+              "min": 3
+            }
+          ]
+        }
+      ]
+    },
+    "reconnect-device": {
+      "description": "P2.4: the VDI's audio device vanishes ({audioLoss:true} closes it and fails every reopen). v1 reports input/output missing (c1 sees it in v1's peer info), retries with the backoff ladder, and recovers to ok when the device is back.",
+      "group": "f2-reconnect-device",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {
+          "name": "c1",
+          "role": "console"
+        },
+        {
+          "name": "v1",
+          "role": "vdi",
+          "env": {
+            "SONOBUS_BACKOFF_SCALE": "0.2"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "healthy",
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfAgent.input",
+              "eq": "ok"
+            }
+          ]
+        },
+        {
+          "name": "device-gone",
+          "control": {
+            "v1": {
+              "audioLoss": true
+            }
+          },
+          "timeout": 40,
+          "hold": 1,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfAgent.input",
+              "eq": "missing"
+            },
+            {
+              "peer": "v1",
+              "field": "selfAgent.output",
+              "eq": "missing"
+            },
+            {
+              "peer": "c1",
+              "of": "v1",
+              "field": "agent.input",
+              "eq": "missing"
+            }
+          ],
+          "logs": [
+            {
+              "peer": "v1",
+              "log": "retry_ladder",
+              "filter": "audio",
+              "scale": 0.2,
+              "min": 3,
+              "reach_cap": false
+            }
+          ]
+        },
+        {
+          "name": "device-back",
+          "control": {
+            "v1": {
+              "audioLoss": false
+            }
+          },
+          "timeout": 40,
+          "hold": 2,
+          "expect": [
+            {
+              "peer": "v1",
+              "field": "selfAgent.input",
+              "eq": "ok"
+            },
+            {
+              "peer": "v1",
+              "field": "selfAgent.output",
+              "eq": "ok"
+            },
+            {
+              "peer": "c1",
+              "of": "v1",
+              "field": "agent.input",
+              "eq": "ok"
+            }
+          ]
+        }
+      ]
+    }
   }
 }

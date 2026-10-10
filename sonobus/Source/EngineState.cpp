@@ -386,8 +386,19 @@ var EngineState::connectionVar (double now, bool agent)
     if (connected) everConnectedToServer = true;
 
     String state, reason;
-    var retry;
-    if (connected && group.isNotEmpty())                  state = "connected";
+    var retry, attemptV, errorV;
+    // P2.4: when the agent connector runs it knows the real state (attempt
+    // number, time to the next retry, bad password); use that, not the guess below.
+    const auto cs = processor.getAgentConnStatus();
+    if (cs.valid)
+    {
+        state = cs.state;
+        reason = cs.reason;
+        if (cs.retryInSec >= 0.0) retry = std::round (cs.retryInSec * 10.0) / 10.0;
+        if (cs.attempt > 0) attemptV = cs.attempt;
+        if (cs.errorCode.isNotEmpty()) errorV = obj ({ { "code", cs.errorCode }, { "message", cs.reason } });
+    }
+    else if (connected && group.isNotEmpty())             state = "connected";
     else if (connected)                                   state = "connecting";   // joining the group
     else if (processor.isRecoveringFromServerLoss())      { state = "reconnecting"; retry = 1; }
     else if (! everConnectedToServer && server.isNotEmpty() && now - startMs < 15000.0) state = "connecting";
@@ -395,10 +406,11 @@ var EngineState::connectionVar (double now, bool agent)
 
     if (agent)
         return obj ({ { "state", state == "failed" ? String ("error") : state }, { "server", server }, { "group", group },
-                      { "attempt", var() }, { "retryInSec", retry },
-                      { "error", state == "failed"
-                                   ? obj ({ { "code", "server_unreachable" }, { "message", reason } })
-                                   : var() } });
+                      { "attempt", attemptV }, { "retryInSec", retry },
+                      { "error", cs.valid ? errorV
+                                          : state == "failed"
+                                              ? obj ({ { "code", "server_unreachable" }, { "message", reason } })
+                                              : var() } });
 
     bool pwSaved = false;
     if (group.isNotEmpty())
@@ -645,7 +657,7 @@ var EngineState::buildAgentState (double now)
         { "output", obj ({ { "node", outName }, { "description", outName }, { "status", health.output } }) },
         { "devices", devicesVar (true) },
         { "configPath", strOrNull (options.configPath) },
-        { "configError", strOrNull (options.configError) } });
+        { "configError", strOrNull (options.configError.isNotEmpty() ? options.configError : health.configError) } });   // P2.4
 }
 
 } // namespace crosspoint

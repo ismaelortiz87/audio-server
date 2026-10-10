@@ -61,6 +61,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "AppIdentity.h"
 #include "ApiServer.h"   // P4.1
 #include "EngineState.h" // P4.2
+#include "AgentConnect.h" // P2.4
 #include <csignal>
 
 // P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
@@ -165,6 +166,10 @@ public:
     std::unique_ptr<crosspoint::ApiServer> apiServer;
     std::unique_ptr<crosspoint::EngineState> engineState;   // P4.2 (declared after apiServer: destroyed first)
     String loadedConfigPath;                                 // P4.2: agent state configPath
+
+    // P2.4: headless only. Connect on launch and keep reconnecting; reopen a lost audio device.
+    std::unique_ptr<crosspoint::AgentConnector> agentConnector;
+    std::unique_ptr<crosspoint::AgentDeviceWatcher> agentDeviceWatcher;
 
     // SIGTERM/SIGINT in headless mode request a normal quit, so shutdown()
     // runs (settings saved, API sockets closed). The handler only sets a flag;
@@ -653,18 +658,30 @@ public:
             // into the generated crosspoint_in / crosspoint_out PCM while --config
             // was read (loadConfigFile); select those PCMs by their JUCE names.
             // Names that are not PipeWire nodes are matched as before.
-            crosspoint::Config audioCfg = cfg;
-           #if JUCE_LINUX
-            if (!pipewirePins.inputJuceName.empty())  audioCfg.inputDevice = pipewirePins.inputJuceName;
-            if (!pipewirePins.outputJuceName.empty()) audioCfg.outputDevice = pipewirePins.outputJuceName;
-           #endif
             String err;
-            if (!applyAudioConfig(*dm, audioCfg, err)) {
+            if (!reopenAudioDevices(*dm, err)) {
                 std::cerr << "Error in --config: " << err << std::endl;
                 return false;
             }
         }
         return true;
+    }
+
+    // P2.4: (re)opens the configured audio devices; also what the device
+    // watcher calls to recover a lost device. Same path as the startup apply.
+    bool reopenAudioDevices (AudioDeviceManager & dm, String & err)
+    {
+        crosspoint::Config audioCfg = effectiveConfig;
+       #if JUCE_LINUX
+        if (!pipewirePins.inputJuceName.empty())  audioCfg.inputDevice = pipewirePins.inputJuceName;
+        if (!pipewirePins.outputJuceName.empty()) audioCfg.outputDevice = pipewirePins.outputJuceName;
+       #endif
+        if (!audioCfg.inputDevice && !audioCfg.outputDevice && !audioCfg.sampleRate && !audioCfg.buffer) {
+            dm.restartLastAudioDevice();   // nothing configured: reopen whatever was last open
+            if (dm.getCurrentAudioDevice() == nullptr) { err = "no audio device could be opened"; return false; }
+            return true;
+        }
+        return applyAudioConfig(dm, audioCfg, err);
     }
 
     // Selects devices/rate/buffer on the device manager by JUCE device name.
@@ -743,6 +760,12 @@ public:
     }
 #else
     bool applyConfigRuntime (SonobusAudioProcessor *, AudioDeviceManager *) { return true; }
+    bool reopenAudioDevices (AudioDeviceManager & dm, String & err)
+    {
+        dm.restartLastAudioDevice();
+        if (dm.getCurrentAudioDevice() == nullptr) { err = "no audio device could be opened"; return false; }
+        return true;
+    }
 #endif
 
     // A config problem found after startup began: report the exit code and quit.
@@ -1179,20 +1202,21 @@ public:
                     return;
                 }
 
+                // P2.4: connect now and keep the session up (backoff, bad-password
+                // handling). Replaces the old one-shot connect + 500 ms sleep + join.
                 if (doInitialConnect) {
-                    DBG("CONNECTING HEADLESS INITIAL");
-                    sonoproc->connectToServer(cmdlineConnInfo.serverHost, cmdlineConnInfo.serverPort, cmdlineConnInfo.userName, cmdlineConnInfo.userPassword);
-
-                    // HACK FOR NOW - todo add listener
-                    Thread::sleep(500);
-
                     cmdlineConnInfo.timestamp = Time::getCurrentTime().toMilliseconds();
-                    sonoproc->addRecentServerConnectionInfo(cmdlineConnInfo);
-
-                    sonoproc->setWatchPublicGroups(false);
-
-                    sonoproc->joinServerGroup(cmdlineConnInfo.groupName, cmdlineConnInfo.groupPassword, cmdlineConnInfo.groupIsPublic);
+                    agentConnector = std::make_unique<crosspoint::AgentConnector>(*sonoproc, cmdlineConnInfo);
                 }
+
+                // P2.4: audio device loss -> report missing, retry the open with backoff.
+                agentDeviceWatcher = std::make_unique<crosspoint::AgentDeviceWatcher>(
+                    *sonoproc, pluginHolder->deviceManager,
+                    [this]() -> String {
+                        String err;
+                        if (pluginHolder == nullptr) return "shutting down";
+                        return reopenAudioDevices(pluginHolder->deviceManager, err) ? String() : (err.isEmpty() ? String("could not open the audio device") : err);
+                    });
             }
 
         }
@@ -1328,6 +1352,13 @@ public:
                                                .getChildFile(testControlFilename));
         }
 
+        // P2.4 TEST ONLY: {"audioLoss": true} in the control file closes the audio
+        // device and makes every reopen fail until it is cleared.
+        if (testControlFilename.isNotEmpty() && agentDeviceWatcher != nullptr) {
+            auto ctl = JSON::parse(File::getCurrentWorkingDirectory().getChildFile(testControlFilename));
+            agentDeviceWatcher->setTestDeviceGone(ctl.getProperty("audioLoss", false));
+        }
+
         // F2: periodic peer-table dump for the test harness.
         if (dumpPeersFilename.isNotEmpty() && dumpProc != nullptr) {
             dumpProc->dumpPeersToFile(File::getCurrentWorkingDirectory()
@@ -1339,6 +1370,8 @@ public:
     {
         //DBG("shutdown");
         quitSignalWatcher.stopTimer();
+        agentConnector.reset();        // P2.4: before the processor goes away
+        agentDeviceWatcher.reset();
         engineState.reset(); // P4.2: before the server it publishes to
         apiServer.reset();   // P4.1: closes sockets and joins the API threads first
         if (mainWindow.get() != nullptr) {

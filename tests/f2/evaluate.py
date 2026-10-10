@@ -56,6 +56,7 @@ Exit codes: 0 = match, 1 = mismatch / did not settle, 2 = usage or config error.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -798,10 +799,28 @@ def cmd_settle(args):
 #   "increases": true         F is larger at the end of the hold than at its
 #                             start (e.g. packet counters: the stream is up)
 #   "capture": name           store F (at the end of the step) for later steps
+#
+# P2.3/P2.4 additions to a step (all optional, applied in this order):
+#   "harness": "server-stop" | "server-start"
+#                             run.sh kills / restarts ITS OWN aooserver (same
+#                             port) and acks; the step clock starts after the ack,
+#                             so "PASS after Ns" of a server-start step is the
+#                             time-to-rejoin.
+#   "wait": seconds           sleep before polling (e.g. keep the server down)
+#   "matrix": true            also require the scenario's routing model to hold
+#   "logs": [ {...} ]         assertions on a peer's stderr log (peer.err):
+#       {"peer": P, "log": "retry_ladder", "scale": s, "min": n, "filter": "audio"?}
+#           the logged "retrying in X s" delays grow 1,2,4... *s and cap at 30*s
+#       {"peer": P, "log": "retry_spacing", "scale": s, "min": n}
+#           consecutive "connect attempt" lines are ~30*s apart (no tight loop)
+#       {"peer": P, "log": "match", "regex": R, "min": n}
+#   Field names may be dotted ("selfAgent.input") to reach into nested objects.
 
 STEP_ASSERT_KEYS = ("peer", "of", "field", "eq", "min", "max", "near",
-                    "increases", "capture")
-STEP_KEYS = ("name", "control", "expect", "timeout", "hold")
+                    "increases", "capture", "notnull")
+STEP_KEYS = ("name", "control", "expect", "timeout", "hold", "harness", "wait", "matrix", "logs")
+LOG_KINDS = ("retry_ladder", "retry_spacing", "match")
+HARNESS_CMDS = ("server-stop", "server-start")
 
 
 def scenario_steps(scen, name):
@@ -829,8 +848,16 @@ def scenario_steps(scen, name):
             if not isinstance(ctl, dict):
                 raise UsageError("%s: control[%s] must be an object" % (where, peer))
         expect = step.get("expect", [])
-        if not isinstance(expect, list) or not expect:
-            raise UsageError("%s: expect must be a non-empty list" % where)
+        logs = step.get("logs", [])
+        if not isinstance(expect, list) or not isinstance(logs, list):
+            raise UsageError("%s: expect and logs must be lists" % where)
+        if not expect and not logs and not step.get("matrix") and not step.get("harness"):
+            raise UsageError("%s: needs expect, logs, matrix or harness" % where)
+        if step.get("harness") is not None and step["harness"] not in HARNESS_CMDS:
+            raise UsageError("%s: harness must be one of %s" % (where, ", ".join(HARNESS_CMDS)))
+        for lidx, la in enumerate(logs):
+            if not isinstance(la, dict) or la.get("log") not in LOG_KINDS or la.get("peer") not in peer_names:
+                raise UsageError("%s logs[%d]: needs a scenario peer and log in %s" % (where, lidx, ", ".join(LOG_KINDS)))
         for aidx, a in enumerate(expect):
             awhere = "%s expect[%d]" % (where, aidx)
             if not isinstance(a, dict):
@@ -844,7 +871,7 @@ def scenario_steps(scen, name):
                 raise UsageError("%s: of must name a scenario peer" % awhere)
             if not isinstance(a.get("field"), str) or not a["field"]:
                 raise UsageError("%s: field must be a non-empty string" % awhere)
-            if not any(k in a for k in ("eq", "min", "max", "near", "increases", "capture")):
+            if not any(k in a for k in ("eq", "min", "max", "near", "increases", "capture", "notnull")):
                 raise UsageError("%s: needs at least one check" % awhere)
             near = a.get("near")
             if near is not None:
@@ -862,6 +889,10 @@ def scenario_steps(scen, name):
             "expect": expect,
             "timeout": float(step.get("timeout", 25)),
             "hold": float(step.get("hold", 2)),
+            "harness": step.get("harness"),
+            "wait": float(step.get("wait", 0)),
+            "matrix": bool(step.get("matrix")),
+            "logs": logs,
         })
     return out
 
@@ -884,6 +915,16 @@ def write_json_atomic(path, doc):
     os.replace(tmp, path)
 
 
+def _dig(obj, path):
+    """(found, value) for a possibly dotted path ("selfAgent.input")."""
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False, None
+        cur = cur[part]
+    return True, cur
+
+
 def _lookup(docs, a):
     """(found, value, entry) for an assertion's peer/of/field."""
     doc = docs.get(a["peer"])
@@ -892,9 +933,78 @@ def _lookup(docs, a):
     if "of" in a:
         for entry in doc.get("peers") or []:
             if isinstance(entry, dict) and entry.get("name") == a["of"]:
-                return (a["field"] in entry), entry.get(a["field"]), entry
+                found, value = _dig(entry, a["field"])
+                return found, value, entry
         return False, None, None
-    return (a["field"] in doc), doc.get(a["field"]), doc
+    found, value = _dig(doc, a["field"])
+    return found, value, doc
+
+
+# --- P2.4: log assertions ---------------------------------------------------
+
+def _read_log(peers_dir, peer):
+    try:
+        with open(os.path.join(peers_dir, peer, "peer.err"), errors="replace") as fh:
+            return fh.read().splitlines()
+    except OSError:
+        return []
+
+
+def check_log(a, peers_dir):
+    """(ok, description) for one log assertion."""
+    lines = _read_log(peers_dir, a["peer"]) if peers_dir else []
+    label = "%s log %s" % (a["peer"], a["log"])
+    kind = a["log"]
+    if kind == "match":
+        n = sum(1 for ln in lines if re.search(a.get("regex", ""), ln))
+        return n >= a.get("min", 1), "%s /%s/ x%d (want >= %d)" % (label, a.get("regex", ""), n, a.get("min", 1))
+
+    scale = float(a.get("scale", 1.0))
+    cap = 30.0 * scale
+    eps = 0.011
+    if kind == "retry_ladder":
+        want_audio = a.get("filter") == "audio"
+        vals = []
+        for ln in lines:
+            if "Crosspoint agent" not in ln or ("audio" in ln) != want_audio:
+                continue
+            m = re.search(r"retrying in ([0-9.]+) s", ln)
+            if m:
+                vals.append(float(m.group(1)))
+        desc = "%s delays=%s (scale %g, cap %g s)" % (label, vals, scale, cap)
+        if len(vals) < a.get("min", 4):
+            return False, desc + ": need >= %d" % a.get("min", 4)
+        if not (0.8 * scale - eps <= vals[0] <= scale + eps):
+            return False, desc + ": first delay should be 1 s * scale (minus jitter)"
+        reached = False
+        for i, v in enumerate(vals):
+            if v > cap + eps:
+                return False, desc + ": %.2f exceeds the cap" % v
+            if reached:
+                if v < 0.8 * cap - eps:
+                    return False, desc + ": dropped below the cap band after reaching it"
+            else:
+                if i and v < vals[i - 1] - eps:
+                    return False, desc + ": delay shrank before reaching the cap"
+                if v >= 0.8 * cap - eps:
+                    reached = True
+        if not reached and a.get("reach_cap", True):
+            return False, desc + ": never reached the cap"
+        return True, desc
+    if kind == "retry_spacing":
+        ts = []
+        for ln in lines:
+            m = re.search(r"\[t=([0-9.]+)s\].*connect attempt \d+", ln)
+            if m:
+                ts.append(float(m.group(1)))
+        gaps = [round(y - x, 2) for x, y in zip(ts, ts[1:])]
+        lo, hi = 0.8 * cap - 0.3, cap + 1.0
+        desc = "%s attempt gaps=%s (want %.1f..%.1f s)" % (label, gaps, lo, hi)
+        if len(gaps) < a.get("min", 2):
+            return False, desc + ": need >= %d gaps" % a.get("min", 2)
+        bad = [g for g in gaps if g < lo or g > hi]
+        return (not bad), desc + ("" if not bad else ": out of band %s" % bad)
+    return False, "%s: unknown kind" % label
 
 
 def _label(a):
@@ -918,6 +1028,8 @@ def check_assertion(docs, a, captures, baseline=None):
     if not found:
         return False, "%s: missing" % label
     problems = []
+    if a.get("notnull") and value is None:
+        problems.append("expected a non-null value")
     if "eq" in a and value != a["eq"]:
         problems.append("expected %s" % _fmt(a["eq"]))
     if "min" in a and not (_is_num(value) and value >= a["min"]):
@@ -962,9 +1074,27 @@ def read_dumps(dumps_dir, peers):
     return docs
 
 
+def request_harness(harness_dir, cmd, seq, clock=time.time, sleep=time.sleep, timeout=40):
+    """P2.4: ask run.sh to do `cmd` (server-stop/start) and wait for its ack."""
+    write_json_atomic(os.path.join(harness_dir, "cmd.json"), {"seq": seq, "cmd": cmd})
+    deadline = clock() + timeout
+    while clock() < deadline:
+        try:
+            with open(os.path.join(harness_dir, "ack.json")) as fh:
+                ack = json.load(fh)
+            if ack.get("seq") == seq:
+                return bool(ack.get("ok"))
+        except (OSError, ValueError):
+            pass
+        sleep(0.2)
+    return False
+
+
 def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
-              clock=time.time, sleep=time.sleep):
+              clock=time.time, sleep=time.sleep, harness_dir=None, peers_dir=None,
+              matrix_expect=None):
     """Execute the steps. Returns EXIT_OK or EXIT_MISMATCH."""
+    hseq = 0
     controls = {}
     captures = {}
     for sidx, step in enumerate(steps):
@@ -972,6 +1102,16 @@ def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
             controls[peer] = deep_merge(controls.get(peer, {}), ctl)
             if control_dir:
                 write_json_atomic(os.path.join(control_dir, peer + ".json"), controls[peer])
+        if step["harness"]:
+            if not harness_dir:
+                print("step %d %s FAIL: harness action needs --harness-dir" % (sidx + 1, step["name"]), file=out)
+                return EXIT_MISMATCH
+            hseq += 1
+            if not request_harness(harness_dir, step["harness"], hseq, clock, sleep):
+                print("step %d %s FAIL: harness %s was not acknowledged" % (sidx + 1, step["name"], step["harness"]), file=out)
+                return EXIT_MISMATCH
+        if step["wait"]:
+            sleep(step["wait"])
         t0 = clock()
         deadline = t0 + step["timeout"]
         has_increases = any(a.get("increases") for a in step["expect"])
@@ -985,6 +1125,12 @@ def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
             # the poll that starts the hold there is no baseline yet.
             results = [check_assertion(docs, a, captures, baselines.get(i))
                        for i, a in enumerate(step["expect"])]
+            results += [check_log(la, peers_dir) for la in step["logs"]]
+            if step["matrix"] and matrix_expect:
+                mres, _ = evaluate_dir(dumps_dir, peers, matrix_expect, False)
+                nm = total_findings(mres)
+                results.append((nm == 0, "routing matrix (%s) %s" % (
+                    matrix_expect, "holds" if nm == 0 else "has %d mismatch(es)" % nm)))
             last = results
             now = clock()
             if all(ok for ok, _ in results):
@@ -1023,14 +1169,16 @@ def run_steps(dumps_dir, control_dir, peers, steps, interval, out=sys.stdout,
 
 
 def cmd_steps(args):
-    peers, _, _, scen = load_context(args)
+    peers, expect, _, scen = load_context(args)
     steps = scenario_steps(scen, args.scenario)
     if not steps:
         print("scenario %s has no steps" % args.scenario)
         return EXIT_OK
     if args.control_dir and not os.path.isdir(args.control_dir):
         raise UsageError("control directory does not exist: %s" % args.control_dir)
-    return run_steps(args.dir, args.control_dir, peers, steps, args.interval)
+    return run_steps(args.dir, args.control_dir, peers, steps, args.interval,
+                     harness_dir=args.harness_dir, peers_dir=args.peers_dir,
+                     matrix_expect=expect)
 
 
 def cmd_list(args):
@@ -1085,6 +1233,10 @@ def main(argv):
                          help="directory for <peer>.json control files (the app's --test-control)")
     p_steps.add_argument("--interval", type=float, default=1.0,
                          help="seconds between polls (default 1)")
+    p_steps.add_argument("--harness-dir", default=None,
+                         help="P2.4: directory for server-stop/start requests to run.sh")
+    p_steps.add_argument("--peers-dir", default=None,
+                         help="P2.4: directory holding <peer>/peer.err for log assertions")
     p_steps.set_defaults(func=cmd_steps)
 
     p_list = sub.add_parser("list", help="list scenarios")
