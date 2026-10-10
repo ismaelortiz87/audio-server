@@ -102,14 +102,14 @@ Ordered so that every task appears after everything it depends on.
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | done | Claude (subagent C, sonnet) |
 | P4.2 | State snapshot + change events | P4.1 | M | any | done | Claude (subagent I, sonnet) |
-| P4.3 | Meters stream | P4.1 | S | any | wip | Claude (subagent K, sonnet) |
-| P4.4 | Commands | P4.2, P1.5 | M | any | wip | Claude (subagent K, sonnet) |
-| P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
+| P4.3 | Meters stream | P4.1 | S | any | done | Claude (subagent K, sonnet) |
+| P4.4 | Commands | P4.2, P1.5 | M | any | done | Claude (subagent K, sonnet) |
+| P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | wip | Claude |
 | P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | done | Claude |
 | P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | done | Claude |
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
-| P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | todo | |
+| P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
@@ -1059,13 +1059,33 @@ the mobile `.jucer` source list (remove deleted files from it too).
   `workBuffer` **before** the gain stage, and keep the existing post-gain one
   for anything that needs it. The mic meter is pre-gate (shows my level while
   not transmitting).
-- **Result:**
+- **Result:** `sonobus/Source/ApiCommands.{h,cpp}`: a 30 Hz message-thread timer sends
+  meters only while a non-hidden session subscribes. Stations use P1.5's
+  pre-fader source (re-fetched by index per frame, online only); mic is the
+  pre-gate send meter; output is the main meter. The agent sends
+  input/output, plus `devices` only to `deviceMeters` subscribers. dBFS
+  rounded to 0.1, null below −90. Tested in `tests/api/p43p44.test.mjs` (none
+  before sub, ~30 fps, a muted station keeps its meter, visibility pause).
+  Limits: peak is ff_meters' 500 ms hold; agent `devices` covers only the open
+  input.
 
 ### P4.4 — Commands · M
 - **Depends on:** P4.2, P1.5
 - **Done when:** a script drives connect → set pan/mute/solo/talk → disconnect
   on a headless Console and the F2 dump shows the effects.
-- **Result:**
+- **Result:** every control-api §5.1/§5.2 command on the message thread, with the mock's
+  validation, clamping and error codes. Station setters by id (offline
+  stations update the remembered mix); `forget`, `spread` (0.01), `centerAll`,
+  `talkToAll`; mic mode/on (`wrong_mode`); per-session PTT holders released on
+  disconnect; output level; devices; `settings.set` (soloDimDb, codec/bitrate;
+  pttHotkey/networkBuffer → `not_supported`); connection connect/disconnect
+  (stops the P2.4 connector so it won't fight the user). Agent: live device
+  switch + YAML write-back (comments kept) with `previous`, pause (send gates
+  + agent `paused`), a 440 Hz −18 dBFS 1.5 s test tone, reloadConfig (errors
+  in configError + connection.error `config`), retryNow. Tests: p43p44 9/9;
+  the merged suite is 35/35 API + 20/20 F2 + evaluator PASS (review). Gaps:
+  Linux PipeWire path of `agent.setInput/Output` untested; connect acks
+  immediately (a wrong password shows later as `failed`).
 
 ## P5 — Console UI (HTML)
 
@@ -1145,7 +1165,11 @@ build against the spec. Implementers don't make design decisions (see
 - **Depends on:** P5.2–P5.5, P4.2–P4.4
 - **Done when:** the UI drives a headless Console engine in F2 end to end,
   with no visual differences from the mock-data build; design review passed.
-- **Result:**
+- **Result:** proven for the Console by the P4.4 subagent: the engine serves
+  `console-ui` (`--ui-dir`), and headless Chrome on `/` (no mock) reaches
+  `ready`. Solo, Mute, Level, the mic toggle, the push-to-talk mode and
+  holding Space each change the engine state, meters reach the UI, and there
+  are no page errors. The agent page against a real VDI engine is P2.6.
 
 ## P6 — Native shell (Mac)
 
