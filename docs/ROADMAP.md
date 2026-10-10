@@ -171,12 +171,12 @@ Code: `sonobus/Source/SonoStandaloneFilterApp.cpp` (existing CLI: `--group`,
 | P2.2 | YAML parser dependency (vendored, small — e.g. `yaml-cpp` or `rapidyaml`) | done |
 | P2.3 | VDI role locks: mono send, input monitor forced to 0, no mixing controls | done |
 | P2.4 | Auto-connect on launch; auto-reconnect with backoff on disconnect or device loss | done |
-| P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | wip |
+| P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | done |
 | P2.6 | VDI agent web UI on `localhost`, as in the UX3 prototype: status, listeners, device pickers, pause, reload (D10) | done |
 | P2.7 | Example `vdi.example.yaml` + docs | done |
 | P2.8 | Cut daily use over from the Carla hub to the mesh; retire the Ubuntu Studio server | todo |
 | P2.9 | Minimal native tray icon (not a priority: the agent is a service with fixed config, and problems surface on the Console) | deferred |
-| P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | wip |
+| P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | done |
 
 **Done when:** a VDI boots, connects with no interaction, and survives a network drop.
 

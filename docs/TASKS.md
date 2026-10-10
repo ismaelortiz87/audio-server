@@ -84,9 +84,9 @@ Ordered so that every task appears after everything it depends on.
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | done | Claude (subagent L, sonnet) |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | done | Claude (subagent L, sonnet) |
-| P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | wip | Claude (subagent M, sonnet) |
+| P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | done | Claude (subagent M, sonnet) |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
-| P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | wip | Claude (subagent M, sonnet) |
+| P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | done | Claude (subagent M, sonnet) |
 | P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | todo | |
 | P3.1 | Remove metronome | P1.4 | M | any | todo | |
 | P3.2 | Remove soundboard | P1.4 | M | any | todo | |
@@ -857,7 +857,28 @@ UI is for checking and fixing a VDI when needed.
   startup-path change as part of P2.5.
 - **Already done elsewhere:** SIGTERM/SIGINT clean quit (P4.1); reconnect
   (P2.4).
-- **Result:**
+- **Result:** Unit shipped at `packaging/debian/crosspoint-agent.service`
+  (installed to `/usr/lib/systemd/user/`), `Type=simple`,
+  `After=`/`Wants=pipewire.service pipewire-pulse.service wireplumber.service`,
+  `Restart=on-failure`, `RestartSec=5`, `KillSignal=SIGTERM`,
+  `TimeoutStopSec=10`, journal logging, plus `NoNewPrivileges` /
+  `LockPersonality` / `RestrictSUIDSGID` / `SystemCallArchitectures=native`.
+  The missing-device-not-fatal decision above is implemented via
+  `tolerateDevices` in the headless startup path (SonoStandaloneFilterApp) and
+  retried by `AgentDeviceWatcher`; a bad YAML / unknown key stays fatal.
+  **Verified end-to-end** by `tests/linux/deb-systemd.sh` on 2026-10-10
+  (missing-device and reboot cases included): **21 CHECK PASS, 0 CHECK FAIL**,
+  final `PASS`. Covered: install → `systemctl --user enable --now` → active,
+  health API on 7071 reports `role vdi`, `connection.state == connected`
+  against a local aooserver, journal shows the connection; `stop` exits cleanly
+  in 1 s with `Result=success`; **container reboot with linger → service active
+  with no login** and health OK; **input node missing at start → service stays
+  up, `input.status == missing`, `NRestarts=0`, and it recovers when the node
+  appears**; broken YAML → exits 1, systemd restarts every 5 s, error in the
+  journal, and it recovers once fixed; `apt remove` with the service running →
+  prerm stops it, binary removed, user config kept. Note the test runs
+  `debian:trixie` under `--privileged --cgroupns=host` with systemd as PID 1 —
+  a real VDI still needs the same flow run for real (P2.8).
 
 ### P2.9 — Minimal native tray icon · S · deferred
 Not a priority (D11): the agent is a service with fixed config, and problems
@@ -882,7 +903,26 @@ surface on the Console via P1.7.
   libcurl, freetype, etc.). Include an install/uninstall guide.
 - **Done when:** a clean VDI goes from package to "Connected" by following
   the guide.
-- **Result:**
+- **Result:** `scripts/build-deb.sh` builds in a `debian:trixie` container via
+  `packaging/debian/Dockerfile.build` (repo root as context), packaging with
+  `packaging/debian/make-deb.sh`; version defaults to the CMake version plus
+  `+git<sha>` and `SOURCE_DATE_EPOCH` is pinned from the commit time for
+  reproducibility. The package installs `/usr/bin/crosspoint`,
+  `/usr/lib/systemd/user/crosspoint-agent.service` and
+  `/usr/share/doc/crosspoint/vdi.example.yaml`, with `postinst`/`prerm`/`postrm`
+  maintainer scripts and `packaging/debian/INSTALL.md` (install, configure,
+  enable, check, reload/upgrade/uninstall). **Built and verified 2026-10-10:**
+  `crosspoint_1.7.2+git6d74eca1_arm64.deb`, 8 937 772 B, contents confirmed
+  from the archive; installed with apt in the systemd container so `Depends`
+  resolved, all 21 checks in `tests/linux/deb-systemd.sh` passed (see P2.5).
+  **Two caveats:** (1) the artifact is **arm64 only** — the VDIs are x86_64, so
+  an `amd64` build is still needed (`PLATFORM=linux/amd64
+  scripts/build-deb.sh`, native builder preferred; a full qemu build takes
+  hours). (2) `lintian` reports one error, `embedded-library libpng
+  [usr/bin/crosspoint]` (upstream JUCE links its own libpng), plus warnings for
+  maintainer-script-calls-systemctl (deliberate: prerm stops the user service)
+  and no-manual-page. None are release-blocking; the libpng error is inherent
+  to the JUCE build.
 
 ### P2.8 — Cut over from the Carla hub; retire it
 - **Depends on:** P2.5, P2.6 · **Size:** S · **Who:** human
