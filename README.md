@@ -119,21 +119,17 @@ CONFIG=Release make -j4          # -> Builds/LinuxMakefile/build/aooserver
 ./build/aooserver -h             # -p port, -l logdir, -b blocklist
 ```
 
-## Browser / Docker
+## Containers
 
-`docker/` builds the app for Linux and serves it to a browser — the real
-unmodified application in a virtual display, plus a WebSocket audio bridge so
-the browser can hear the engine and talk back into it.
+- **`docker/web-console/`**: the web Console (and phone PWA). One container
+  runs the engine headless in Console role plus a WebRTC audio gateway; your
+  reverse proxy publishes it (TLS at the proxy). Browsers sign in once with the
+  access token. One instance per user via an env file (`.env.example`). See its
+  README.
+- **`docker/aooserver/`**: a self-hosted connection server for your VPN.
 
-```bash
-docker compose -f docker/docker-compose.yml up --build
-open http://localhost:6080/          # audio client
-open http://localhost:6080/vnc.html  # the app's own GUI
-```
-
-See `docker/README.md` for the architecture, what was verified and how, and the
-known limitations (notably: added latency, so it suits monitoring and
-conversation rather than tight remote jamming).
+The earlier VNC + raw-PCM experiment that used to live in `docker/` was removed
+(P7.6, ROADMAP D5).
 
 ## Design
 

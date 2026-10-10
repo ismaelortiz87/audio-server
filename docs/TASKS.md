@@ -116,8 +116,8 @@ Ordered so that every task appears after everything it depends on.
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
-| P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
-| P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
+| P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | done | Claude |
+| P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | done | Claude |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
 | P8.1 | Dockerfile for `aooserver/` | F1 | S | any | done | Claude (subagent D, sonnet) |
 | P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | deferred | |
@@ -875,7 +875,7 @@ surface on the Console via P1.7.
 ### P2.10 — Packages per VDI OS · M
 - **Depends on:** P2.5
 - **Do (D12):** a `.deb` for Debian 13 (trixie), built reproducibly in a
-  `debian:trixie` container (`scripts/build-deb.sh`; `docker/Dockerfile`
+  `debian:trixie` container (`scripts/build-deb.sh`; `tests/linux/Dockerfile`
   already proves the Linux build). Contents: the agent binary, the systemd
   user unit, `vdi.example.yaml`, and a postinst note on `loginctl
   enable-linger`. Declare runtime deps (`libasound2t64`, `pipewire-alsa`,
@@ -1283,11 +1283,11 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 
 ### P7.5 — Per-user containers, compose + docs · S
 - **Depends on:** P7.2, P7.3, P7.4
-- **Result:**
+- **Result:** `docker/web-console/docker-compose.yml` parameterised per user (HTTP_PORT, RTC_HTTP_PORT, RTC_UDP_MIN/MAX mapped 1:1, CONSOLE_CONFIG, HTTP_BIND) + `.env.example`; run each user as `docker compose -p xp-<user> --env-file <user>.env ...`. Validated with `docker compose config` (defaults and env file). Depends on P7.4 only for the real proxy/VPN check (human).
 
 ### P7.6 — Remove VNC / Xvfb / raw-PCM bridge · S
 - **Depends on:** P7.5
-- **Result:**
+- **Result:** removed the old `docker/` VNC + Xvfb + raw-PCM bridge job (Dockerfile, entrypoint, bridge/, web/, compose, README); root README "Containers" now points at `docker/web-console/` and `docker/aooserver/`. No other files referenced it (git grep).
 
 ### P7.7 — Installable PWA · S
 - **Depends on:** P7.4 (HTTPS is required for install), UX4 (icon, name, theme colour)

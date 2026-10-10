@@ -1,8 +1,12 @@
 # One Web Console = one container (engine + WebRTC gateway). Run one per user
-# with a distinct project name, config and published ports (P7.5).
+# with its own project name and env file (P7.5):
 #
-#   CROSSPOINT_API_TOKEN=$(openssl rand -hex 24) RTC_PUBLIC_IP=10.8.0.2 \
-#     docker compose -f docker/web-console/docker-compose.yml up -d --build
+#   cp docker/web-console/.env.example docker/web-console/maelo.env   # edit it
+#   docker compose -p xp-maelo --env-file docker/web-console/maelo.env \
+#     -f docker/web-console/docker-compose.yml up -d --build
+#
+# A second user gets another env file with different HTTP_PORT, RTC_HTTP_PORT,
+# RTC_UDP_MIN/MAX and CONSOLE_CONFIG, and another -p project name.
 services:
   console:
     build:
@@ -19,12 +23,12 @@ services:
       RTC_UDP_MIN: ${RTC_UDP_MIN:-40000}
       RTC_UDP_MAX: ${RTC_UDP_MAX:-40019}
     volumes:
-      - ./console.example.yaml:/config/console.yaml:ro   # copy and edit per user
+      - ${CONSOLE_CONFIG:-./console.example.yaml}:/config/console.yaml:ro   # per user
     ports:
       # HTTP: UI + control API (7070) and /rtc/* signalling (8090). Publish on
       # loopback or the proxy-facing interface only; the reverse proxy fronts them.
-      - "${HTTP_BIND:-127.0.0.1}:7070:7070/tcp"
-      - "${HTTP_BIND:-127.0.0.1}:8090:8090/tcp"
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-7070}:7070/tcp"
+      - "${HTTP_BIND:-127.0.0.1}:${RTC_HTTP_PORT:-8090}:8090/tcp"
       # WebRTC media: UDP straight to the VPN IP, NOT through the proxy.
-      # The range must equal RTC_UDP_MIN..RTC_UDP_MAX.
-      - "${RTC_PUBLIC_IP}:40000-40019:40000-40019/udp"
+      # Same numbers inside and outside: ICE advertises RTC_UDP_MIN..MAX as-is.
+      - "${RTC_PUBLIC_IP}:${RTC_UDP_MIN:-40000}-${RTC_UDP_MAX:-40019}:${RTC_UDP_MIN:-40000}-${RTC_UDP_MAX:-40019}/udp"
