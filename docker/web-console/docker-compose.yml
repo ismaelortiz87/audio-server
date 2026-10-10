@@ -1,0 +1,30 @@
+# One Web Console = one container (engine + WebRTC gateway). Run one per user
+# with a distinct project name, config and published ports (P7.5).
+#
+#   CROSSPOINT_API_TOKEN=$(openssl rand -hex 24) RTC_PUBLIC_IP=10.8.0.2 \
+#     docker compose -f docker/web-console/docker-compose.yml up -d --build
+services:
+  console:
+    build:
+      context: ../..                      # monorepo root (needs juce/ aoo/ sonobus/ design/icon/ console-ui/)
+      dockerfile: docker/web-console/Dockerfile
+    image: crosspoint-web-console
+    restart: unless-stopped               # the supervisor exits if engine or gateway dies
+    environment:
+      CROSSPOINT_API_TOKEN: ${CROSSPOINT_API_TOKEN:?set a long random token}
+      # Origin the browser loads the UI from (the public proxy URL), for the API CORS/WS check.
+      CROSSPOINT_API_ORIGIN: ${CROSSPOINT_API_ORIGIN:-https://crosspoint.app.lagreca.io}
+      # Address the browser reaches for WebRTC media: this host's VPN IP.
+      RTC_PUBLIC_IP: ${RTC_PUBLIC_IP:?set the VPN IP of this host}
+      RTC_UDP_MIN: ${RTC_UDP_MIN:-40000}
+      RTC_UDP_MAX: ${RTC_UDP_MAX:-40019}
+    volumes:
+      - ./console.example.yaml:/config/console.yaml:ro   # copy and edit per user
+    ports:
+      # HTTP: UI + control API (7070) and /rtc/* signalling (8090). Publish on
+      # loopback or the proxy-facing interface only; the reverse proxy fronts them.
+      - "${HTTP_BIND:-127.0.0.1}:7070:7070/tcp"
+      - "${HTTP_BIND:-127.0.0.1}:8090:8090/tcp"
+      # WebRTC media: UDP straight to the VPN IP, NOT through the proxy.
+      # The range must equal RTC_UDP_MIN..RTC_UDP_MAX.
+      - "${RTC_PUBLIC_IP}:40000-40019:40000-40019/udp"
