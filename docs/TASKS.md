@@ -75,7 +75,7 @@ Ordered so that every task appears after everything it depends on.
 | P0.3 | Wire VDI virtual devices, verify audio both ways | P0.1 | S | human | done | maelo |
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
-| F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | wip | Claude (subagent N, sonnet) |
+| F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | wip | paused 2026-10-10: WIP branch, see [BUGS.md](BUGS.md) B1, B3 |
 | L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | done | Claude (subagent J, opus) |
 | L2 | Residual gaps/dropouts on Linux (~2 s gap on Pulse client connect; dropouts under load); measure on a quiet host + a real VDI | L1 | S | any + human | todo | |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
@@ -117,8 +117,8 @@ Ordered so that every task appears after everything it depends on.
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
-| P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | wip | Claude (subagent O, sonnet) |
-| P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | wip | Claude (subagent O, sonnet) |
+| P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | wip | paused 2026-10-10: WIP branch, see [BUGS.md](BUGS.md) |
+| P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | wip | paused 2026-10-10: WIP branch, see [BUGS.md](BUGS.md) B2 |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
