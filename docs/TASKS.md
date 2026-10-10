@@ -1497,6 +1497,30 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   40000–40019 must reach 10.248.233.7 directly** (media bypasses the proxy).
   Then the on-phone ICE check (currently unverified — the gateway is up and
   answers `/rtc/health`, but no browser has negotiated media yet).
+- **Browser-verified, and `/rtc/` on the SAME ORIGIN is load-bearing
+  (2026-10-10).** The real Console UI was loaded in headless Chrome from the
+  live container: `title` is `Crosspoint` and the full UI renders
+  (`Spread`, `Open mic`, `Push to talk`, `Talk to all`, station keys). Two
+  findings:
+  1. **The UI probes `rtc/config` relative to its own origin**
+     (`console-ui/src/lib/rtc.js` → `fetch('rtc/config')`), but the gateway
+     listens on **8090** and the engine serves the UI on **7070**. Hitting the
+     container directly therefore logs a **404 for `/rtc/config`** and the page
+     reports "Audio isn't connected in this browser". Proxying `/rtc/` onto the
+     UI origin (I verified with a throwaway reverse proxy) makes it
+     `200 {"iceServers":[],"udpRange":[40000,40019],"frameMs":"10"}` and the
+     failed-request list becomes **empty**. So the vhost **must** route `/rtc/`
+     → `:8090` on the same hostname; publishing 8090 separately is not enough.
+  2. The same proxy must forward the **WebSocket upgrade** for `/api/v1/ws`
+     (a plain HTTP proxy answers 502 on the handshake), which nginx does with
+     the documented `Upgrade`/`Connection` headers.
+  **Note on reachability:** partway through, the Mac's WireGuard tunnel dropped
+  (`utun8` gone; `10.248.233.7` stopped pinging), so these browser checks ran
+  over the **LAN address `192.168.0.71:7070`** instead. Everything bound and
+  served fine on both; the VPN path had worked earlier the same session. Worth
+  re-confirming over VPN once the tunnel is back, but it is not a deployment
+  failure — the container, API and UI were continuously up
+  (`Result=success`, `NRestarts=0`).
 
 ### P7.5 — Per-user containers, compose + docs · S
 - **Depends on:** P7.2, P7.3, P7.4
