@@ -1057,6 +1057,17 @@ surface on the Console via P1.7.
   `/agent.html` both return **200** and the page is
   `<title>Crosspoint agent</title>`, with the agent still
   `connected` and `input`/`output` both `ok`.
+  **Rendered in a real browser** (headless Chrome over an ssh tunnel, so the
+  origin is `localhost` and therefore a secure context): the page loads with
+  **no JS errors** and reads
+  `title "maelosdebian · Crosspoint agent"`, body
+  *"maelosdebian Crosspoint agent — Connected — Sending this VDI's audio to 1
+  Console. Group lagreca · aoo.sonobus.net:10998 · mono"*, and a
+  "LISTENING NOW — web-console Console" entry. So P2.6 is working on the real
+  VDI end to end. The **installed** `.deb` there is still the pre-fix
+  `+git9a237e6f` build, so the packaged path needs a rebuild (see P2.10) —
+  this verification used the user-local layout, which is byte-identical to what
+  the fixed package installs.
 
 ## P3 — Strip jam features
 
