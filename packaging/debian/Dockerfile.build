@@ -29,3 +29,8 @@ ENV SRC=/src VERSION=${DEB_VERSION} SOURCE_DATE_EPOCH=${SDE}
 RUN BIN="$(find /build/SonoBus_artefacts/Release/Standalone -maxdepth 1 -type f -perm -u+x | head -1)" \
     bash /src/packaging/debian/make-deb.sh
 RUN cd /out && (lintian --tag-display-limit 0 -I crosspoint_*.deb > /out/lintian.txt 2>&1 || true)
+
+# Export stage for `docker buildx --output type=local` (scripts/build-deb.sh with
+# BUILDER=...): just the package and the lintian report.
+FROM scratch AS artifacts
+COPY --from=build /out/ /

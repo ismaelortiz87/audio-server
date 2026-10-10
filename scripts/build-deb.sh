@@ -6,6 +6,9 @@
 #   PLATFORM=linux/amd64 scripts/build-deb.sh  # force an arch (needs a capable
 #                                              # builder: native amd64 or qemu;
 #                                              # a full emulated build takes hours)
+#   BUILDER=buildkit-priv PLATFORM=linux/amd64 scripts/build-deb.sh
+#                                              # build on a (remote) buildx builder,
+#                                              # e.g. a native amd64 one: ~10 min
 #
 # Output: build/deb/crosspoint_<version>_<arch>.deb (+ lintian.txt)
 # Env: CROSSPOINT_DEB_VERSION overrides the version (default: <CMake version>+git<sha>).
@@ -25,7 +28,15 @@ mkdir -p "$OUT"
 PLAT=()
 [ -n "${PLATFORM:-}" ] && PLAT=(--platform "$PLATFORM")
 
-DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-0}" docker build ${PLAT[@]+"${PLAT[@]}"} \
+if [ -n "${BUILDER:-}" ]; then
+  # buildx on a named builder: export only the artifacts stage straight to $OUT.
+  docker buildx build --builder "$BUILDER" ${PLAT[@]+"${PLAT[@]}"} --target artifacts \
+    -f packaging/debian/Dockerfile.build --build-arg "DEB_VERSION=$VERSION" --build-arg "SDE=$SDE" \
+    --output "type=local,dest=$OUT" .
+  echo; ls -l "$OUT"; exit 0
+fi
+
+DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-0}" docker build ${PLAT[@]+"${PLAT[@]}"} --target build \
   -f packaging/debian/Dockerfile.build --build-arg "DEB_VERSION=$VERSION" --build-arg "SDE=$SDE" -t "$TAG" .
 
 CID="$(docker create ${PLAT[@]+"${PLAT[@]}"} "$TAG")"
