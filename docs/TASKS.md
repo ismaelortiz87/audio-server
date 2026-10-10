@@ -1503,6 +1503,22 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   the proxy). Then the on-phone ICE check, which is the last unverified step —
   the gateway is up and answers `/rtc/health`, but no browser has negotiated
   media yet.
+- **HTTPS is REQUIRED for the Console to transmit, not just for the PWA
+  (found 2026-10-10).** Running the real gateway e2e test
+  (`docker/web-console/gateway/test/e2e.mjs`) against the live container over
+  plain HTTP on a LAN IP showed the ICE/transport layer working — the peer
+  connection reached `connected`, the gateway reported outbound RTP
+  (`packets: 708`), and the browser's stats showed an inbound candidate pair
+  with `packets: 715` — but the browser logged
+  `no mic: TypeError: Cannot read properties of undefined (reading
+  'getUserMedia')`. Cause: browsers expose `navigator.mediaDevices` **only in a
+  secure context** (HTTPS, or `localhost`), so over `http://<lan-ip>:7070` the
+  Console can receive audio but can never capture the mic. So P7.4's HTTPS
+  vhost is a **functional requirement for talking back**, not a nicety for the
+  PWA — and any test of uplink audio must run on `https://` or `localhost`.
+  Downlink/uplink audio levels themselves remain unverified end to end for that
+  reason (the test needs a secure context this session did not have, because
+  the Mac's VPN tunnel was also down).
 - **Browser-verified, and `/rtc/` on the SAME ORIGIN is load-bearing
   (2026-10-10).** The real Console UI was loaded in headless Chrome from the
   live container: `title` is `Crosspoint` and the full UI renders
