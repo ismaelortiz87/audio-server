@@ -50,9 +50,22 @@ CROSSPOINT_API_TOKEN=$(openssl rand -hex 24) RTC_PUBLIC_IP=10.8.0.2 \
 
 ## Reverse proxy
 - `/` and `/api/` -> `http://host:7070`, with **WebSocket upgrade** (`/api/v1/ws`), `proxy_read_timeout` long, no buffering.
-- `/rtc/` -> `http://host:8090` (plain HTTP POST/GET).
+- `/rtc/` -> `http://host:8090` (plain HTTP POST/GET). **This must be on the
+  same hostname as the UI, not published on its own port:** the client probes
+  `rtc/config` relative to its own origin (`console-ui/src/lib/rtc.js`), so a
+  browser pointed at `:7070` gets a 404 for `/rtc/config`, treats audio as
+  unavailable, and cannot start a call. Verified: with `/rtc/` proxied
+  same-origin the request returns `200` and the UI's failed-request list is
+  empty; without it the page loads but reports "Audio isn't connected in this
+  browser".
 - UDP `RTC_UDP_MIN..MAX` is **not proxied**: the browser connects to `RTC_PUBLIC_IP` directly over the VPN.
 - Set `CROSSPOINT_API_ORIGIN` to the public origin so the engine's Origin check passes.
+- A ready-to-use nginx server block is in [`nginx-crosspoint.conf`](nginx-crosspoint.conf)
+  (validated with `nginx -t`, and exercised against a running Console: `/`,
+  `/api/v1/health` and `/rtc/config` all route correctly). Copy it to
+  `sites-available`, set `UPSTREAM_HOST` and the certificate paths, and remember
+  the `map $http_upgrade $connection_upgrade` block it documents for the `http {}`
+  scope.
 
 ## Security
 - The API binds `0.0.0.0` inside the container, hence the mandatory token. Publish 7070/8090 only on loopback or the proxy-facing interface (`HTTP_BIND`), never on a public address.
