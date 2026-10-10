@@ -91,8 +91,9 @@ try {
   startTone();
   const tS = Date.now();
   while (Date.now() - tS < 15000) { try { dx(VDI, ['test', '-s', '/tmp/tone.pid']); break; } catch { await sleep(100); } }
-  // NOTE: the engine pair currently adds seconds of latency on the ALSA-over-Pulse
-  // device (see README "Known issue"), so wait up to 30 s and report the onset delay.
+  // The engine pair adds ~50-85 ms (L1, README "Latency"; measured by
+  // tests/latency/run.sh). The generous 30 s wait only keeps a regression visible
+  // as a large onset_delay_ms instead of a bare failure.
   let peak = 0, tRise = null; const t0 = Date.now();
   while (Date.now() - t0 < 30000) { const l = await ev('window.__level'); peak = Math.max(peak, l); if (tRise === null && l > 0.05) { tRise = Date.now() - t0; break; } await sleep(50); }
   check('VDI tone reaches the browser through engine + gateway', peak > 0.05, `peak=${peak.toFixed(3)} onset_delay_ms=${tRise}`);

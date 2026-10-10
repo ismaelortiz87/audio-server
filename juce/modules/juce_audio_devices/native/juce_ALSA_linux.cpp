@@ -276,6 +276,9 @@ public:
         else
             latency = (int) frames * ((int) periods - 1); // (this is the method JACK uses to guess the latency..)
 
+        if (JUCE_ALSA_FAILED (snd_pcm_hw_params_get_buffer_size (hwParams, &bufferFrames)))
+            bufferFrames = 0;
+
         JUCE_ALSA_LOG ("frames: " << (int) frames << ", periods: " << (int) periods
                           << ", samplesPerPeriod: " << (int) samplesPerPeriod);
 
@@ -397,11 +400,45 @@ public:
         return true;
     }
 
+    // Crosspoint (L1): a plugin capture PCM (alsa-plugins `pulse`, pipewire-alsa) can
+    // hold far more recorded audio than its ALSA buffer -- the pulse plugin queues up to
+    // 4 MiB, ~11 s of float stereo at 48 kHz -- and clamps `avail` to the buffer, so the
+    // backlog is invisible to the read loop. Any stall of that loop (device start-up, a
+    // Pulse/PipeWire latency renegotiation when another client connects) then turns into
+    // permanent input latency, which only ever grows. Called from the audio thread: when
+    // the reported capture delay exceeds two ALSA buffers, read and drop whole blocks
+    // until it is back to at most one buffer (at most ~1 s per call; the next call
+    // continues). A hardware PCM cannot hold more than one buffer, so there this only
+    // triggers after a real overrun (the ring was already overwritten, and skipping to
+    // the newest data is the right recovery). No allocation: `scratch` already has the
+    // block size from the earlier reads. Counted as an overrun in getXRunCount().
+    void dropCaptureBacklog (AudioBuffer<float>& inputChannelBuffer, const int numSamples, const double sampleRate)
+    {
+        snd_pcm_sframes_t delay = 0;
+
+        if (handle == nullptr || bufferFrames == 0 || numSamples <= 0
+            || snd_pcm_delay (handle, &delay) < 0
+            || delay <= 2 * (snd_pcm_sframes_t) bufferFrames)
+            return;
+
+        ++overrunCount;
+        const int maxBlocks = jmax (1, (int) (sampleRate / numSamples));
+
+        for (int i = 0; i < maxBlocks && delay - numSamples >= (snd_pcm_sframes_t) bufferFrames; ++i)
+        {
+            if (! readFromInputDevice (inputChannelBuffer, numSamples))
+                return;
+
+            delay -= numSamples;
+        }
+    }
+
     //==============================================================================
     snd_pcm_t* handle;
     String error;
     int bitDepth, numChannelsRunning, latency;
     int underrunCount = 0, overrunCount = 0;
+    snd_pcm_uframes_t bufferFrames = 0;
 
 private:
     //==============================================================================
@@ -695,6 +732,14 @@ public:
 
                 audioIoInProgress = true;
 
+                // Crosspoint (L1): bound the plugin capture backlog; checked every
+                // 8 blocks (~43 ms at 256) since the delay query takes the plugin's lock.
+                if (++captureBacklogCheck >= 8)
+                {
+                    captureBacklogCheck = 0;
+                    inputDevice->dropCaptureBacklog (inputChannelBuffer, bufferSize, sampleRate);
+                }
+
                 if (! inputDevice->readFromInputDevice (inputChannelBuffer, bufferSize))
                 {
                     JUCE_ALSA_LOG ("Read failure");
@@ -794,6 +839,7 @@ private:
     std::unique_ptr<ALSADevice> outputDevice, inputDevice;
     std::atomic<int> numCallbacks { 0 };
     std::atomic<bool> audioIoInProgress { false };
+    int captureBacklogCheck = 0;
 
     CriticalSection callbackLock;
 
