@@ -1516,9 +1516,27 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   Console can receive audio but can never capture the mic. So P7.4's HTTPS
   vhost is a **functional requirement for talking back**, not a nicety for the
   PWA — and any test of uplink audio must run on `https://` or `localhost`.
-  Downlink/uplink audio levels themselves remain unverified end to end for that
-  reason (the test needs a secure context this session did not have, because
-  the Mac's VPN tunnel was also down).
+- **Full audio path now VERIFIED end to end (2026-10-10).** Working around the
+  secure-context limit with `tools/local-console-proxy.mjs` (serves the Console
+  on `http://localhost` and proxies `/` → 7070 and `/rtc/` → 8090 with the
+  WebSocket upgrade), and after teaching
+  `docker/web-console/gateway/test/e2e.mjs` to drive the container **over ssh
+  with podman** (`--remote user@host`, because the Console runs on the VDI, not
+  on local docker), the gateway e2e passed **7/7 — `E2E OK`** against the live
+  container:
+  - downlink: silence before, **440 Hz tone peak 0.353**, silent again after it stops;
+  - uplink: Chrome's fake mic arrives at the Console at **660 Hz, −9.0 dBFS**
+    with the correct dominant frequency;
+  - gateway + browser stats show RTP both ways, **0 packets lost**, jitter
+    ~0.001, ~56 ms jitter buffer, RTT ~0.
+  So WebRTC audio in **both directions through a real browser** works; what P7.4
+  still needs is only the public HTTPS vhost (plus the on-phone check).
+  **Two gotchas the run exposed:** (1) the test must use its **own group** — the
+  first run failed "silent before tone" because the VDI agent was joined to
+  `lagreca` and legitimately transmitting, which is the system working, not a
+  fault; (2) over `--remote` the recorded `$$` is the ssh wrapper's PID, so the
+  tone outlived its `kill` and the "level falls" check failed until `stopTone`
+  also matched the process.
 - **Browser-verified, and `/rtc/` on the SAME ORIGIN is load-bearing
   (2026-10-10).** The real Console UI was loaded in headless Chrome from the
   live container: `title` is `Crosspoint` and the full UI renders
