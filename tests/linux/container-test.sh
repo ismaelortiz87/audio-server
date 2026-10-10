@@ -141,18 +141,55 @@ echo "selfAgent.input with a -70 dBFS tone on loopback_sink for >3 s: $state"
 [ "$state" = "silent" ] && pass "input 'silent' while only a -70 dBFS signal arrives" || fail "expected silent, got '$state'"
 kill $QPLAY 2>/dev/null; wait $QPLAY 2>/dev/null
 
-# What reaches crosspoint_mic (the monitor of the sink the engine plays into):
-pw-record --target crosspoint_mic -P stream.capture.sink=true --rate 48000 --channels 2 --format s16 "$W/mic.wav" > "$W/pw-record.log" 2>&1 &
-REC=$!
-sleep 1
+# Input pin: a loud tone into loopback_sink makes the engine's input "ok".
 pw-play --target loopback_sink "$W/loud.wav" > "$W/pw-play-loud.log" 2>&1 &
 PLAY=$!
 state="$(wait_state ok 8)"
 echo "selfAgent.input with a loud tone on loopback_sink: $state"
 [ "$state" = "ok" ] && pass "selfAgent.input silent -> ok when a tone is played into loopback_sink" || fail "expected ok, got '$state'"
 wait $PLAY 2>/dev/null
+
+# Output pin: the engine's own test tone (P4.4 agent.testTone, 440 Hz -18 dBFS,
+# 1.5 s) must arrive at crosspoint_mic. (P2.3 locks a VDI's dry level to 0, so
+# input->output passthrough can no longer be used to prove this pin.)
+pw-record --target crosspoint_mic -P stream.capture.sink=true --rate 48000 --channels 2 --format s16 "$W/mic.wav" > "$W/pw-record.log" 2>&1 &
+REC=$!
 sleep 1
+ack="$(python3 - 7071 <<'PY'
+import base64, json, os, socket, struct, sys
+port = int(sys.argv[1]); s = socket.create_connection(("127.0.0.1", port), timeout=5)
+key = base64.b64encode(os.urandom(16)).decode()
+s.sendall(("GET /api/v1/ws HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+           "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % key).encode())
+buf = b""
+while b"\r\n\r\n" not in buf: buf += s.recv(4096)
+buf = buf.split(b"\r\n\r\n", 1)[1]
+def frames():
+    global buf
+    while True:
+        while len(buf) < 2: buf += s.recv(65536)
+        n = buf[1] & 0x7F; off = 2
+        if n == 126: n = struct.unpack(">H", buf[2:4])[0]; off = 4
+        elif n == 127: n = struct.unpack(">Q", buf[2:10])[0]; off = 10
+        while len(buf) < off + n: buf += s.recv(65536)
+        payload, buf = buf[off:off + n], buf[off + n:]
+        yield json.loads(payload.decode())
+def send(obj):
+    data = json.dumps(obj).encode(); mask = os.urandom(4)
+    hdr = bytes([0x81]) + (bytes([0x80 | len(data)]) if len(data) < 126 else bytes([0x80 | 126]) + struct.pack(">H", len(data)))
+    s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+for m in frames():
+    if m.get("t") == "state":
+        out = m["state"]["output"]["node"]
+        send({"t": "cmd", "id": "tone", "cmd": "agent.testTone", "args": {"node": out}})
+    if m.get("t") == "ack" and m.get("id") == "tone":
+        print(json.dumps(m)); break
+PY
+)"
+echo "agent.testTone ack: $ack"
+sleep 2.5
 kill -INT $REC 2>/dev/null; wait $REC 2>/dev/null
+case "$ack" in *'"ok": true'*|*'"ok":true'*) pass "agent.testTone accepted for the pinned output node";; *) fail "agent.testTone failed: $ack";; esac
 
 peak="$(python3 - "$W/mic.wav" <<'PY'
 import array, sys
@@ -167,13 +204,11 @@ except Exception as e:
 PY
 )"
 echo "peak (s16, max 32767) recorded on crosspoint_mic.monitor: $peak"
-# dry=1 passes the engine's input to its output, so the tone that entered at
-# loopback_sink.monitor leaves at crosspoint_mic: the chain
-# loopback_sink -> engine -> crosspoint_mic proves both pins carry audio.
-if [ "${peak:-0}" -gt 500 ]; then
-  pass "audio put into loopback_sink came out of the engine at crosspoint_mic (peak $peak)"
+# -18 dBFS is ~4100; allow headroom for fades/resampling.
+if [ "${peak:-0}" -gt 1500 ]; then
+  pass "the engine's test tone came out at crosspoint_mic (peak $peak): output pin carries audio"
 else
-  fail "no audio on crosspoint_mic.monitor (peak $peak)"
+  fail "no test tone on crosspoint_mic.monitor (peak $peak)"
 fi
 
 kill $ENGINE 2>/dev/null; wait $ENGINE 2>/dev/null
