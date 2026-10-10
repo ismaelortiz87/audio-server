@@ -68,7 +68,7 @@ Ordered so that every task appears after everything it depends on.
 | P0.3 | Wire VDI virtual devices, verify audio both ways | P0.1 | S | human | done | maelo |
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
-| F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | todo | |
+| F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | wip | Claude (subagent N, sonnet) |
 | L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | done | Claude (subagent J, opus) |
 | L2 | Residual gaps/dropouts on Linux (~2 s gap on Pulse client connect; dropouts under load); measure on a quiet host + a real VDI | L1 | S | any + human | todo | |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
