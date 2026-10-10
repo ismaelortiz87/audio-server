@@ -594,6 +594,8 @@ public:
                 std::cerr << "Error in --config: " << pwErr << std::endl;
                 return false;
             }
+            // P2.5: an unknown node is not decided here; applyConfigRuntime() makes it
+            // fatal (GUI) or a retried 'missing' device (headless agent).
             if (!pwNote.empty()) std::cerr << "Config: " << pwNote << std::endl;
             if (!pipewirePins.inputJuceName.empty() || !pipewirePins.outputJuceName.empty())
                 std::cerr << "Config: PipeWire pinning via " << pipewirePins.asoundConfPath
@@ -607,7 +609,10 @@ public:
     // Applies the keys that need the running processor / audio device manager:
     // codec, bitrate and audio.*. Must run AFTER --load-setup, so that YAML
     // outranks the setup file. Returns false after printing why.
-    bool applyConfigRuntime (SonobusAudioProcessor * proc, AudioDeviceManager * dm)
+    // P2.5: tolerateDevices (headless agent): a device that is missing or fails
+    // to open is reported as 'missing' and retried by AgentDeviceWatcher instead
+    // of failing; config errors (YAML, codec, bitrate) stay fatal.
+    bool applyConfigRuntime (SonobusAudioProcessor * proc, AudioDeviceManager * dm, bool tolerateDevices = false)
     {
         if (!haveConfig || proc == nullptr) return true;
         const auto & cfg = effectiveConfig;
@@ -660,6 +665,13 @@ public:
             // Names that are not PipeWire nodes are matched as before.
             String err;
             if (!reopenAudioDevices(*dm, err)) {
+                if (tolerateDevices) {   // P2.5
+                    std::cerr << "Config: audio device not available at startup, reporting input/output missing and retrying: "
+                              << err << std::endl;
+                    dm->closeAudioDevice();   // so the watcher sees a lost device, not a stray default one
+                    proc->setAgentDevicesOpen(false, false);
+                    return true;
+                }
                 std::cerr << "Error in --config: " << err << std::endl;
                 return false;
             }
@@ -673,6 +685,18 @@ public:
     {
         crosspoint::Config audioCfg = effectiveConfig;
        #if JUCE_LINUX
+        // P2.5: a PipeWire node that was missing (or PipeWire not up yet) when --config
+        // was read: look again; still missing -> the printable reason, nothing opened.
+        if (pipewirePins.missing) {
+            const auto confPath = File::getSpecialLocation(File::userHomeDirectory)
+                                      .getChildFile(".config/" APP_ID_LINUX_DIR "/asound.conf").getFullPathName().toStdString();
+            std::string pwErr, pwNote;
+            if (!crosspoint::pipewire::prepare(effectiveConfig.inputDevice, effectiveConfig.outputDevice, confPath, pipewirePins, pwErr, pwNote)) {
+                err = pwErr;
+                return false;
+            }
+            if (pipewirePins.missing) { err = String(pipewirePins.missingMsg); return false; }
+        }
         if (!pipewirePins.inputJuceName.empty())  audioCfg.inputDevice = pipewirePins.inputJuceName;
         if (!pipewirePins.outputJuceName.empty()) audioCfg.outputDevice = pipewirePins.outputJuceName;
        #endif
@@ -759,7 +783,7 @@ public:
         return true;
     }
 #else
-    bool applyConfigRuntime (SonobusAudioProcessor *, AudioDeviceManager *) { return true; }
+    bool applyConfigRuntime (SonobusAudioProcessor *, AudioDeviceManager *, bool = false) { return true; }
     bool reopenAudioDevices (AudioDeviceManager & dm, String & err)
     {
         dm.restartLastAudioDevice();
@@ -1197,7 +1221,7 @@ public:
 
                 // P2.1: YAML codec/audio keys go on top of the setup file just loaded
                 // (CLI > YAML > setup file > saved state); role is already pinned.
-                if (!applyConfigRuntime(sonoproc, &pluginHolder->deviceManager)) {
+                if (!applyConfigRuntime(sonoproc, &pluginHolder->deviceManager, true /* P2.5 */)) {
                     failStartup();
                     return;
                 }

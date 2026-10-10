@@ -1,0 +1,18 @@
+#!/bin/sh
+# Stop running per-user instances before the files go away (best effort; never
+# fails the removal). Does not touch users' enablement or config.
+set -e
+case "$1" in
+  remove|upgrade|deconfigure)
+    if [ -d /run/systemd/system ] && command -v loginctl >/dev/null 2>&1; then
+      for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+        [ "$uid" -ge 1 ] 2>/dev/null || continue
+        user="$(id -nu "$uid" 2>/dev/null || true)"
+        [ -n "$user" ] || continue
+        runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+          systemctl --user stop crosspoint-agent.service >/dev/null 2>&1 || true
+      done
+    fi
+    ;;
+esac
+exit 0

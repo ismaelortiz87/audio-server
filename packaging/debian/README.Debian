@@ -1,0 +1,30 @@
+Crosspoint for Debian 13 (trixie)
+=================================
+
+This package installs the headless Crosspoint VDI agent as a systemd USER
+service. Nothing is enabled or started automatically. One-time setup, as the
+user whose PipeWire session the agent should use (NOT as root):
+
+  1. Write the config:
+       mkdir -p ~/.config/crosspoint
+       cp /usr/share/doc/crosspoint/vdi.example.yaml ~/.config/crosspoint/vdi.yaml
+       $EDITOR ~/.config/crosspoint/vdi.yaml
+     audio.input_device / audio.output_device are PipeWire node names:
+       pactl list short sources ; pactl list short sinks     (or: pw-cli ls Node)
+
+  2. Enable and start it:
+       systemctl --user enable --now crosspoint-agent
+
+  3. Start it at boot without a login (VDI):
+       sudo loginctl enable-linger $USER
+
+  4. Look at it:
+       systemctl --user status crosspoint-agent
+       journalctl --user -u crosspoint-agent -f
+       curl http://localhost:7071/api/v1/health
+
+A missing audio device at start is not fatal: the agent reports the input or
+output as "missing" and keeps retrying. A broken config is fatal: the unit
+exits 1 and is restarted every 5 s, with the error in the journal.
+
+Full guide: packaging/debian/INSTALL.md in the source tree.

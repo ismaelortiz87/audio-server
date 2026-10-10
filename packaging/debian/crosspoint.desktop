@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Crosspoint
+Comment=Crosspoint audio agent
+GenericName=Network Audio Streaming
+Exec=crosspoint %u
+Icon=crosspoint
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
+Keywords=audio;streaming;vdi;

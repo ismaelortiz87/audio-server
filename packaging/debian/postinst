@@ -1,0 +1,21 @@
+#!/bin/sh
+# Never enables or starts anything for any user; only explains the one-time setup.
+set -e
+case "$1" in
+  configure)
+    cat <<'MSG'
+
+Crosspoint is installed. The VDI agent runs as a systemd USER service and is
+NOT enabled automatically. As the user whose PipeWire session it should use:
+
+  mkdir -p ~/.config/crosspoint
+  cp /usr/share/doc/crosspoint/vdi.example.yaml ~/.config/crosspoint/vdi.yaml
+  $EDITOR ~/.config/crosspoint/vdi.yaml        # server, group, PipeWire node names
+  systemctl --user enable --now crosspoint-agent
+  sudo loginctl enable-linger "$USER"          # start at boot without a login
+
+See /usr/share/doc/crosspoint/README.Debian.
+MSG
+    ;;
+esac
+exit 0

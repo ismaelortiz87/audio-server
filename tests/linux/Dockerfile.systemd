@@ -1,0 +1,33 @@
+# P2.5/P2.10 test image: debian:trixie with systemd as PID 1, the crosspoint .deb
+# installed with apt (so its Depends resolve), and a local aooserver to connect
+# to. Built by tests/linux/deb-systemd.sh from a scratch context holding
+# crosspoint.deb and aooserver/.
+
+FROM debian:trixie AS aoo
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build pkg-config ca-certificates \
+        libasound2-dev libfreetype6-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+        libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY aooserver/ /src/aooserver/
+RUN cmake -S /src/aooserver -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build /build -j"$(nproc)" && test -x /build/aooserver
+
+FROM debian:trixie
+ENV DEBIAN_FRONTEND=noninteractive container=docker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv dbus dbus-user-session libpam-systemd \
+        pulseaudio-utils python3-minimal curl jq procps iproute2 util-linux ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY crosspoint.deb /tmp/crosspoint.deb
+RUN apt-get update && apt-get install -y --no-install-recommends /tmp/crosspoint.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/crosspoint.deb
+COPY --from=aoo /build/aooserver /usr/local/bin/aooserver
+RUN useradd -m -u 1000 -s /bin/bash vdi \
+ && printf '[Unit]\nDescription=local aooserver\n[Service]\nExecStart=/usr/local/bin/aooserver -p 10998\nRestart=always\n[Install]\nWantedBy=multi-user.target\n' \
+      > /etc/systemd/system/aooserver.service \
+ && systemctl enable aooserver.service \
+ && systemctl mask getty.target console-getty.service ; true
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]
