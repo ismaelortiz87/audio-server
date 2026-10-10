@@ -87,7 +87,7 @@ Ordered so that every task appears after everything it depends on.
 | P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | done | Claude (subagent M, sonnet) |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
 | P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | done | Claude (subagent M, sonnet) |
-| P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | todo | |
+| P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | wip | |
 | P3.1 | Remove metronome | P1.4 | M | any | todo | |
 | P3.2 | Remove soundboard | P1.4 | M | any | todo | |
 | P3.3 | Remove chat | P1.4 | S | any | todo | |
@@ -971,10 +971,16 @@ surface on the Console via P1.7.
   Existing daily-use group is **`lagreca` on `aoo.sonobus.net:10998`** (from the
   flatpak `net.sonobus.SonoBus` settings), so the cutover can reuse it. The
   amd64 `.deb` was transferred and checksum-verified on the box, and the binary
-  loads there. **Blocker: `sudo` needs a password on this VDI** (`sudo -n true`
+  loads there. **The agent itself runs on this VDI:** extracted unprivileged and
+  started headless on the real amd64 hardware, it serves
+  `GET /api/v1/health` → `{"ok": true, "app": "Crosspoint", "version": "1.7.2",
+  "role": "vdi"}`. That also settles P7.1's amd64 question (no emulation in
+  play). **Blocker: `sudo` needs a password on this VDI** (`sudo -n true`
   fails), and install needs `sudo apt install ./crosspoint_*.deb`. Remaining
-  steps once that is available: config from `packaging/debian/INSTALL.md`,
-  `systemctl --user enable --now crosspoint-agent`, then a reboot test.
+  steps once that is available: write `~/.config/crosspoint/vdi.yaml` (input
+  `sb_system_out.monitor`, output `sb_mic_in`, group `lagreca`), install the
+  package, `systemctl --user enable --now crosspoint-agent` (linger is already
+  on), then a reboot test.
 
 ## P3 — Strip jam features
 
@@ -1311,6 +1317,21 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   instant). A host macOS VDI can't reach container UDP under Docker Desktop
   NAT, so use container peers for tests. Next: P7.2 (UI base and token
   hand-off), P7.4 (proxy routes, ICE on the VPN), P7.5, P7.6.
+  **amd64 note (2026-10-10):** the image is built and verified on **amd64** as
+  well as arm64 (`docker buildx --builder buildkit-priv --platform linux/amd64`
+  — a *native* amd64 builder, not qemu). The gateway answers `{"ok": true}` on
+  `:8090/rtc/health` and the engine binds `:7070`, but **under qemu emulation on
+  this arm64 Mac the engine accepts the TCP connection and then never replies**
+  (odd amd64 curl hangs, CPU 0.2% idle; arm64 image on the same host answers
+  instantly at ~37% CPU). That is an **emulation artifact, not a product bug** —
+  proven by running the same amd64 binary natively on the real amd64 VDI
+  (`maelosdebian`), where `GET /api/v1/health` returns
+  `{"ok": true, "role": "vdi"}` normally. So do not debug amd64 container hangs
+  on an Apple-silicon host; validate amd64 on amd64 hardware.
+  **Also (P2.10/P7.1 build hygiene):** the repo had no `.dockerignore`, so every
+  root-context build uploaded the whole 2.8 GB repo before compiling (observed
+  197 MB and still climbing after 400 s). Added one (commit `d49c5f75`); the
+  web-console image now compiles natively in ~4 min instead of stalling.
 
 ### P7.3 — WebRTC audio gateway · L
 - **Depends on:** P7.1
@@ -1362,7 +1383,25 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   range bound to the container's VPN address and publish it in compose.
   Verify from the phone on the VPN that ICE picks the direct path; if not,
   add a TURN server.
-- **Result:**
+- **Result:** *Not done — recon 2026-10-10.* The proxy is already live and
+  reachable from here: `crosspoint.app.lagreca.io` **and** `app.lagreca.io`
+  both resolve to **192.168.0.6**, which answers on 443 and currently returns
+  **404** for this hostname — i.e. TLS and the wildcard are in place and only
+  the vhost/route is missing. `192.168.0.6` has SSH open but rejects our keys
+  (`Permission denied (publickey,password)`), so the route must be added by
+  maelo (or with credentials). What the route needs (from
+  `docker/web-console/docker-compose.yml`, already parameterised):
+  `CROSSPOINT_API_ORIGIN=https://crosspoint.app.lagreca.io`;
+  `HTTP_BIND` set so 7070/8090 are **not** on a public address;
+  `RTC_PUBLIC_IP=` the VPN IP of the container host; `/` + `/api/` → `:7070`
+  with **WebSocket upgrade** (`/api/v1/ws`), long `proxy_read_timeout`, no
+  buffering, and `X-Forwarded-Proto: https` so the P7.2 session cookie gets
+  `Secure`; `/rtc/` → `:8090` (plain HTTP); **UDP 40000–40019 published 1:1 on
+  the VPN IP** (media bypasses the proxy). **Remaining unknown:** where the
+  container will actually run — it must be a Linux host on the VPN (Docker
+  Desktop on macOS cannot route peers to container UDP, P7.1), and neither
+  `maelosdebian` (192.168.0.71) nor the proxy host is known to have Docker yet.
+  Blocked on that host choice + proxy credentials; then the on-phone ICE check.
 
 ### P7.5 — Per-user containers, compose + docs · S
 - **Depends on:** P7.2, P7.3, P7.4

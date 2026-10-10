@@ -174,7 +174,7 @@ Code: `sonobus/Source/SonoStandaloneFilterApp.cpp` (existing CLI: `--group`,
 | P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | done |
 | P2.6 | VDI agent web UI on `localhost`, as in the UX3 prototype: status, listeners, device pickers, pause, reload (D10) | done |
 | P2.7 | Example `vdi.example.yaml` + docs | done |
-| P2.8 | Cut daily use over from the Carla hub to the mesh; retire the Ubuntu Studio server | todo |
+| P2.8 | Cut daily use over from the Carla hub to the mesh; retire the Ubuntu Studio server | wip |
 | P2.9 | Minimal native tray icon (not a priority: the agent is a service with fixed config, and problems surface on the Console) | deferred |
 | P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | done |
 
