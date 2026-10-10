@@ -1058,6 +1058,24 @@ void ApiServer::broadcastTopic (const String& topic, const String& json)
         if (s->isAuthenticated() && ! s->isHidden() && s->isSubscribed (topic)) s->send (json);
 }
 
+void ApiServer::broadcastTopic (const String& topic, const String& json,
+                                const std::function<bool (const ApiSession&)>& extraFilter)
+{
+    for (auto& s : impl->snapshotSessions())
+        if (s->isAuthenticated() && ! s->isHidden() && s->isSubscribed (topic)
+            && (! extraFilter || extraFilter (*s)))
+            s->send (json);
+}
+
+bool ApiServer::hasSubscribers (const String& topic, const std::function<bool (const ApiSession&)>& extraFilter) const
+{
+    for (auto& s : impl->snapshotSessions())
+        if (s->isAuthenticated() && ! s->isHidden() && s->isSubscribed (topic)
+            && (! extraFilter || extraFilter (*s)))
+            return true;
+    return false;
+}
+
 void ApiServer::setCommandHandler (CommandHandler handler)
 {
     std::lock_guard<std::mutex> g (impl->handlerLock);

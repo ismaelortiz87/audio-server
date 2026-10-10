@@ -270,7 +270,9 @@ test('cmd -> not_supported ack (until P4.4)', async () => {
   await ws.next(); await ws.next();
   ws.sendJson({ t: 'cmd', id: 'c17', cmd: 'station.setLevel', args: { station: 'A', db: -6 } });
   const ack = (await ws.next(f => f.json?.t === 'ack')).json;
-  assert.deepEqual(ack, { t: 'ack', id: 'c17', ok: false, error: { code: 'not_supported', message: ack.error.message } });
+  // P4.4: with the engine up the unknown station is not_found; not_supported only before it registered its handler
+  assert.deepEqual({ ...ack, error: { ...ack.error, code: ['not_found', 'not_supported'].includes(ack.error.code) ? 'ok' : ack.error.code } },
+    { t: 'ack', id: 'c17', ok: false, error: { code: 'ok', message: ack.error.message } });
   assert.ok(ack.error.message.length > 0);
   ws.destroy();
 });
@@ -486,7 +488,7 @@ test('real console-ui client.js completes the handshake against the engine', asy
   assert.equal(r.client.hello.role, 'console');
   assert.deepEqual({ name: r.client.store.state.self.name, role: r.client.store.state.self.role }, { name: 'test-console', role: 'console' });   // P4.2
   await assert.rejects(r.client.cmd('station.setMute', { station: 'A', on: true }),
-    e => e instanceof ApiError && e.code === 'not_supported');
+    e => e instanceof ApiError && ['not_found', 'not_supported'].includes(e.code));   // P4.4: unknown station (not_supported only before the engine registered its handler)
   r.client.stop();
 
   r = await open(pConsole, { expectRole: 'vdi' });

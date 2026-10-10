@@ -37,6 +37,8 @@ public:
 
     /** TEST ONLY: SONOBUS_BACKOFF_SCALE in (0,1] shrinks every delay; 1 otherwise. */
     static double testScale();
+    /** P4.4 agent.retryNow: skip the rest of a backoff wait (message thread). */
+    void retryNow();
     /** One stderr line, "Crosspoint agent [t=<secs>s]: ...". Shared with the device watcher. */
     static void log (const String& line);
 

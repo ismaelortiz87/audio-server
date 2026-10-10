@@ -26,6 +26,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <optional>
 
 namespace crosspoint {
 
@@ -51,6 +52,25 @@ public:
         station is unknown or still present (online or lost); the command layer
         answers `busy`/`not_found` (api 5.1). */
     bool forgetStation (const String& id);
+
+    // P4.4 helpers (message thread) -------------------------------------------
+    /** True for any remembered or present station. */
+    bool knowsStation (const String& id) const;
+    /** True while the station is in the peer table and has connected (online or lost);
+        only then do the processor setters reach it. */
+    bool stationIsPresent (const String& id) const;
+    /** Stores new mix values of a station that is NOT present (offline); they are
+        persisted and applied when it rejoins. Unset optionals keep their value. */
+    void updateRemembered (const String& id, std::optional<float> levelDb, std::optional<float> pan,
+                           std::optional<bool> mute, std::optional<bool> talk);
+    /** stationOrder of the last published state. */
+    StringArray getStationOrder() const;
+    /** Stations whose last published presence is "online" (P4.3 meters). */
+    StringArray getOnlineStations() const;
+    /** connection.disconnect: shows reason "Disconnected" instead of "lost" until the next connect. */
+    void setUserDisconnected (bool disconnected)    { userDisconnected = disconnected; }
+    /** agent.reloadConfig result: shown as state.configError and connection.error. */
+    void setConfigError (const String& err)         { configError = err; }
 
     /** Message thread. Builds the state now and publishes the difference. Called
         by the timer; tests and P4.4 can call it after a change to avoid waiting
@@ -151,6 +171,8 @@ private:
     std::map<String, int> consoleLatency;   // agent role: latency per Console, 2 Hz with hysteresis
     double consoleLatencyAtMs = -1e12;
     bool everConnectedToServer = false;
+    bool userDisconnected = false;       // P4.4
+    String configError;                  // P4.4: starts as options.configError
 
     var previous;                        // last published snapshot (message thread)
     bool published = false;

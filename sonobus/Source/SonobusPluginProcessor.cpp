@@ -3562,11 +3562,14 @@ SonobusAudioProcessor::AgentHealth SonobusAudioProcessor::computeAgentHealth() c
         h.output = (mAgentOutputOpen.load() && hasUsableOutputDevice()) ? "ok" : "missing";   // P2.4
     }
 
-    // No pause concept exists in the engine yet (see AgentHealth in the header).
-    h.paused = false;
+    h.paused = mSendPaused.load();                       // P4.4
     {   // P2.4: connection/config problems found by the agent connector
         const ScopedLock sl (mAgentLock);
         h.configError = mAgentConfigError;
+    }
+    if (h.configError.isEmpty()) {
+        const SpinLock::ScopedLockType sl (mApiConfigErrorLock);
+        h.configError = mApiConfigError;                 // P4.4 (agent.reloadConfig)
     }
 
     return h;
@@ -3601,6 +3604,12 @@ void SonobusAudioProcessor::setAgentConnStatus(const AgentConnStatus& s)
     const ScopedLock sl (mAgentLock);
     mAgentConn = s;
     mAgentConn.valid = true;
+}
+
+void SonobusAudioProcessor::clearAgentConnStatus()   // P4.4
+{
+    const ScopedLock sl (mAgentLock);
+    mAgentConn = AgentConnStatus();
 }
 
 SonobusAudioProcessor::AgentConnStatus SonobusAudioProcessor::getAgentConnStatus() const
@@ -6035,6 +6044,19 @@ void SonobusAudioProcessor::setMicMode(MicMode mode)
 bool SonobusAudioProcessor::isMicTransmitting() const
 {
     return mMicMode.load() == (int) MicMode::PushToTalk ? mPttHeld.load() : mMicOn.load();
+}
+
+// P4.4
+void SonobusAudioProcessor::armApiTestTone(double seconds)
+{
+    const double sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    mApiToneArm.store(jmax(1, (int) (seconds * sr)));
+}
+
+void SonobusAudioProcessor::setApiConfigError(const String & err)
+{
+    const SpinLock::ScopedLockType sl (mApiConfigErrorLock);
+    mApiConfigError = err;
 }
 
 void SonobusAudioProcessor::setSoloDimDb(float db)
@@ -8898,6 +8920,7 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
     };
     const float soloDimGain = Decibels::decibelsToGain(mSoloDimDb.load());
     const bool micTransmitting = isMicTransmitting();
+    const bool sendPaused = mSendPaused.load();   // P4.4
     // The talk/mic/solo send gate is a Console concept; on any other role our
     // send is never gated (a VDI's system audio must not follow these flags).
     const bool gateSend = mRole.load() == PeerRole::Console;
@@ -9111,7 +9134,10 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
                 // the P1.4 allow flags are not touched, so there is no
                 // re-handshake when talk toggles.
                 float gateTarget = 1.0f;
-                if (gateSend) {
+                if (sendPaused) {                       // P4.4 agent.pause
+                    gateTarget = 0.0f;
+                }
+                else if (gateSend) {
                     const bool wants = anyPeerSoloed ? remote->soloed.load() : remote->talk.load();
                     gateTarget = (micTransmitting && wants) ? 1.0f : 0.0f;
                 }
@@ -9413,6 +9439,33 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
     }
 
     
+    // P4.4 agent.testTone: 440 Hz at -18 dBFS into the main output, 10 ms fades.
+    // Atomics and arithmetic only, no allocation.
+    if (const int armed = mApiToneArm.exchange(0); armed > 0) {
+        mApiToneRemaining = armed;
+        mApiToneElapsed = 0;
+        mApiTonePhase = 0.0;
+    }
+    if (mApiToneRemaining > 0 && mainBusOutputChannels > 0) {
+        const double sr = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+        const double inc = MathConstants<double>::twoPi * 440.0 / sr;
+        const float amp = 0.12589254f;  // -18 dBFS
+        const int fade = jmax(1, (int) (0.010 * sr));
+        const int n = jmin(numSamples, mApiToneRemaining);
+        double ph = mApiTonePhase;
+        for (int s = 0; s < n; ++s) {
+            const int e = mApiToneElapsed + s, r = mApiToneRemaining - s;
+            const float env = (float) jmin(1.0, (double) jmin(e, r) / (double) fade);
+            const float v = amp * env * (float) std::sin(ph);
+            ph += inc;
+            if (ph >= MathConstants<double>::twoPi) ph -= MathConstants<double>::twoPi;
+            for (int ch = 0; ch < mainBusOutputChannels; ++ch) buffer.addSample(ch, s, v);
+        }
+        mApiTonePhase = ph;
+        mApiToneElapsed += n;
+        mApiToneRemaining -= n;
+    }
+
     outputMeterSource.measureBlock (buffer, 0, numSamples);
 
     // output to file writer if necessary

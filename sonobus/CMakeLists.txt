@@ -310,6 +310,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         ${PlatSourceFiles}
         Source/AgentConnect.cpp
         Source/AgentConnect.h
+        Source/ApiCommands.cpp
+        Source/ApiCommands.h
         Source/ApiServer.cpp
         Source/ApiServer.h
         Source/EngineState.cpp

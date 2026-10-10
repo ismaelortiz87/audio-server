@@ -37,6 +37,7 @@ var stringArrayVar (const StringArray& a)
 }
 
 double round1 (double v)                  { return std::round (v * 10.0) / 10.0; }
+double round2 (double v)                  { return std::round (v * 100.0) / 100.0; }
 
 String isoUtc (int64 unixSeconds)
 {
@@ -122,6 +123,7 @@ EngineState::EngineState (Proc& p, AudioDeviceManager* dm, ApiServer& s, const O
     : processor (p), deviceManager (dm), server (s), options (o)
 {
     startMs = Time::getMillisecondCounterHiRes();
+    configError = options.configError;
     stationsTree = processor.getApiStationsTree();
 
     previous = options.role == "vdi" ? buildAgentState (startMs) : buildConsoleState (startMs);
@@ -237,6 +239,52 @@ void EngineState::persist (const Station& s)
     node.setProperty ("lastSeen", lastSeenString (s.lastSeen, s.inPeers && s.everConnected && ! s.lost), nullptr);
 }
 
+bool EngineState::knowsStation (const String& id) const
+{
+    return stations.find (id) != stations.end();
+}
+
+bool EngineState::stationIsPresent (const String& id) const
+{
+    auto it = stations.find (id);
+    return it != stations.end() && it->second->inPeers && it->second->everConnected;
+}
+
+void EngineState::updateRemembered (const String& id, std::optional<float> levelDb, std::optional<float> pan,
+                                    std::optional<bool> mute, std::optional<bool> talk)
+{
+    auto it = stations.find (id);
+    if (it == stations.end()) return;
+    auto& s = *it->second;
+    if (levelDb) s.level = *levelDb;
+    if (pan)     s.pan = *pan;
+    if (mute)    s.mute = *mute;
+    if (talk)    s.talk = *talk;
+    s.known = true;
+    persist (s);
+    refreshNow();
+}
+
+StringArray EngineState::getStationOrder() const
+{
+    StringArray out;
+    if (auto* o = previous.getDynamicObject())
+        if (auto* arr = o->getProperty ("stationOrder").getArray())
+            for (auto& v : *arr) out.add (v.toString());
+    return out;
+}
+
+StringArray EngineState::getOnlineStations() const
+{
+    StringArray out;
+    if (auto* o = previous.getDynamicObject())
+        if (auto* st = o->getProperty ("stations").getDynamicObject())
+            for (auto& kv : st->getProperties())
+                if (kv.value.getProperty ("presence", var()).toString() == "online")
+                    out.add (kv.name.toString());
+    return out;
+}
+
 bool EngineState::forgetStation (const String& id)
 {
     auto it = stations.find (id);
@@ -320,7 +368,7 @@ void EngineState::fillMixFields (const Station& s, MixFields& out) const
     // pan = channel 0 of group 0 (VDIs send mono, one group).
     const int i = s.peerIndex;
     out.levelDb = (float) round1 (processor.getRemotePeerLevelDb (i));
-    out.pan     = (float) round1 (processor.getRemotePeerChannelPan (i, 0, 0));
+    out.pan     = (float) round2 (processor.getRemotePeerChannelPan (i, 0, 0));   // spread gives 0.01 steps
     out.mute    = processor.getRemotePeerMuted (i);      // P1.5 playback-gain mute
     out.solo    = processor.getRemotePeerSoloed (i);
     out.talk    = processor.getRemotePeerTalk (i);
@@ -383,7 +431,7 @@ var EngineState::connectionVar (double now, bool agent)
     const bool connected = processor.isConnectedToServer();
     const String group = processor.getCurrentJoinedGroup();
     const String server = serverString (processor);
-    if (connected) everConnectedToServer = true;
+    if (connected) { everConnectedToServer = true; userDisconnected = false; }
 
     String state, reason;
     var retry, attemptV, errorV;
@@ -402,15 +450,19 @@ var EngineState::connectionVar (double now, bool agent)
     else if (connected)                                   state = "connecting";   // joining the group
     else if (processor.isRecoveringFromServerLoss())      { state = "reconnecting"; retry = 1; }
     else if (! everConnectedToServer && server.isNotEmpty() && now - startMs < 15000.0) state = "connecting";
-    else                                                  { state = "failed"; reason = everConnectedToServer ? "Connection to the server was lost" : "Not connected to a server"; }
+    else                                                  { state = "failed"; reason = userDisconnected ? "Disconnected" : everConnectedToServer ? "Connection to the server was lost" : "Not connected to a server"; }
 
     if (agent)
+    {
+        // P4.4: a config reload error shows in connection.error (api 5.2); a lost
+        // connection stays the more urgent message.
+        var error = cs.valid ? errorV
+                  : state == "failed" ? obj ({ { "code", "server_unreachable" }, { "message", reason } })
+                  : var();
+        if (error.isVoid() && configError.isNotEmpty()) error = obj ({ { "code", "config" }, { "message", configError } });
         return obj ({ { "state", state == "failed" ? String ("error") : state }, { "server", server }, { "group", group },
-                      { "attempt", attemptV }, { "retryInSec", retry },
-                      { "error", cs.valid ? errorV
-                                          : state == "failed"
-                                              ? obj ({ { "code", "server_unreachable" }, { "message", reason } })
-                                              : var() } });
+                      { "attempt", attemptV }, { "retryInSec", retry }, { "error", error } });
+    }
 
     bool pwSaved = false;
     if (group.isNotEmpty())
@@ -657,7 +709,7 @@ var EngineState::buildAgentState (double now)
         { "output", obj ({ { "node", outName }, { "description", outName }, { "status", health.output } }) },
         { "devices", devicesVar (true) },
         { "configPath", strOrNull (options.configPath) },
-        { "configError", strOrNull (options.configError.isNotEmpty() ? options.configError : health.configError) } });   // P2.4
+        { "configError", strOrNull (configError.isNotEmpty() ? configError : health.configError) } });   // P2.4 + P4.4
 }
 
 } // namespace crosspoint
