@@ -69,7 +69,8 @@ Ordered so that every task appears after everything it depends on.
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
 | F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | todo | |
-| L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | wip | Claude (subagent J, opus) |
+| L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | done | Claude (subagent J, opus) |
+| L2 | Residual gaps/dropouts on Linux (~2 s gap on Pulse client connect; dropouts under load); measure on a quiet host + a real VDI | L1 | S | any + human | todo | |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
 | P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
@@ -484,6 +485,34 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   loopback containers.
 - **Done when:** a rerunnable latency test reports the end-to-end delay, and
   it's under target in the container pair and in the P2.11 PipeWire setup.
+- **Result:** Root cause: the alsa-plugins `pulse` capture PCM queues up to
+  4 MiB (~11 s) but clamps ALSA `avail` to one buffer, so JUCE's
+  playback-paced ALSA loop turned every stall (device start, and Pulse latency
+  renegotiation ~2 s each time a client connects to a null sink) into
+  permanent, growing input latency (6 → 12.5 → 17 s; 11–13 s after 11 h).
+  Neither AOO's jitter buffer nor clock drift was the cause. Fix (local JUCE
+  patch, recorded in README §5): `juce_ALSA_linux.cpp` `dropCaptureBacklog`
+  drops whole blocks while `snd_pcm_delay` > 2 ALSA buffers, checked every 8
+  blocks, no allocation, Linux only. New `tests/latency/run.sh [--backend
+  pulse|pipewire]`. Subagent numbers: Pulse pair 54–77 ms (was 4–17 s);
+  PipeWire 41–98 ms (was 28–51 ms; it never had the backlog). **Re-verified
+  in review on merged main** (load avg 11–15 from parallel builds): medians
+  58.9/54.8/111.7 ms (vdi→console) and 61.3/55.8/60.1 ms (console→vdi), all
+  < 150 ms; one run had a single burst ~2.5 s late, so the test prints FAIL on
+  the "complete" criterion. Leftovers → **L2**.
+
+### L2 — Residual gaps and dropouts on Linux · S · any + human
+- **Depends on:** L1
+- **Seen in L1 + review:** latency no longer grows, but (a) a one-off gap of up
+  to ~2 s still occurs when a client connects to the Pulse null sinks (Pulse
+  latency renegotiation), and (b) there are dropouts (0–8 per 3 runs), worse
+  under host load (the review runs had load avg 11–15). On PipeWire, AOO's auto
+  jitter buffer grows by up to ~50 ms after early drops.
+- **Do:** re-run `tests/latency/run.sh` (both backends) on a quiet host;
+  then measure on a real Debian VDI ↔ Mac over the VPN (human). If gaps
+  remain: larger ALSA buffer for the plugin PCMs, avoid client churn on the
+  engine sinks (gateway connects once), or a jitter-buffer floor. Target: 0
+  gaps > 200 ms in 10 minutes of steady state.
 - **Result:**
 
 ### F2.1 — F2 coverage gaps from the P1.4 review · S
