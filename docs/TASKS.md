@@ -83,9 +83,9 @@ Ordered so that every task appears after everything it depends on.
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
 | P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | done | Claude (subagent L, sonnet) |
 | P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | done | Claude (subagent L, sonnet) |
-| P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | todo | |
+| P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | wip | Claude (subagent M, sonnet) |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
-| P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | todo | |
+| P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | wip | Claude (subagent M, sonnet) |
 | P2.8 | Cut over from Carla hub to mesh; retire hub | P2.10 | S | human | todo | |
 | P3.1 | Remove metronome | P1.4 | M | any | todo | |
 | P3.2 | Remove soundboard | P1.4 | M | any | todo | |
