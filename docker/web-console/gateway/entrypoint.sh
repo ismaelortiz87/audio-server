@@ -2,6 +2,9 @@
 # Headless PulseAudio with the two virtual devices, then the gateway.
 set -eu
 mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+# A restarted container keeps its writable layer: a stale pid file from the
+# previous PulseAudio (same PID in the new PID namespace) makes the daemon refuse to start.
+rm -rf "$XDG_RUNTIME_DIR/pulse"
 
 # -n: skip default.pa (no hardware probing, no autospawn surprises).
 # engine_out : the engine PLAYS here; the gateway reads engine_out.monitor.

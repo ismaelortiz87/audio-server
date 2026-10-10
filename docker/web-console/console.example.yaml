@@ -1,0 +1,22 @@
+# Crosspoint web Console: engine config, mounted at /config/console.yaml.
+# Precedence: command line (set by the container: role, API port/bind/token/
+# UI dir) > this file. Audio devices are NOT set here: the container's default
+# Pulse devices are the gateway's null sinks (engine_out / engine_in.monitor).
+server: 10.0.0.5:10998      # aooserver host:port (reachable from the container)
+group: studio-a
+password: "change-me"       # group password; remove for none
+username: console-ismael    # name the VDI peers see
+role: console
+
+audio:
+  sample_rate: 48000        # must match the gateway's null sinks (48000)
+  buffer: 256
+
+codec: opus
+bitrate: 128000
+
+# The token and allowed origin normally come from the environment
+# (CROSSPOINT_API_TOKEN / CROSSPOINT_API_ORIGIN); the command line wins.
+# api:
+#   allowed_origins:
+#     - https://crosspoint.app.lagreca.io
