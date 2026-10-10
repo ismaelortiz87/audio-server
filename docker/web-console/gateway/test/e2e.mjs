@@ -18,12 +18,29 @@ const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i > 0 ?
 const CONTAINER = arg('container', 'cp-rtc-gw');
 const BASE = arg('url', 'http://127.0.0.1:8090');
 const CHROME = arg('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+// Run the container on another host (e.g. the VDI, which has rootless podman and
+// is where the Console actually runs). `--remote user@host` prefixes the exec
+// with ssh and uses `podman` instead of `docker`; quoting is handled by passing
+// the container command through a single sh -c on the far side.
+const REMOTE = arg('remote', process.env.CROSSPOINT_CONTAINER_SSH ?? '');
+const RUNTIME = arg('runtime', REMOTE ? 'podman' : 'docker');
 const PORT = 9333 + Math.floor(Math.random() * 500);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failed = false;
 const check = (name, ok, info) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${info ?? ''}`); if (!ok) failed = true; };
 
-const dx = args => execFileSync('docker', ['exec', CONTAINER, ...args], { maxBuffer: 1 << 28 });
+const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const dx = args => {
+  if (!REMOTE) return execFileSync(RUNTIME, ['exec', CONTAINER, ...args], { maxBuffer: 1 << 28 });
+  const inner = [RUNTIME, 'exec', CONTAINER, ...args].map(shellQuote).join(' ');
+  return execFileSync('ssh', [REMOTE, inner], { maxBuffer: 1 << 28 });
+};
+// For fire-and-forget helpers (a tone, a recorder) that we must not wait on.
+const dspawn = (args, opts = {}) => {
+  if (!REMOTE) return spawn(RUNTIME, ['exec', CONTAINER, ...args], opts);
+  const inner = [RUNTIME, 'exec', CONTAINER, ...args].map(shellQuote).join(' ');
+  return spawn('ssh', [REMOTE, inner], opts);
+};
 
 // stereo 16-bit 48 kHz: the format Chrome's fake-capture file reader handles reliably
 function wav(freq, secs, rate = 44100) {
@@ -50,7 +67,7 @@ function analyse(buf, rate = 48000) {
 }
 function record(secs) {
   return new Promise(res => {
-    const p = spawn('docker', ['exec', CONTAINER, 'timeout', String(secs), 'parec', '-d', 'engine_in.monitor',
+    const p = dspawn(['timeout', String(secs), 'parec', '-d', 'engine_in.monitor',
       '--format=s16le', '--rate=48000', '--channels=1', '--raw']);
     const chunks = []; p.stdout.on('data', d => chunks.push(d)); p.on('close', () => res(Buffer.concat(chunks)));
   });
@@ -71,9 +88,17 @@ const cdp = (method, params = {}) => new Promise((res, rej) => { const i = ++id;
 const ev = async expr => { const r = await cdp('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
 
 // The tone generator records its PID in the container so only it is killed.
-const startTone = () => spawn('docker', ['exec', CONTAINER, 'sh', '-c',
+// `pkill -f gst-launch` as well: over `--remote` the whole command runs through
+// an ssh + sh -c wrapper, so `$$` is the wrapper's PID and would die with the
+// ssh session while the tone kept playing (which is exactly the bug that made
+// "downlink level falls" fail). Matching the process is robust either way.
+const startTone = () => dspawn(['sh', '-c',
   'echo $$ > /tmp/tone.pid; exec gst-launch-1.0 -q audiotestsrc wave=sine freq=440 volume=0.5 is-live=true ! audio/x-raw,rate=48000,channels=2 ! pulsesink device=engine_out'], { stdio: 'ignore' });
-const stopTone = () => { try { dx(['sh', '-c', 'kill $(cat /tmp/tone.pid)']); } catch { /* already gone */ } };
+const stopTone = () => {
+  try { dx(['sh', '-c', 'kill $(cat /tmp/tone.pid) 2>/dev/null; pkill -f gst-launch 2>/dev/null; true']); }
+  catch { /* already gone */ }
+  try { dx(['sh', '-c', 'pkill -f audiotestsrc 2>/dev/null; true']); } catch { /* ignore */ }
+};
 
 try {
   for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${PORT}/json/version`); break; } catch { await sleep(200); } }
