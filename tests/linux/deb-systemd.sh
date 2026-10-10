@@ -21,6 +21,26 @@ FAILS=0
 pass() { echo "CHECK PASS: $*"; }
 fail() { echo "CHECK FAIL: $*"; FAILS=$((FAILS + 1)); }
 step() { echo; echo "=== $* ==="; }
+
+# The VDI package is amd64 (D12), so on an arm64 host this test must run the
+# container under emulation or it will refuse the .deb with an architecture
+# mismatch (and, worse, silently re-tag debian:trixie to the wrong arch for
+# later runs). Usage:
+#   tests/linux/deb-systemd.sh --platform linux/amd64
+# Default: the host's own architecture.
+PLATFORM=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-build) NOBUILD=1; shift ;;
+    --platform) PLATFORM="${2:?--platform needs a value}"; shift 2 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+PLAT=()
+[ -n "$PLATFORM" ] && PLAT=(--platform "$PLATFORM")
+export DOCKER_DEFAULT_PLATFORM="${PLATFORM:-${DOCKER_DEFAULT_PLATFORM:-}}"
+[ -n "$PLATFORM" ] && echo "platform: $PLATFORM (container runs emulated if it differs from the host)"
+
 cleanup() {
   [ "${KEEP:-0}" = 1 ] && { echo "KEEP=1: container $C and image $IMAGE left running"; return; }
   docker rm -f "$C" >/dev/null 2>&1
@@ -29,18 +49,39 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ "${1:-}" != "--no-build" ]; then
+if [ "${NOBUILD:-0}" != 1 ]; then
   step "build the .deb"
   "$ROOT/scripts/build-deb.sh" || { echo "FAIL: build-deb.sh"; exit 1; }
 fi
-DEB="$(ls -t "$ROOT"/build/deb/crosspoint_*.deb 2>/dev/null | head -1)"
+# Pick a .deb whose architecture matches the container we are about to build.
+# Taking the newest unconditionally is wrong whenever build/deb holds more than
+# one arch (easy now: the VDIs are amd64 while an arm64 host also builds arm64),
+# and the failure mode is confusing -- apt says 'crosspoint:amd64 is selected ...
+# libasound2t64:amd64 not installable' rather than naming an arch mismatch.
+want_arch="$(uname -m)"
+case "${PLATFORM:-}" in
+  *amd64*)            want_arch=amd64 ;;
+  *arm64*|*aarch64*)  want_arch=arm64 ;;
+esac
+case "$want_arch" in
+  x86_64)  want_arch=amd64 ;;
+  aarch64) want_arch=arm64 ;;
+esac
+DEB=""
+for cand in $(ls -t "$ROOT"/build/deb/crosspoint_*.deb 2>/dev/null); do
+  case "$cand" in *_${want_arch}.deb) DEB="$cand"; break ;; esac
+done
+if [ -z "$DEB" ]; then
+  echo "note: no ${want_arch} package in build/deb; falling back to the newest"
+  DEB="$(ls -t "$ROOT"/build/deb/crosspoint_*.deb 2>/dev/null | head -1)"
+fi
 [ -f "$DEB" ] || { echo "FAIL: no build/deb/crosspoint_*.deb"; exit 1; }
 echo "deb: $DEB"
 
 step "build the systemd test image"
 cp "$DEB" "$CTX/crosspoint.deb"
 cp -R "$ROOT/aooserver" "$CTX/aooserver"
-DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-0}" docker build -f "$ROOT/tests/linux/Dockerfile.systemd" -t "$IMAGE" "$CTX" \
+DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-0}" docker build ${PLAT[@]+"${PLAT[@]}"} -f "$ROOT/tests/linux/Dockerfile.systemd" -t "$IMAGE" "$CTX" \
   || { echo "FAIL: image build"; exit 1; }
 
 # --- helpers --------------------------------------------------------------------
@@ -79,7 +120,7 @@ chown vdi:vdi /home/vdi/.config/crosspoint/vdi.yaml"
 
 # --- start the systemd container -------------------------------------------------
 step "start the container (systemd as PID 1)"
-docker run -d --name "$C" --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+docker run -d ${PLAT[@]+"${PLAT[@]}"} --name "$C" --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   --tmpfs /run --tmpfs /run/lock --tmpfs /tmp "$IMAGE" /lib/systemd/systemd >/dev/null \
   || { echo "FAIL: cannot start a systemd container on this host"; exit 1; }
 boot_up || { echo "FAIL: systemd did not come up"; X journalctl -b --no-pager | tail -30; exit 1; }
