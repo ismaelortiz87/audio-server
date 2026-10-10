@@ -1,0 +1,43 @@
+# Docker build context for the images whose context is the REPO ROOT:
+#   packaging/debian/Dockerfile.build   (P2.10 -- the .deb builder)
+#   docker/web-console/Dockerfile       (P7.1 -- the web Console container)
+# Both COPY only a few source trees (juce/, aoo/, sonobus/, design/icon/,
+# console-ui/, docker/web-console/, packaging/debian/), so everything else can
+# be excluded. Without this, every build uploaded the whole repo -- measured at
+# ~197 MB and climbing (2.8 GB on disk, 866 MB of it build/) -- which took
+# minutes per build and dominated the build time on a remote builder.
+#
+# Kept in sync by hand with the COPY lines: if a Dockerfile starts needing a new
+# top-level path, add it here too.
+
+# Build outputs and VCS data: never part of any image.
+build/
+build*/
+.git/
+.gitignore
+.github/
+
+# Not used by either image (legacy JUCE fork, kept for reference only).
+sono6good/
+
+# Still 'needed' by COPY only under docker/web-console/, so keep that; the rest
+# of docker/ is the aooserver image, which builds from its own context.
+docker/README.md
+
+# Docs, tests and local tooling are not copied into either image.
+docs/
+tests/
+scripts/
+design/prototypes/
+design/tokens/
+
+# Local/editor noise.
+.DS_Store
+**/.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Python caches in the gateway dir would otherwise be shipped.
+**/__pycache__/
+**/*.pyc
