@@ -36,13 +36,13 @@ No monitor fader in either role.
 |---|---|---|---|
 | [UX](#ux--experience-design) | Experience design from scratch: brief, Console + VDI prototypes, spec (**Claude only**) | 1.5–2 w | done |
 | [P0](#p0--validation-spike) | Validation spike: VDI ↔ Mac over the VPN with stock app | — | done |
-| [P1](#p1--roles-and-routing) | Roles and routing in the engine | 3–5 d | wip |
-| [P2](#p2--vdi-agent-mode) | VDI agent mode: YAML, auto-connect, mono, status UI | 1–1.5 w | todo |
+| [P1](#p1--roles-and-routing) | Roles and routing in the engine | 3–5 d | done |
+| [P2](#p2--vdi-agent-mode) | VDI agent mode: YAML, auto-connect, mono, status UI | 1–1.5 w | wip |
 | [P3](#p3--strip-jam-features) | Remove jamming features | 3–5 d | todo |
-| [P4](#p4--control-api) | Local control API on the engine | ~1 w | todo |
-| [P5](#p5--console-ui-html) | Console UI, written once in HTML | 1.5–2 w | todo |
-| [P6](#p6--native-shell-mac) | Native Mac shell embeds the Console UI + global PTT hotkey (Android/iOS native deferred, D9) | 3–4 d | todo |
-| [P7](#p7--web-console-container) | Web Console container (replaces current `docker/`) | 1.5–2 w | todo |
+| [P4](#p4--control-api) | Local control API on the engine | ~1 w | done |
+| [P5](#p5--console-ui-html) | Console UI, written once in HTML | 1.5–2 w | done |
+| [P6](#p6--native-shell-mac) | Native Mac shell embeds the Console UI + global PTT hotkey (Android/iOS native deferred, D9) | 3–4 d | wip |
+| [P7](#p7--web-console-container) | Web Console container (replaces current `docker/`) | 1.5–2 w | wip |
 | [P8](#p8--self-hosted-connection-server-deferred) | Self-hosted `aooserver` on the VPN | ~0.5 d | deferred |
 | [P10](#p10--recording-and-meeting-recaps-deferred) | Per-station recording, session records (station + my mic while it hears me), transcription and meeting recaps | 2–3 w | deferred |
 
@@ -153,10 +153,10 @@ Engine-level, UI unchanged. Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}
 | P1.1 | `Role` enum (`VDI`, `Console`) on the processor; settable from CLI/config | done |
 | P1.2 | Add `"role"` to peer-info JSON in `sendRemotePeerInfoUpdate`; parse it in `handleRemotePeerInfoUpdate`; store on `RemotePeer` | done |
 | P1.3 | New peers start with send + recv disallowed until role known (`setRemotePeerSendAllow` / `setRemotePeerRecvAllow`) | done |
-| P1.4 | Apply the routing matrix when a peer's role arrives: same role → block both ways; opposite role → allow | todo |
-| P1.5 | Per-VDI talk toggle on Console (gates Console → VDI send per peer) — pending Q3 | todo |
-| P1.6 | Peers with no role (stock SonoBus) are blocked and shown as "unknown" | todo |
-| P1.7 | VDI agent health in peer info: input device OK/missing, input signal present/silent, sending paused, config error; shown on the Console | todo |
+| P1.4 | Apply the routing matrix when a peer's role arrives: same role → block both ways; opposite role → allow | done |
+| P1.5 | Per-VDI talk toggle on Console (gates Console → VDI send per peer) — pending Q3 | done |
+| P1.6 | Peers with no role (stock SonoBus) are blocked and shown as "unknown" | done |
+| P1.7 | VDI agent health in peer info: input device OK/missing, input signal present/silent, sending paused, config error; shown on the Console | done |
 
 **Done when:** two Consoles and two VDIs in one group produce exactly the matrix above.
 
@@ -167,16 +167,16 @@ Code: `sonobus/Source/SonoStandaloneFilterApp.cpp` (existing CLI: `--group`,
 
 | ID | Item | Status |
 |---|---|---|
-| P2.1 | `--config <file.yaml>`: server, group, password, username, role, input device, output device, codec/bitrate; device changes from the UI are written back | todo |
-| P2.2 | YAML parser dependency (vendored, small — e.g. `yaml-cpp` or `rapidyaml`) | todo |
-| P2.3 | VDI role locks: mono send, input monitor forced to 0, no mixing controls | todo |
-| P2.4 | Auto-connect on launch; auto-reconnect with backoff on disconnect or device loss | todo |
-| P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | todo |
-| P2.6 | VDI agent web UI on `localhost`, as in the UX3 prototype: status, listeners, device pickers, pause, reload (D10) | todo |
-| P2.7 | Example `vdi.example.yaml` + docs | todo |
+| P2.1 | `--config <file.yaml>`: server, group, password, username, role, input device, output device, codec/bitrate; device changes from the UI are written back | done |
+| P2.2 | YAML parser dependency (vendored, small — e.g. `yaml-cpp` or `rapidyaml`) | done |
+| P2.3 | VDI role locks: mono send, input monitor forced to 0, no mixing controls | done |
+| P2.4 | Auto-connect on launch; auto-reconnect with backoff on disconnect or device loss | done |
+| P2.5 | Start at boot, unattended: systemd user unit + linger on Debian 13 (D12) | wip |
+| P2.6 | VDI agent web UI on `localhost`, as in the UX3 prototype: status, listeners, device pickers, pause, reload (D10) | done |
+| P2.7 | Example `vdi.example.yaml` + docs | done |
 | P2.8 | Cut daily use over from the Carla hub to the mesh; retire the Ubuntu Studio server | todo |
 | P2.9 | Minimal native tray icon (not a priority: the agent is a service with fixed config, and problems surface on the Console) | deferred |
-| P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | todo |
+| P2.10 | `.deb` for Debian 13 (trixie), built in a `debian:trixie` container (D12) | wip |
 
 **Done when:** a VDI boots, connects with no interaction, and survives a network drop.
 
@@ -204,10 +204,10 @@ Local WebSocket + JSON API on the engine, used by every Console UI.
 
 | ID | Item | Status |
 |---|---|---|
-| P4.1 | Embedded WebSocket server in the engine, bound to localhost by default | todo |
-| P4.2 | State snapshot + change events: connection, peers (name, role, latency, health), per-peer volume/pan/mute/solo/talk | todo |
-| P4.3 | Meters stream (~30 fps) | todo |
-| P4.4 | Commands: connect/disconnect, set volume/pan/mute/solo/talk, master volume, mic mute / push-to-talk, device selection | todo |
+| P4.1 | Embedded WebSocket server in the engine, bound to localhost by default | done |
+| P4.2 | State snapshot + change events: connection, peers (name, role, latency, health), per-peer volume/pan/mute/solo/talk | done |
+| P4.3 | Meters stream (~30 fps) | done |
+| P4.4 | Commands: connect/disconnect, set volume/pan/mute/solo/talk, master volume, mic mute / push-to-talk, device selection | done |
 | P4.5 | API schema: `docs/control-api.md` v1, mock in `console-ui/src/api/mock.js` | done |
 
 **Done when:** a script can drive a full Console session without the GUI.
@@ -220,11 +220,11 @@ SonoBus editor. Every item needs design review by Claude before it's done.
 | ID | Item | Status |
 |---|---|---|
 | P5.1 | Scaffold `console-ui/` (no build, no deps): Console + agent entry points, API client, mock engine, tests | done |
-| P5.2 | Mixer view per spec | todo |
-| P5.3 | Talk-back controls per spec | todo |
-| P5.4 | Connection / onboarding flow per spec | todo |
-| P5.5 | Phone layout per spec | todo |
-| P5.6 | Wired to the P4 API | todo |
+| P5.2 | Mixer view per spec | done |
+| P5.3 | Talk-back controls per spec | done |
+| P5.4 | Connection / onboarding flow per spec | done |
+| P5.5 | Phone layout per spec | done |
+| P5.6 | Wired to the P4 API | done |
 
 **Done when:** the UI drives a real Console engine through the API and passes
 design review.
@@ -233,11 +233,11 @@ design review.
 
 | ID | Item | Status |
 |---|---|---|
-| P6.1 | Mac: replace the JUCE editor with a web view loading the bundled Console UI | todo |
+| P6.1 | Mac: replace the JUCE editor with a web view loading the bundled Console UI | wip |
 | P6.2 | Android shell → moved to P9.2 (D9) | deferred |
 | P6.3 | Android build pipeline → moved to P9.2 (D9) | deferred |
 | P6.4 | Android mic/background audio → moved to P9.2 (D9) | deferred |
-| P6.5 | Mac global push-to-talk hotkey (works while another app is in front) | todo |
+| P6.5 | Mac global push-to-talk hotkey (works while another app is in front) | wip |
 
 **Done when:** the Mac Console works end to end against a VDI.
 
@@ -255,12 +255,12 @@ Replaces the current `docker/` job (VNC + raw PCM bridge).
 
 | ID | Item | Status |
 |---|---|---|
-| P7.1 | Container runs the engine headless in Console role, joins over the VPN | todo |
-| P7.2 | Serves the P5 Console UI; proxies the P4 API | todo |
-| P7.3 | WebRTC (Opus) audio between browser and engine, both directions | todo |
+| P7.1 | Container runs the engine headless in Console role, joins over the VPN | done |
+| P7.2 | Serves the P5 Console UI; proxies the P4 API | done |
+| P7.3 | WebRTC (Opus) audio between browser and engine, both directions | done |
 | P7.4 | Publish through maelo's proxy at `crosspoint.app.lagreca.io` (TLS at the proxy, WebSocket upgrade, WebRTC UDP range on the VPN), D13 | todo |
-| P7.5 | One container per web user; compose file + docs | todo |
-| P7.6 | Remove the VNC / Xvfb / raw-PCM bridge pieces | todo |
+| P7.5 | One container per web user; compose file + docs | done |
+| P7.6 | Remove the VNC / Xvfb / raw-PCM bridge pieces | done |
 | P7.7 | Installable PWA: manifest + service worker, "Install" in Chrome on Mac and Android | todo |
 
 **Done when:** a browser on the VPN mixes VDIs and talks back with no install.
@@ -287,7 +287,7 @@ station track still needs diarization.
 |---|---|---|
 | P10.1 | Per-station recording: each station to its own file, pre-fader (FLAC) | deferred |
 | P10.2 | Session record mode: per station, 2 aligned tracks (station + my gated mic), from the P1.5 talk gate | deferred |
-| P10.3 | UX addendum (Claude): record controls per station and global, an unmistakable recording indicator, consent reminder, browsing sessions and recaps | deferred |
+| P10.3 | UX addendum (Claude): record controls per station and global, an unmistakable recording indicator, consent reminder, browsing sessions and recaps | done |
 | P10.4 | Transcription: external ASR per track with timestamps, merged into a dialogue ("Me" / station name), diarization inside the station track | deferred |
 | P10.5 | Meeting recap: external model turns each station's transcript into a recap (summary, decisions, action items, open questions) | deferred |
 | P10.6 | Storage, retention and privacy: where files live (Q8), retention, provider data policy (Q7), deletion | deferred |
@@ -305,7 +305,7 @@ audio still goes peer-to-peer; `aoo` here has no relay.
 
 | ID | Item | Status |
 |---|---|---|
-| P8.1 | Dockerfile for `aooserver/` (Linux build, port 10998 TCP+UDP) | deferred |
+| P8.1 | Dockerfile for `aooserver/` (Linux build, port 10998 TCP+UDP) | done |
 | P8.2 | Deploy on a VPN-reachable host; logging via `-l` | deferred |
 | P8.3 | Point VDI YAML + Console defaults at it | deferred |
 | P8.4 | Verify peers connect over VPN IPs (repeat P0.2) | deferred |
