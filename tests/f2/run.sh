@@ -287,6 +287,8 @@ print("EXPECT\t%s" % (scen.get("expect") or scen.get("routing") or "mesh"))
 print("DESC\t%s" % (scen.get("description") or ""))
 # P1.5: scenarios with timed control steps need --test-control on every peer.
 print("STEPS\t%d" % len(scen.get("steps") or []))
+# P2.4: a scenario whose peers are not meant to reach the routing model (bad password).
+print("NOSETTLE\t%d" % (1 if scen.get("no_settle") else 0))
 for entry in scen.get("peers", []):
     role = entry.get("role")
     advertise = entry.get("advertise", True)
@@ -307,6 +309,7 @@ ROUTING=""
 EXPECT=""
 DESC=""
 NSTEPS=0
+NOSETTLE=0
 while IFS=$'\t' read -r kind a b c d e; do
     case "$kind" in
         GROUP)   GROUP="$a" ;;
@@ -314,6 +317,7 @@ while IFS=$'\t' read -r kind a b c d e; do
         EXPECT)  EXPECT="$a" ;;
         DESC)    DESC="$a" ;;
         STEPS)   NSTEPS="$a" ;;
+        NOSETTLE) NOSETTLE="$a" ;;
         PEER)
             PEER_NAMES[${#PEER_NAMES[@]}]="$a"
             PEER_ROLES[${#PEER_ROLES[@]}]="$b"
@@ -445,7 +449,8 @@ RUN_DIR="$(cd "$RUN_DIR" && pwd -P)"
 DUMP_DIR="$RUN_DIR/dumps"
 CONTROL_DIR="$RUN_DIR/control"
 SERVER_LOG_DIR="$RUN_DIR/server-logs"
-mkdir -p "$DUMP_DIR" "$CONTROL_DIR" "$SERVER_LOG_DIR"
+HARNESS_DIR="$RUN_DIR/harness"
+mkdir -p "$DUMP_DIR" "$CONTROL_DIR" "$SERVER_LOG_DIR" "$HARNESS_DIR"
 
 log "scenario : $SCENARIO ($ROUTING, group=$GROUP)"
 [ -n "$DESC" ] && log "desc     : $DESC"
@@ -667,8 +672,44 @@ EVAL_EXTRA=()
 [ "$VERBOSE" = 1 ] && EVAL_EXTRA[${#EVAL_EXTRA[@]}]="--verbose"
 [ "$VERBOSE" = 1 ] && EVAL_EXTRA[${#EVAL_EXTRA[@]}]="--progress"
 [ -n "$EXPECT_OVERRIDE" ] && EVAL_EXTRA[${#EVAL_EXTRA[@]}]="--expect" && EVAL_EXTRA[${#EVAL_EXTRA[@]}]="$EXPECT_OVERRIDE"
+# P2.4: service server-stop / server-start requests from `evaluate.py steps`.
+# Only ever signals SERVER_PID, the aooserver this script started.
+HARNESS_SEQ_DONE=0
+service_harness() {
+    local f="$HARNESS_DIR/cmd.json" seq cmd ok=false i
+    [ -f "$f" ] || return 0
+    seq="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["seq"])' "$f" 2>/dev/null)" || return 0
+    cmd="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cmd"])' "$f" 2>/dev/null)" || return 0
+    [ "$seq" != "$HARNESS_SEQ_DONE" ] || return 0
+    HARNESS_SEQ_DONE="$seq"
+    case "$cmd" in
+        server-stop)
+            log "harness: stopping the local aooserver (pid $SERVER_PID)"
+            stop_pid "$SERVER_PID" "aooserver"
+            ok=true ;;
+        server-start)
+            log "harness: restarting the aooserver on port $PORT"
+            # the port can linger briefly after the kill; retry the bind
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                ( cd "$RUN_DIR" && exec "$SERVER" -p "$PORT" -l "$SERVER_LOG_DIR" ) \
+                    >>"$RUN_DIR/server.out" 2>>"$RUN_DIR/server.err" &
+                SERVER_PID=$!
+                sleep 0.5
+                if kill -0 "$SERVER_PID" 2>/dev/null && server_accepting; then ok=true; break; fi
+                stop_pid "$SERVER_PID" "aooserver"
+                sleep 1
+            done ;;
+    esac
+    printf '{"seq": %s, "ok": %s}\n' "$seq" "$ok" >"$HARNESS_DIR/ack.json.tmp"
+    mv "$HARNESS_DIR/ack.json.tmp" "$HARNESS_DIR/ack.json"
+}
+
 RC=0
 set +e
+if [ "$NOSETTLE" = 1 ]; then
+    sleep 3
+    log "scenario does not settle by design (no_settle); going straight to its steps"
+else
 python3 "$SCRIPT_DIR/evaluate.py" settle \
     --dir "$DUMP_DIR" \
     --scenario "$SCENARIO" \
@@ -678,6 +719,7 @@ python3 "$SCRIPT_DIR/evaluate.py" settle \
     --interval "$INTERVAL" \
     ${EVAL_EXTRA[@]+"${EVAL_EXTRA[@]}"}
 RC=$?
+fi
 # P1.5: once the routing model holds, run the scenario's timed control steps.
 if [ "$RC" -eq 0 ] && [ "$NSTEPS" -gt 0 ]; then
     log "routing settled; running $NSTEPS control step(s)"
@@ -687,7 +729,15 @@ if [ "$RC" -eq 0 ] && [ "$NSTEPS" -gt 0 ]; then
         --scenario "$SCENARIO" \
         --scenarios "$SCENARIOS_FILE" \
         --peers "$EVAL_PEERS" \
-        --interval "$INTERVAL"
+        --interval "$INTERVAL" \
+        --harness-dir "$HARNESS_DIR" \
+        --peers-dir "$RUN_DIR/peers" &
+    STEPS_PID=$!
+    while kill -0 "$STEPS_PID" 2>/dev/null; do
+        service_harness
+        sleep 0.2
+    done
+    wait "$STEPS_PID"
     RC=$?
 fi
 set -e

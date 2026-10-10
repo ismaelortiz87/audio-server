@@ -7,6 +7,9 @@ Scenario peer fields handled here (all optional):
   config      object  -> written as <peer-dir>/config.yaml, peer gets --config
   setup_role  string  -> a minimal --load-setup file whose saved state says
                          "Role: <setup_role>" (to prove the CLI/YAML outrank it)
+  setup_state object  -> (P2.3) the same file also carries APVTS params and an
+                         input-group monitor gain, e.g. {"params": {"sendchannels": 2,
+                         "dry": 1}, "monitor": 1}
   cli_flags   bool    -> false: do NOT pass -c/-g/-n (identity comes from YAML)
   cli_role    string|null -> the --role flag; null = pass none. When the field is
                          absent the harness keeps its legacy rule (pass the
@@ -79,9 +82,18 @@ def main():
         print("ARG\t%s" % path)
 
     sr = entry.get("setup_role")
-    if sr:
+    ss = entry.get("setup_state")   # P2.3: {"params": {id: value}, "monitor": gain, "sendchannels"...}
+    if sr or ss:
         path = os.path.join(peer_dir, "setup.settings")
-        state = '<State><ExtraState Role="%s"/></State>' % sr
+        parts = []
+        for pid, val in ((ss or {}).get("params") or {}).items():
+            parts.append('<PARAM id="%s" value="%s"/>' % (pid, val))
+        if sr:
+            parts.append('<ExtraState Role="%s"/>' % sr)
+        if ss and "monitor" in ss:
+            parts.append('<InputChannelGroups numChanGroups="1"><ChannelGroup numchan="2" monitorlev="%s"/>'
+                         '</InputChannelGroups>' % ss["monitor"])
+        state = '<State>%s</State>' % "".join(parts)
         esc = (state.replace("&", "&amp;").replace("<", "&lt;")
                .replace(">", "&gt;").replace('"', "&quot;"))
         with open(path, "w") as fh:

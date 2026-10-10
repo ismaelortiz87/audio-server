@@ -953,6 +953,38 @@ public:
     ValueTree getApiStationsTree() const { return mApiStations; }
     // end P4.2 ===============================================================
 
+    // P2.3 / P2.4 ============================================================
+    // P2.3: VDI role locks. Send channels forced to 1, input monitoring
+    // (Dry Level and every input group's monitor gain) forced to 0, whatever
+    // the saved state or UI says. Message thread. A no-op for other roles.
+    void applyVdiRoleLocks();
+
+    // P2.4: the headless agent's connector (AgentConnect.cpp) owns server
+    // reconnects. While it is on, the stock ServerReconnectTimer stays off so
+    // the two never fight over the same connection.
+    void setAgentManagedReconnect(bool on) { mAgentManagedReconnect.store(on); }
+    bool isAgentManagedReconnect() const { return mAgentManagedReconnect.load(); }
+    // Keep existing peers while the connector re-establishes the session
+    // (same meaning as the stock mRecoveringFromServerLoss).
+    void setAgentRecovering(bool on) { mRecoveringFromServerLoss = on; }
+    // Device watcher (SonoStandaloneFilterApp.cpp) -> agent health.
+    void setAgentDevicesOpen(bool inputOk, bool outputOk) { mAgentInputOpen.store(inputOk); mAgentOutputOpen.store(outputOk); }
+    // Shown as agent.config_error in the peer info and EngineState; "" clears it.
+    void setAgentConfigError(const String& msg);
+    // Real connection state for EngineState (connectionVar), set by the connector.
+    struct AgentConnStatus {
+        bool valid = false;
+        String state;          // connecting | connected | reconnecting | failed
+        int attempt = 0;       // 0 = none
+        double retryInSec = -1.0;   // < 0 = none scheduled
+        String errorCode;      // "" | bad_password | server_unreachable
+        int ups = 0;           // how many times the session reached "connected" (F2)
+        String reason;
+    };
+    void setAgentConnStatus(const AgentConnStatus& s);
+    AgentConnStatus getAgentConnStatus() const;
+    // end P2.3 / P2.4 ========================================================
+
 private:
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SonobusAudioProcessor)
@@ -1297,6 +1329,14 @@ private:
     };
 
     ServerReconnectTimer mReconnectTimer;
+
+    // P2.4
+    std::atomic<bool> mAgentManagedReconnect { false };
+    std::atomic<bool> mAgentInputOpen { true };
+    std::atomic<bool> mAgentOutputOpen { true };
+    mutable CriticalSection mAgentLock;
+    String mAgentConfigError;
+    AgentConnStatus mAgentConn;
 
     // P1.7: evaluates the VDI agent's own input-silence state. It must NOT run
     // on the audio thread (reading the meter sources and the wall clock there

@@ -212,7 +212,40 @@ void SonobusAudioProcessor::setRole(PeerRole role)
     // (P1.4). Our own role is half of every decision, so a change here can open
     // or close every peer we know about. Safe to call before any peer exists.
     applyRoleMatrixToAllPeers();
+
+    applyVdiRoleLocks();   // P2.3
 }
+
+// P2.3 ========================================================================
+// A VDI sends its system audio as mono and never monitors its own input, no
+// matter what the saved state, a setup file or the UI says. Called when the
+// role is set, after every state restore, and from the parameter listener when
+// something tries to change a locked value. Message thread; only writes
+// atomics the audio thread already reads.
+void SonobusAudioProcessor::applyVdiRoleLocks()
+{
+    if (mRole.load() != PeerRole::VDI) return;
+
+    if (auto * p = mState.getParameter(paramSendChannels)) {
+        if (mSendChannels.get() != 1 || p->convertFrom0to1(p->getValue()) != 1.0f) {
+            mSendChannels = 1;
+            p->setValueNotifyingHost(p->convertTo0to1(1.0f));
+        }
+    }
+    setRemotePeerNominalSendChannelCount(-1, 1);
+    setRemotePeerOverrideSendChannelCount(-1, 1);
+
+    if (auto * p = mState.getParameter(paramDry)) {
+        if (mDry.get() != 0.0f || p->getValue() != 0.0f) {
+            mDry = 0.0f;
+            p->setValueNotifyingHost(0.0f);
+        }
+    }
+    for (int i = 0; i < MAX_CHANGROUPS; ++i) {
+        mInputChannelGroups[i].params.monitor = 0.0f;
+    }
+}
+// end P2.3 ====================================================================
 
 static String extraStateCollectionKey("ExtraState");
 static String useSpecificUdpPortKey("UseUdpPort");
@@ -2225,6 +2258,7 @@ float SonobusAudioProcessor::getInputGroupGain(int changroup)
 
 void SonobusAudioProcessor::setInputMonitor(int changroup, float mgain)
 {
+    if (mRole.load() == PeerRole::VDI) mgain = 0.0f;   // P2.3: ignored on a VDI
     if (changroup >= 0 && changroup < MAX_CHANGROUPS) {
         mInputChannelGroups[changroup].params.monitor = mgain;
     }
@@ -3489,7 +3523,7 @@ SonobusAudioProcessor::AgentHealth SonobusAudioProcessor::computeAgentHealth() c
     if (inOverride.isNotEmpty()) {
         h.input = inOverride;
     }
-    else if (!hasUsableInputDevice()) {
+    else if (!mAgentInputOpen.load() || !hasUsableInputDevice()) {   // P2.4: device watcher
         h.input = "missing";
     }
     else {
@@ -3525,13 +3559,15 @@ SonobusAudioProcessor::AgentHealth SonobusAudioProcessor::computeAgentHealth() c
         h.output = outOverride;
     }
     else {
-        h.output = hasUsableOutputDevice() ? "ok" : "missing";
+        h.output = (mAgentOutputOpen.load() && hasUsableOutputDevice()) ? "ok" : "missing";   // P2.4
     }
 
     // No pause concept exists in the engine yet (see AgentHealth in the header).
     h.paused = false;
-    // No config loader exists yet (P2.1).
-    h.configError = String();
+    {   // P2.4: connection/config problems found by the agent connector
+        const ScopedLock sl (mAgentLock);
+        h.configError = mAgentConfigError;
+    }
 
     return h;
 }
@@ -3552,6 +3588,27 @@ juce::var SonobusAudioProcessor::agentHealthVar() const
 
     return var(agent.get());
 }
+
+// P2.4 ========================================================================
+void SonobusAudioProcessor::setAgentConfigError(const String& msg)
+{
+    const ScopedLock sl (mAgentLock);
+    mAgentConfigError = msg;
+}
+
+void SonobusAudioProcessor::setAgentConnStatus(const AgentConnStatus& s)
+{
+    const ScopedLock sl (mAgentLock);
+    mAgentConn = s;
+    mAgentConn.valid = true;
+}
+
+SonobusAudioProcessor::AgentConnStatus SonobusAudioProcessor::getAgentConnStatus() const
+{
+    const ScopedLock sl (mAgentLock);
+    return mAgentConn;
+}
+// end P2.4 ====================================================================
 
 void SonobusAudioProcessor::AgentHealthTimer::timerCallback()
 {
@@ -4643,7 +4700,8 @@ int32_t SonobusAudioProcessor::handleClientEvents(const aoo_event ** events, int
             if (e->result == 0){
                 DBG("Disconnected from server - " << String::fromUTF8(e->errormsg));
                 
-                if (mCurrentJoinedGroup.isNotEmpty() && mReconnectAfterServerLoss.get() && !mReconnectTimer.isTimerRunning()) {
+                // P2.4: the agent connector owns reconnects when it is on.
+                if (!mAgentManagedReconnect.load() && mCurrentJoinedGroup.isNotEmpty() && mReconnectAfterServerLoss.get() && !mReconnectTimer.isTimerRunning()) {
                     DBG("Starting reconnect timer");
                     mRecoveringFromServerLoss = true;
                     mReconnectTimer.startTimer(1000);
@@ -6716,6 +6774,26 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
     root->setProperty("micTransmitting", isMicTransmitting());
     root->setProperty("soloDimDb", getSoloDimDb());
 
+    // P2.3: what we actually send / monitor (the VDI locks show up here).
+    root->setProperty("selfSendChannels", mSendChannels.get());
+    {   // P2.4: the agent connector's view (empty when it is not running)
+        const auto cs = getAgentConnStatus();
+        if (cs.valid) {
+            DynamicObject::Ptr c = new DynamicObject();
+            c->setProperty("state", cs.state);
+            c->setProperty("attempt", cs.attempt);
+            c->setProperty("retryInSec", cs.retryInSec < 0.0 ? var() : var(std::round(cs.retryInSec * 10.0) / 10.0));
+            c->setProperty("errorCode", cs.errorCode.isEmpty() ? var() : var(cs.errorCode));
+            c->setProperty("ups", cs.ups);
+            root->setProperty("selfConn", var(c.get()));
+        }
+    }
+    {
+        float mon = mDry.get();
+        for (int i = 0; i < MAX_CHANGROUPS; ++i) mon = jmax(mon, mInputChannelGroups[i].params.monitor);
+        root->setProperty("selfMonitorGain", (double) mon);
+    }
+
     // Peak (held ~500 ms by the meter) across channels, in dBFS rounded to
     // 0.1; -100 stands for silence/no data.
     auto peakDb = [] (const foleys::LevelMeterSource & m, int nch) {
@@ -6767,6 +6845,7 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
             p->setProperty("postGainPeakDb", peakDb(peer->recvMeterSource, peer->recvMeterSource.getNumChannels()));
             p->setProperty("packetsReceived", (int64) peer->dataPacketsReceived);
             p->setProperty("packetsSent", (int64) peer->dataPacketsSent);
+            p->setProperty("sendChannels", peer->sendChannels);   // P2.3
 
             // P1.7: the health this peer's VDI agent reports about itself.
             // "hasAgent" distinguishes "this peer has no agent to report on"
@@ -6970,6 +7049,11 @@ SonobusAudioProcessor::RemotePeer * SonobusAudioProcessor::doAddRemotePeerIfNece
 
         retpeer->nominalSendChannels = mSendChannels.get();
         retpeer->sendChannels =  mSendChannels.get() <= 0 ?  mActiveSendChannels : mSendChannels.get();
+        if (mRole.load() == PeerRole::VDI) {   // P2.3: a VDI always sends mono
+            retpeer->nominalSendChannels = 1;
+            retpeer->sendChannels = 1;
+            retpeer->sendChannelsOverride = 1;
+        }
 
         setupSourceFormat(retpeer, retpeer->oursource.get());
         float sendbufsize = jmax(10.0, SENDBUFSIZE_SCALAR * 1000.0f * currSamplesPerBlock / getSampleRate());
@@ -7523,6 +7607,14 @@ void SonobusAudioProcessor::applyLayoutFormatToPeer(RemotePeer * remote, const V
 
 void SonobusAudioProcessor::parameterChanged (const String &parameterID, float newValue)
 {
+    // P2.3: locked values on a VDI snap back instead of being applied.
+    if (mRole.load() == PeerRole::VDI
+        && ((parameterID == paramDry && newValue != 0.0f)
+            || (parameterID == paramSendChannels && (int) newValue != 1))) {
+        applyVdiRoleLocks();
+        return;
+    }
+
     if (parameterID == paramDry) {
         mDry = newValue;
     }
@@ -9858,7 +9950,9 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
 
         // don't recover main solo
         mState.getParameter(paramMainMonitorSolo)->setValueNotifyingHost(0.0f);
-        
+
+        applyVdiRoleLocks();   // P2.3: a restored state must not undo the VDI locks
+
         if (mFreshInit) {
             // only do initial auto reconnect on the first state restore
             
