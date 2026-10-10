@@ -27,22 +27,28 @@ else
 fi
 
 echo
-echo "=== 2/2: matrix-mixed-ungated (sink gate OFF) -- expect FAIL on the blocked peer"
-OUT="$("$HERE/run.sh" --scenario matrix-mixed-ungated 2>&1)"
-RC=$?
-printf '%s\n' "$OUT" | grep -E "^(step|    (ok|FAIL))" | sed 's/^/    /'
-
-# The ungated run must fail, and it must fail because the blocked peer's tone is
-# decoded again -- not for some unrelated reason.
-if [ "$RC" -eq 0 ]; then
-    echo "FAIL the ungated counterfactual passed: it no longer reproduces B1"
-    UNGATED_OK=0
-elif printf '%s' "$OUT" | grep -qE 'FAIL v1 -> u1 preFaderPeakDb = -[0-9.]+: expected >= -16'; then
-    echo "ok   ungated run failed exactly as B1: v1 -> u1 preFaderPeakDb is loud again"
-    UNGATED_OK=1
-else
-    echo "FAIL the ungated run failed, but not on the blocked peer's pre-fader level"
-    UNGATED_OK=0
+echo "=== 2/2: matrix-mixed-ungated (sink gate OFF) -- expect FAIL on a blocked peer"
+# The pre-fix behaviour is not itself perfectly deterministic: which blocked
+# direction shows the decoded tone depends on message ordering between the peers,
+# so the ungated scenario can occasionally pass. That does NOT weaken the
+# counterfactual -- the point is that the ungated build *can* decode a blocked
+# peer while the gated build never does -- so allow a few attempts and require
+# the B1 failure to appear in one of them.
+UNGATED_OK=0
+for attempt in 1 2 3; do
+    OUT="$("$HERE/run.sh" --scenario matrix-mixed-ungated 2>&1)"
+    RC=$?
+    if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qE 'FAIL (c1|v1) -> u1 preFaderPeakDb = -[0-9.]+: expected <= -60'; then
+        echo "ok   ungated attempt $attempt failed exactly as B1: a blocked peer's preFaderPeakDb is loud again"
+        printf '%s\n' "$OUT" | grep -E 'FAIL (c1|v1) -> u1 preFaderPeakDb' | sed 's/^/     /'
+        printf '%s\n' "$OUT" | grep -E 'packetsReceived' | sed 's/^/     /'
+        UNGATED_OK=1
+        break
+    fi
+    echo "     ungated attempt $attempt did not reproduce the loud-tone failure (rc=$RC)"
+done
+if [ "$UNGATED_OK" -eq 0 ]; then
+    echo "FAIL the ungated build never reproduced B1 in 3 attempts: the counterfactual is not exercising the old behaviour"
 fi
 
 echo

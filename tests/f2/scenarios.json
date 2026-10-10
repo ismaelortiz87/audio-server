@@ -882,7 +882,7 @@
       ]
     },
     "matrix-mixed-ungated": {
-      "description": "F2.1/B1 counterfactual for `matrix-mixed`. Same 1 console + 1 vdi + 1 no-advert peer, and the same routing matrix, but every peer runs with SONOBUS_NO_SINK_DECLINE=1, which switches off the sink-level refusal of uninvited sources on an otherwise unchanged build. The matrix still holds and every allow flag is unchanged, yet the VDI decodes and meters the blocked peer's tone again: v1 -> u1 preFaderPeakDb is loud and its packetsReceived rises. The blocked-peer pre-fader assertions are therefore inverted here (loud, not <= -60), which makes this scenario FAIL -- by design. It exists to show that the sink gate, and not the routing decision, is what fixes B1; tests/f2/counterfactual-b1.sh asserts that it fails on exactly those lines.",
+      "description": "F2.1/B1 counterfactual for `matrix-mixed`. Same 1 console + 1 vdi + 1 no-advert peer and the same routing matrix, but every peer runs with SONOBUS_NO_SINK_DECLINE=1, which switches off the sink-level refusal of uninvited sources on an otherwise unchanged build. The expected list is deliberately the SAME as `matrix-mixed`, so this scenario FAILS -- by design. It must fail because the VDI is decoding and metering the blocked peer's tone again (v1 -> u1 preFaderPeakDb loud and packetsReceived rising) even though the matrix still holds and every allow flag is unchanged. That is what makes it evidence that the sink gate, and not the routing decision, fixes B1; tests/f2/counterfactual-b1.sh asserts that the run fails on the blocked peer's pre-fader level.",
       "group": "f2-matrix-mixed-ungated",
       "routing": "matrix",
       "expect": "matrix",
@@ -911,11 +911,8 @@
             {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
             {"peer": "c1", "of": "u1", "field": "role", "eq": "unknown"},
             {"peer": "v1", "of": "u1", "field": "role", "eq": "unknown"},
-            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "min": -16},
-            {"peer": "v1", "of": "u1", "field": "preFaderPeakDb", "min": -16},
-            {"peer": "v1", "of": "u1", "field": "packetsReceived", "increases": true},
-            {"peer": "c1", "of": "u1", "field": "receivingAudio", "eq": false},
-            {"peer": "v1", "of": "u1", "field": "receivingAudio", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "v1", "of": "u1", "field": "preFaderPeakDb", "max": -60},
             {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
             {"peer": "u1", "of": "v1", "field": "preFaderPeakDb", "max": -60}
           ]

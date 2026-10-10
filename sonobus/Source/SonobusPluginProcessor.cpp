@@ -105,10 +105,11 @@ static bool disableRoleBlocking()
     return flag;
 }
 
-// F2.1 counterfactual for B1: with this set, a blocked peer's stream is accepted
-// and decoded as before the sink-level fix and only silenced at the playback
-// gain. It exists so the test can show that the sink gate -- not some unrelated
-// change to the matrix -- is what makes preFaderPeakDb go silent.
+// F2.1 TEST ONLY: counterfactual for B1. With this set, a blocked peer's stream
+// is accepted and decoded as it was before the sink-level fix and only silenced
+// at the playback gain. It exists so `matrix-mixed-ungated` can show that the
+// sink gate -- not some unrelated change to the routing matrix -- is what makes
+// preFaderPeakDb go silent for a blocked peer.
 //   SONOBUS_NO_SINK_DECLINE=1 -> do not decline uninvited sources
 static bool disableSinkDecline()
 {
