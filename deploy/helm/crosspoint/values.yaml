@@ -1,0 +1,288 @@
+#
+# Crosspoint (SonoBus) — single chart, two independently-deployable components
+#
+# Both components are enabled by default and each can be switched off here
+# (or from an overlay file, see install.sh):
+#
+#   aooserver  — headless AOO connection server (rendezvous only; audio stays
+#                peer-to-peer). One per cluster, normally shared by every
+#                crosspoint user. TCP+UDP on the same port.
+#   console    — one Web Console = one container: the native engine headless in
+#                Console role + the WebRTC audio gateway, on one PulseAudio.
+#                One release per user.
+#
+# Image provenance (repo root Dockerfiles):
+#   docker/aooserver/Dockerfile   context = aooserver/
+#   docker/web-console/Dockerfile context = repo root (juce/ aoo/ sonobus/ design/icon/ console-ui/)
+#
+#
+# ── Global ─────────────────────────────────────────────────────────────────
+#
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Shared base labels for every resource in this release.
+commonLabels: {}
+
+#
+# ── aooserver ──────────────────────────────────────────────────────────────
+#
+aooserver:
+  enabled: true
+
+  image:
+    repository: maelops/crosspoint-aooserver
+    tag: "2026.10"
+    pullPolicy: IfNotPresent
+
+  # Port inside the container; TCP (login/groups) and UDP (hole-punching) use
+  # the same number. If you change it, update the service ports below too.
+  port: 10998
+
+  # Expose the server outside the cluster.
+  #   "none"       — ClusterIP only; VDI peers inside the cluster reach the
+  #                  service DNS name directly.
+  #   "nodePort"   — a Service of type NodePort publishing TCP+UDP on the
+  #                  same port on every node; peers use <any-node-ip>:port.
+  #   "loadBalancer" — cluster LB (MetalLB); peers use the LB VIP:port.
+  exposure: nodePort
+  # For "nodePort". Leave empty to let the cluster allocate a stable one
+  # (first install only; upgrades keep the existing number). Must be within
+  # the apiserver's nodePortRange (default 30000-32767).
+  nodePort: 31998
+  # For "loadBalancer".
+  loadBalancerIP: ""
+
+  # Optional IP blocklist file: mount it (read-only) with a blocklistFile
+  # under the mount below and it is passed to aooserver -b. One address per
+  # line; "1.2.3.4,public" still allows that address in private groups.
+  blocklist:
+    enabled: false
+    # e.g. from a configMapKeyRef via `mount`, or baked into a PVC:
+    mount: {}
+    #   configMapKeyRef:
+    #     name: crosspoint-blocklist
+    #     key: blocklist.txt
+    #   readOnly: true
+
+  # Log directory inside the container; the image ships a VOLUME here.
+  # Default is an emptyDir (ephemeral logs). Point persistence at a PVC to
+  # keep them.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    storageClass: "nfs-truenas"
+    size: "1Gi"
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "64Mi"
+    limits:
+      cpu: "1"
+      memory: "256Mi"
+
+  # The image runs as the unprivileged `aoo` user (uid 10998).
+  podSecurityContext:
+    runAsUser: 10998
+    runAsGroup: 10998
+    runAsNonRoot: true
+    fsGroup: 10998
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # The image's HEALTHCHECK does a TCP connect to the port; mirror it here
+  # so Kubernetes gates readiness on it (the port is the only interface the
+  # server has).
+  livenessProbe:
+    tcpSocket:
+      port: aoo
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    tcpSocket:
+      port: aoo
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+#
+# ── console (one release = one user) ───────────────────────────────────────
+#
+console:
+  enabled: true
+
+  image:
+    repository: maelops/crosspoint-web-console
+    tag: "2026.10"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+  # Recreate: the pulseaudio/pulse socket state in the writable layer is
+  # per-pod; a rolling update would briefly run two consoles with the same
+  # AOO identity.
+  strategy:
+    type: Recreate
+
+  # Control API port (UI + /api/ + WS).
+  apiPort: 7070
+  # WebRTC signalling port (/rtc/*) inside the container.
+  rtcHttpPort: 8090
+  # The ONE browser origin the engine allows for CORS / WebSocket — the
+  # public URL behind the reverse proxy. Required; the container refuses to
+  # start without the token, the Origin check keeps the WS honest.
+  apiOrigin: "https://crosspoint.app.lagreca.io"
+
+  # Engine config, mounted read-only at /config/console.yaml.
+  # server: must be reachable from the container. With the default
+  #          exposure settings below, `crosspoint-aooserver.aoo:10998` is
+  #          the in-cluster name of the server deployed by THIS release —
+  #          one release per user, so the release name == the server DNS.
+  #          (Set `server: ""` and the chart injects that name for you when
+  #          aooserver.enabled is true.)
+  # group / password / username: your AOO group; username is what VDI peers
+  #          see.
+  config:
+    server: ""            # empty => auto: <release>-aooserver.<ns>.svc.cluster.local:port
+    group: "studio-a"
+    password: ""          # put the real one in secrets.yml (secrets.groupPassword)
+    username: "console"
+    audio:
+      sample_rate: 48000  # must match the gateway's null sinks
+      buffer: 256
+    codec: "opus"
+    bitrate: 128000
+
+  # Secrets live in secrets.yml (vault). Kept empty here; the chart renders
+  # the Secret from console.apiToken / secrets.* only when provided.
+  apiToken: ""
+
+  # WebRTC media (UDP). The gateway BINDS and ADVERTISES rtcUdpMin..rtcUdpMax
+  # as-is (the browser dials exactly those numbers; the compose file
+  # publishes host:40000-40019 -> container:40000-40019), so the container
+  # port cannot be remapped for the media.
+  #
+  # hostNetwork (default): the pod uses the node's network namespace, so the
+  # media ports bind directly on the node — the k8s equivalent of the compose
+  # 1:1 publish. The browser then dials the NODE's IP (or a VIP that routes
+  # there), rtcUdpMin..rtcUdpMax. This is the only exposure that works on a
+  # cluster whose apiserver nodePortRange (default 30000-32767) does not
+  # include the media ports — the LGC lacreca cluster is exactly that.
+  #   - media  : <node-ip>:40000-40019  (the pod's own bind; no service)
+  #   - http   : external nginx -> <node-ip>:7070 (UI/api) and :8090 (/rtc)
+  #     (see console.exposure / the nodePort service below), or in-cluster
+  #     via the ClusterIP service / the traefik Ingress.
+  #   - the engine and gateway bind 0.0.0.0, so both are reachable on the
+  #     node; a second console release on the same node needs a disjoint
+  #     rtcUdp range (or schedule it elsewhere — affinity below).
+  #   - dnsPolicy is set to ClusterFirstWithHostNet so service DNS keeps
+  #     working from the host netns.
+  # hostNetwork: false: the pod stays on the cluster net. Media is then
+  # published via a UDP NodePort service whose SERVICE ports must sit inside
+  # nodePortRange (rtcUdpNodePortMin..Max); the browser dials those instead
+  # of the bound ports, which is why this path only works if you can change
+  # nodePortRange to include rtcUdpMin..Max (reconfigure the apiserver) or
+  # the gateway to advertise a different range.
+  hostNetwork: true
+  dnsPolicy: "ClusterFirstWithHostNet"
+  rtcUdpMin: 40000
+  rtcUdpMax: 40019
+  # Only used when hostNetwork: false.
+  rtcUdpNodePortMin: 32600
+  rtcUdpNodePortMax: 32619
+
+  # The address the browser reaches for WebRTC media. The gateway rewrites
+  # its host candidate to this value. With hostNetwork this is usually the
+  # node IP the pod lands on (or a VIP that routes to it). Leave empty to
+  # let the gateway autodetect (all interface addresses advertised).
+  rtcPublicIP: "192.168.70.100"
+
+  # Expose the control API (7070) + /rtc/ signalling (8090).
+  #   "ingress" — a traefik Ingress on the host below (in-cluster path; the
+  #               external nginx owns TLS on the hostname).
+  #   "nodePort" — the chart ALSO renders a NodePort service exposing
+  #               node:32100->7070 and node:32101->8090, so the external
+  #               nginx can be pointed at <node-ip>:32100/:32101 directly
+  #               (the LGC setup: external nginx in front, no in-cluster
+  #               ingress needed).
+  #   "none"    — ClusterIP only (VPN/cluster-internal access).
+  exposure: nodePort
+  # Fixed NodePorts for the nodePort exposure (inside nodePortRange).
+  nodePort: 32100
+  rtcNodePort: 32101
+  ingress:
+    className: "traefik"
+    host: "crosspoint.app.lagreca.io"
+    # Paths routed to this service. / and /api/ (incl. WS /api/v1/ws) go to
+    # the engine (apiPort); /rtc/ (plain HTTP signalling) goes to the
+    # gateway (rtcHttpPort). The UI fetches all of them relative to its own
+    # origin, so they must live on the SAME hostname.
+    paths:
+      - path: "/"
+        service: engine
+      - path: "/api/"
+        service: engine
+      - path: "/rtc/"
+        service: rtc
+    # The external nginx does TLS termination; no cert-manager here.
+    annotations: {}
+
+  resources:
+    # PulseAudio + GStreamer + the engine: modest but not tiny.
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "4"
+      memory: "4Gi"
+
+  podSecurityContext:
+    # The image's user `console` is uid 1000. fsGroup 1000 lets the console
+    # user read the 0440 console.yaml when it is backed by the Secret
+    # (group-password case).
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Probes: HTTP on /api/v1/health — served by the engine's control API
+  # unauthenticated (200 JSON) the moment the process is up, i.e. before the
+  # engine has finished joining the AOO group. If either process dies, the
+  # supervisor exits the container (docker/web-console/supervisor.sh) and the
+  # pod restarts.
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: engine
+    initialDelaySeconds: 20
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 5
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: engine
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 5

@@ -1,0 +1,138 @@
+{{- if .Values.console.enabled }}
+# One Web Console = one container: the native engine headless in Console
+# role (joins the AOO group, mixes, serves the control API + UI) plus the
+# WebRTC audio gateway, both on one PulseAudio. If either process dies the
+# supervisor exits the container and the pod restarts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-console
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+spec:
+  replicas: {{ .Values.console.replicaCount }}
+  strategy:
+    {{- toYaml .Values.console.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "crosspoint.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console
+  template:
+    metadata:
+      labels:
+        {{- include "crosspoint.selectorLabels" . | nindent 8 }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        app.kubernetes.io/component: console
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.console.hostNetwork }}
+      # Host network: the engine (7070), the gateway (8090) and the WebRTC
+      # media (rtcUdpMin..rtcUdpMax) all bind directly on the node — the
+      # k8s equivalent of the docker-compose 1:1 port publish (see values).
+      hostNetwork: true
+      dnsPolicy: {{ .Values.console.dnsPolicy | default "ClusterFirstWithHostNet" }}
+      {{- end }}
+      {{- with .Values.console.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: console
+          image: "{{ .Values.console.image.repository }}:{{ .Values.console.image.tag }}"
+          imagePullPolicy: {{ .Values.console.image.pullPolicy }}
+          {{- with .Values.console.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- /* API token: from the secret rendered by console-secret.yaml.
+                  The container refuses to start without it. */}}
+            {{- if or .Values.console.apiToken (get (index .Values "secrets") "apiToken") }}
+            - name: CROSSPOINT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "crosspoint.fullname" . }}-console-secret
+                  key: api-token
+            {{- end }}
+            - name: CROSSPOINT_API_ORIGIN
+              value: {{ .Values.console.apiOrigin | quote }}
+            {{- with .Values.console.rtcPublicIP }}
+            - name: RTC_PUBLIC_IP
+              value: {{ . | quote }}
+            {{- end }}
+            - name: RTC_UDP_MIN
+              value: {{ .Values.console.rtcUdpMin | quote }}
+            - name: RTC_UDP_MAX
+              value: {{ .Values.console.rtcUdpMax | quote }}
+          ports:
+            - name: engine
+              containerPort: {{ .Values.console.apiPort }}
+              protocol: TCP
+            - name: rtc
+              containerPort: {{ .Values.console.rtcHttpPort }}
+              protocol: TCP
+            - name: rtc-udp
+              containerPort: {{ .Values.console.rtcUdpMin }}
+              protocol: UDP
+          {{- with .Values.console.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.console.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          volumeMounts:
+            # Engine config at /config/console.yaml. ConfigMap when there is
+            # no group password; Secret (0440, group-readable via fsGroup)
+            # when there is — see console-configmap.yaml.
+            - name: config
+              mountPath: /config/console.yaml
+              subPath: console.yaml
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: config
+          {{- if eq (include "crosspoint.consoleConfigIsSecret" .) "true" }}
+          secret:
+            secretName: {{ include "crosspoint.fullname" . }}-console-config
+            items:
+              - key: console.yaml
+                path: console.yaml
+            defaultMode: 0440
+          {{- else }}
+          configMap:
+            name: {{ include "crosspoint.fullname" . }}-console-config
+            items:
+              - key: console.yaml
+                path: console.yaml
+          {{- end }}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+      {{- with .Values.console.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.console.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.console.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

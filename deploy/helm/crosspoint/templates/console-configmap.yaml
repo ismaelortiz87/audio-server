@@ -1,0 +1,77 @@
+{{- if .Values.console.enabled }}
+{{- /*
+Engine config for /config/console.yaml. Precedence: command line (role, API
+port/bind/token, UI dir — fixed by the image) > this file, so only the
+connection identity and audio settings live here.
+
+`server` is auto-filled with this release's aooserver when it is part of the
+release; otherwise set it explicitly (external server, or another release's
+service name) — the engine refuses to start without one.
+
+Split (matches docker/web-console/README.md "Security"):
+  - no group password  -> plain ConfigMap (nothing sensitive to hide)
+  - group password set -> full console.yaml in a Secret, mounted 0440
+                           (fsGroup 1000), i.e. "mount read-only, chmod 600"
+The password itself is only taken from secrets.yml (`secrets.groupPassword`,
+vault-encrypted) or an explicit console.config.password override — never
+from values.yaml by default.
+*/}}
+{{- $c := .Values.console }}
+{{- $server := $c.config.server }}
+{{- if not $server }}
+{{- $server = include "crosspoint.aooserverAddr" . }}
+{{- end }}
+{{- $isSecret := eq (include "crosspoint.consoleConfigIsSecret" .) "true" }}
+{{- $groupPassword := $c.config.password | default (get (index .Values "secrets") "groupPassword") }}
+{{- if not $isSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-console-config
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+data:
+  console.yaml: |
+    server: {{ $server | quote }}
+    group: {{ $c.config.group | quote }}
+    username: {{ $c.config.username | quote }}
+    role: console
+
+    audio:
+      sample_rate: {{ $c.config.audio.sample_rate }}
+      buffer: {{ $c.config.audio.buffer }}
+
+    codec: {{ $c.config.codec | quote }}
+    bitrate: {{ $c.config.bitrate }}
+{{- else }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-console-config
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+type: Opaque
+stringData:
+  console.yaml: |
+    server: {{ $server | quote }}
+    group: {{ $c.config.group | quote }}
+    password: {{ $groupPassword | quote }}
+    username: {{ $c.config.username | quote }}
+    role: console
+
+    audio:
+      sample_rate: {{ $c.config.audio.sample_rate }}
+      buffer: {{ $c.config.audio.buffer }}
+
+    codec: {{ $c.config.codec | quote }}
+    bitrate: {{ $c.config.bitrate }}
+{{- end }}
+{{- end }}

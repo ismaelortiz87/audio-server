@@ -1,0 +1,43 @@
+{{- if and .Values.console.enabled (eq .Values.console.exposure "ingress") }}
+# External exposure for the Console: your reverse proxy owns TLS on the
+# hostname (the LGC cluster has an external nginx in front of traefik and
+# no cert-manager), so this Ingress has no TLS block and no cert-manager
+# annotations — traefik serves the hostname on 80 and the proxy terminates
+# 443 in front of it.
+#
+# Every path lands on the same hostname and routes to the console service:
+#   /, /api/ -> engine  (UI, control API, WS /api/v1/ws)
+#   /rtc/    -> rtc     (WebRTC signalling, plain HTTP)
+# The UI fetches all of them relative to its own origin, so they must stay
+# on one host. (WebRTC MEDIA does not go through this ingress at all —
+# see the console UDP notes in values.yaml.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-console
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+  {{- with .Values.console.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.console.ingress.className }}
+  rules:
+    - host: {{ .Values.console.ingress.host }}
+      http:
+        paths:
+          {{- range .Values.console.ingress.paths }}
+          - path: {{ .path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "crosspoint.fullname" $ }}-console
+                port:
+                  name: {{ if eq .service "rtc" }}rtc{{ else }}engine{{ end }}
+          {{- end }}
+{{- end }}

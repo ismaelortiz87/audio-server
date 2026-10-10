@@ -1,0 +1,102 @@
+{{- if .Values.aooserver.enabled }}
+# Headless AOO connection server (rendezvous only; audio never passes
+# through it). Peers announce the interface they used to reach it, so a
+# server on a VPN address keeps all peer-to-peer audio inside the VPN.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-aooserver
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: aooserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "crosspoint.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: aooserver
+  template:
+    metadata:
+      labels:
+        {{- include "crosspoint.selectorLabels" . | nindent 8 }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        app.kubernetes.io/component: aooserver
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aooserver.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: aooserver
+          image: "{{ .Values.aooserver.image.repository }}:{{ .Values.aooserver.image.tag }}"
+          imagePullPolicy: {{ .Values.aooserver.image.pullPolicy }}
+          {{- with .Values.aooserver.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AOO_PORT
+              value: {{ .Values.aooserver.port | quote }}
+            {{- if .Values.aooserver.blocklist.enabled }}
+            - name: AOO_BLOCKLIST
+              value: {{ .Values.aooserver.blocklist.mount.path | default "/etc/aooserver/blocklist.txt" | quote }}
+            {{- end }}
+          ports:
+            - name: aoo
+              containerPort: {{ .Values.aooserver.port }}
+              protocol: TCP
+            - name: aoo-udp
+              containerPort: {{ .Values.aooserver.port }}
+              protocol: UDP
+          {{- with .Values.aooserver.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.aooserver.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.aooserver.resources | nindent 12 }}
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/aooserver
+            {{- if .Values.aooserver.blocklist.enabled }}
+            - name: blocklist
+              mountPath: /etc/aooserver
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: logs
+          {{- if .Values.aooserver.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.aooserver.persistence.existingClaim | default (printf "%s-aooserver-logs" (include "crosspoint.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.aooserver.blocklist.enabled }}
+        - name: blocklist
+          {{- toYaml .Values.aooserver.blocklist.mount | nindent 10 }}
+        {{- end }}
+      {{- with .Values.aooserver.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aooserver.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aooserver.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

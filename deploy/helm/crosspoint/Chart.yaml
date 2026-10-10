@@ -1,0 +1,6 @@
+apiVersion: v2
+name: crosspoint
+description: Crosspoint (SonoBus) audio stack — AOO connection server + Web Console (headless engine + WebRTC gateway), one release per user
+type: application
+version: 0.1.0
+appVersion: "2026.10"

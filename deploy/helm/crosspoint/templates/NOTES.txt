@@ -1,0 +1,65 @@
+{{- $full := include "crosspoint.fullname" . }}
+{{- $ns := .Release.Namespace }}
+{{- $c := .Values.console }}
+{{- $a := .Values.aooserver }}
+
+Crosspoint is installed (release: {{ .Release.Name }}, namespace: {{ $ns }}).
+
+{{- if not $a.enabled }}
+
+  aooserver: DISABLED for this release. The console will only start if
+  console.config.server was set to a real AOO server (external or another
+  release).
+
+{{- end }}
+{{- if $a.enabled }}
+
+AOO server:
+  in-cluster:  {{ $full }}-aooserver.{{ $ns }}.svc.cluster.local:{{ $a.port }}
+{{- if eq $a.exposure "nodePort" }}
+  on nodes:    <any-node-ip>:{{ $a.nodePort | default "30000-32767 (allocated)" }}  (TCP and UDP)
+{{- else if eq $a.exposure "loadBalancer" }}
+  on nodes:    <LB IP>:{{ $a.port }}   (check: kubectl get svc {{ $full }}-aooserver -n {{ $ns }})
+{{- else }}
+  exposure:    ClusterIP only (cluster/VPN access)
+{{- end }}
+{{- if $a.blocklist.enabled }}
+  blocklist:   {{ $a.blocklist.mount.path | default "/etc/aooserver/blocklist.txt" }} (mounted read-only)
+{{- end }}
+{{- end }}
+{{- if $c.enabled }}
+
+Web Console (one release = one user):
+{{- if $c.hostNetwork }}
+  The pod uses the NODE network. Find out which node it landed on:
+
+      kubectl get pod {{ $full }}-console -n {{ $ns }} -o wide
+
+  and use THAT node's IP for everything below.
+  * UI / API:   point your external nginx at <node-ip>:{{ $c.apiPort }}
+                ({{ if eq $c.exposure "nodePort" }}the chart also publishes node:{{ $c.nodePort }}->{{ $c.apiPort }} and
+                 node:{{ $c.rtcNodePort }}->{{ $c.rtcHttpPort }} for exactly that{{ else }}the ClusterIP service {{ $full }}-console.{{ $ns }}.svc.cluster.local:{{ $c.apiPort }} is the in-cluster alternative{{ end }})
+  * Sign in:    with the AOO token (CROSSPOINT_API_TOKEN — see the release secret {{ $full }}-console-secret)
+  * Media:      the browser dials <node-ip>:{{ $c.rtcUdpMin }}-{{ $c.rtcUdpMax }} (UDP) directly — make sure
+                your firewall/proxy does not block it; it never goes through the reverse proxy.
+  * AOO peers:  connect to the AOO server (above) and the console shows up in the
+                group "{{ $c.config.group }}" as "{{ $c.config.username }}".
+{{- else if eq $c.exposure "ingress" }}
+  UI:  https://{{ $c.ingress.host }}/   ({{ $c.ingress.host }} is served by traefik; the external
+       proxy does TLS on that hostname)
+  Sign in with the AOO token.
+  Media (UDP) does NOT go through the proxy: it needs a NodePort UDP service
+  with the service ports inside the cluster nodePortRange — see values.yaml
+  (console.rtcUdp* / console.hostNetwork) before relying on this mode.
+{{- else if eq $c.exposure "nodePort" }}
+  UI/API on every node: <node-ip>:{{ $c.nodePort }} (engine) and <node-ip>:{{ $c.rtcNodePort }} (rtc)
+  Media: see values.yaml — on a stock nodePortRange cluster use hostNetwork mode.
+{{- else }}
+  In-cluster only: http://{{ $full }}-console.{{ $ns }}.svc.cluster.local:{{ $c.apiPort }}/
+{{- end }}
+
+Useful:
+  kubectl -n {{ $ns }} get pods,svc,ing
+  kubectl -n {{ $ns }} logs {{ $full }}-console -f          # engine + gateway on one log stream
+  kubectl -n {{ $ns }} get secret {{ $full }}-console-secret -o jsonpath='{.data.api-token}' | base64 -d
+{{- end }}

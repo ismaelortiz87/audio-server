@@ -1,0 +1,98 @@
+{{- if .Values.aooserver.enabled }}
+# TCP (login/groups) and UDP (hole-punching / pings) on the same port.
+#
+# exposure:
+#   none         -> ClusterIP; in-cluster peers use the DNS name directly.
+#   nodePort     -> published on every node on the same number (TCP+UDP);
+#                   peers dial <node-ip>:<nodePort>.
+#   loadBalancer -> cluster LB (MetalLB VIP).
+{{- $aoo := .Values.aooserver }}
+{{- if eq $aoo.exposure "none" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-aooserver
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: aooserver
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "crosspoint.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: aooserver
+  ports:
+    - name: aoo
+      port: {{ $aoo.port }}
+      targetPort: aoo
+      protocol: TCP
+    - name: aoo-udp
+      port: {{ $aoo.port }}
+      targetPort: aoo-udp
+      protocol: UDP
+{{- else if eq $aoo.exposure "nodePort" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-aooserver
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: aooserver
+spec:
+  type: NodePort
+  selector:
+    {{- include "crosspoint.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: aooserver
+  ports:
+    - name: aoo
+      port: {{ $aoo.port }}
+      targetPort: aoo
+      protocol: TCP
+      {{- if $aoo.nodePort }}
+      nodePort: {{ $aoo.nodePort }}
+      {{- end }}
+    - name: aoo-udp
+      port: {{ $aoo.port }}
+      targetPort: aoo-udp
+      protocol: UDP
+      {{- if $aoo.nodePort }}
+      nodePort: {{ $aoo.nodePort }}
+      {{- end }}
+{{- else if eq $aoo.exposure "loadBalancer" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-aooserver
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: aooserver
+  {{- with $aoo.loadBalancerIP }}
+  spec:
+    type: LoadBalancer
+    loadBalancerIP: {{ . }}
+  {{- else }}
+  spec:
+    type: LoadBalancer
+  {{- end }}
+  selector:
+    {{- include "crosspoint.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: aooserver
+  ports:
+    - name: aoo
+      port: {{ $aoo.port }}
+      targetPort: aoo
+      protocol: TCP
+    - name: aoo-udp
+      port: {{ $aoo.port }}
+      targetPort: aoo-udp
+      protocol: UDP
+{{- end }}
+{{- end }}

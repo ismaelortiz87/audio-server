@@ -1,0 +1,21 @@
+{{- if and .Values.aooserver.enabled .Values.aooserver.persistence.enabled (not .Values.aooserver.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-aooserver-logs
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: aooserver
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.aooserver.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.aooserver.persistence.size }}
+{{- end }}

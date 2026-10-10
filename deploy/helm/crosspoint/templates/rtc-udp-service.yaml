@@ -1,0 +1,33 @@
+{{- if and .Values.console.enabled (not .Values.console.hostNetwork) }}
+# Non-hostNetwork mode only (see values.yaml): the pod stays on the cluster
+# network, so the WebRTC media range is published with a UDP NodePort
+# service. The SERVICE ports (rtcUdpNodePortMin..Max) must sit inside the
+# apiserver nodePortRange; kube-proxy maps <node>:<svcRange> -> pod
+# <rtcUdpMin..rtcUdpMax> one-to-one. The browser dials the SERVICE range,
+# so on a stock cluster (nodePortRange 30000-32767) you must either widen
+# nodePortRange to include rtcUdpMin..rtcUdpMax or change the gateway's
+# RTC_UDP_MIN/MAX to the service range — with the default 40000-40019 this
+# service is NOT usable as-is.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-rtc-udp
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    {{- include "crosspoint.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+  ports:
+    - name: rtc-udp
+      port: {{ .Values.console.rtcUdpNodePortMin }}
+      endPort: {{ .Values.console.rtcUdpNodePortMax }}
+      targetPort: {{ .Values.console.rtcUdpMin }}
+      protocol: UDP
+{{- end }}

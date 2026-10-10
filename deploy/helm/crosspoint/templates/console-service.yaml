@@ -1,0 +1,41 @@
+{{- if .Values.console.enabled }}
+# HTTP exposure for the Console. Two ports in one service:
+#   engine  -> 7070  UI + control API (incl. WS /api/v1/ws)
+#   rtc     -> 8090  WebRTC signalling (/rtc/*, plain HTTP)
+#
+# type follows console.exposure:
+#   ingress      -> ClusterIP, fronted by the Ingress (LGC default: your
+#                    reverse proxy owns TLS on the host)
+#   nodePort     -> published on every node; point the proxy at a node IP
+#   none         -> ClusterIP only (VPN/cluster-internal)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "crosspoint.fullname" . }}-console
+  labels:
+    {{- include "crosspoint.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    app.kubernetes.io/component: console
+spec:
+  type: {{ if eq .Values.console.exposure "nodePort" }}NodePort{{ else }}ClusterIP{{ end }}
+  selector:
+    {{- include "crosspoint.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+  ports:
+    - name: engine
+      port: {{ .Values.console.apiPort }}
+      targetPort: engine
+      protocol: TCP
+      {{- if and (eq .Values.console.exposure "nodePort") .Values.console.nodePort }}
+      nodePort: {{ .Values.console.nodePort }}
+      {{- end }}
+    - name: rtc
+      port: {{ .Values.console.rtcHttpPort }}
+      targetPort: rtc
+      protocol: TCP
+      {{- if and (eq .Values.console.exposure "nodePort") .Values.console.rtcNodePort }}
+      nodePort: {{ .Values.console.rtcNodePort }}
+      {{- end }}
+{{- end }}
