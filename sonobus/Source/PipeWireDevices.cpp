@@ -162,9 +162,11 @@ bool prepare (const std::optional<std::string>& inputDevice,
 
     std::vector<Node> nodes;
     std::string listErr;
+    bool listFailed = false;
     if (! listNodes (nodes, listErr)) {
         note = "PipeWire node lookup unavailable (" + listErr + "); audio devices are matched against the ALSA device list";
-        return true;
+        listFailed = true;   // P2.5: PipeWire may just not be up yet at boot; names below are retried
+        nodes.clear();
     }
     const auto ins = inputCandidates (nodes);
     const auto outs = outputCandidates (nodes);
@@ -182,6 +184,12 @@ bool prepare (const std::optional<std::string>& inputDevice,
             capNode = hit->target;
         } else if (! matchesAlsaDeviceName (*inputDevice)) {
             bad += "audio.input_device '" + *inputDevice + "' is not a PipeWire node";
+            // P2.5: pin the PCM to where the node WILL be, so that JUCE's one-time ALSA
+            // scan already lists it and a later retry can open it (see reopenAudioDevices).
+            const std::string suffix = ".monitor";
+            const bool mon = inputDevice->size() > suffix.size()
+                             && inputDevice->compare (inputDevice->size() - suffix.size(), suffix.size(), suffix) == 0;
+            capNode = mon ? inputDevice->substr (0, inputDevice->size() - suffix.size()) : *inputDevice;
         }
     }
     if (outputDevice) {
@@ -191,11 +199,13 @@ bool prepare (const std::optional<std::string>& inputDevice,
         else if (! matchesAlsaDeviceName (*outputDevice)) {
             if (! bad.empty()) bad += " and ";
             bad += "audio.output_device '" + *outputDevice + "' is not a PipeWire node";
+            playNode = *outputDevice;   // P2.5: as above
         }
     }
-    if (! bad.empty()) {
-        err = bad + " (nor an ALSA device name).\n" + listing (ins, outs);
-        return false;
+    if (! bad.empty()) {   // P2.5: reported, not fatal; the caller decides
+        r.missing = true;
+        r.missingMsg = bad + " (nor an ALSA device name).\n"
+                     + (listFailed ? "PipeWire could not be queried: " + listErr + "\n" : listing (ins, outs));
     }
     if (! capNode && ! playNode) return true; // only ALSA names: P2.1 behaviour
 
@@ -212,7 +222,7 @@ bool prepare (const std::optional<std::string>& inputDevice,
     // The hint scan above may already have loaded the global ALSA config.
     snd_config_update_free_global();
 
-    r.asoundConfPath = confPath;
+    r.asoundConfPath = confPath;   // (r.missing/missingMsg set above survive)
     if (capNode) r.inputJuceName = inputDesc (*capNode);
     if (playNode) r.outputJuceName = outputDesc (*playNode);
     return true;

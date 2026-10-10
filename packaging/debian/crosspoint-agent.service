@@ -1,0 +1,38 @@
+# Crosspoint VDI agent -- systemd USER unit (P2.5).
+#
+# A user unit, not a system service, because PipeWire runs per user. Installed
+# to /usr/lib/systemd/user/; the user configures ~/.config/crosspoint/vdi.yaml
+# and runs `systemctl --user enable --now crosspoint-agent` once, plus
+# `loginctl enable-linger <user>` so it starts at boot without a login.
+# See /usr/share/doc/crosspoint/README.Debian.
+[Unit]
+Description=Crosspoint VDI audio agent
+Documentation=file:///usr/share/doc/crosspoint/README.Debian
+After=pipewire.service pipewire-pulse.service wireplumber.service
+Wants=pipewire.service pipewire-pulse.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/crosspoint --headless --config %h/.config/crosspoint/vdi.yaml
+# SIGTERM makes the app leave its group in order and save its state (P4.1).
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# A bad or missing config exits 1 and shows in the journal; a missing audio
+# device does not exit at all (the agent reports it and retries, P2.5).
+Restart=on-failure
+RestartSec=5
+# stdout/stderr go to the journal: journalctl --user -u crosspoint-agent
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crosspoint-agent
+
+# Hardening that does not get in the way of PipeWire/ALSA: no PrivateDevices, no
+# RestrictRealtime, no mount/namespace sandboxing that could hide the PipeWire
+# socket in $XDG_RUNTIME_DIR (and that user managers often cannot set up).
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

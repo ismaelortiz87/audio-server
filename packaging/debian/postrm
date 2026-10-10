@@ -1,0 +1,19 @@
+#!/bin/sh
+# Per-user enablement symlinks (~/.config/systemd/user/default.target.wants/)
+# and ~/.config/crosspoint belong to the user and are left alone; a dangling
+# symlink is harmless and `systemctl --user disable crosspoint-agent` removes it.
+set -e
+case "$1" in
+  remove|purge)
+    if [ -d /run/systemd/system ] && command -v loginctl >/dev/null 2>&1; then
+      for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+        [ "$uid" -ge 1 ] 2>/dev/null || continue
+        user="$(id -nu "$uid" 2>/dev/null || true)"
+        [ -n "$user" ] || continue
+        runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+          systemctl --user daemon-reload >/dev/null 2>&1 || true
+      done
+    fi
+    ;;
+esac
+exit 0

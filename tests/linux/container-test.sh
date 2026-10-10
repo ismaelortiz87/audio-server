@@ -56,15 +56,21 @@ EOF2
 sed 's/input_device: .*/input_device: no_such_node/' "$W/good.yaml" > "$W/bad.yaml"
 
 # --- check 3 (run first, it needs no engine): wrong node name ---------------------
-step "wrong node name -> exit 1 and the valid nodes are listed"
-"$APP" --headless --config "$W/bad.yaml" > "$W/bad.out" 2>&1
-rc=$?
+# P2.5: a missing/unknown audio node is no longer fatal in headless mode; the agent
+# stays up, reports it and lists the valid nodes (it keeps retrying). Config errors
+# (bad YAML) still exit 1; tests/linux/deb-systemd.sh covers that.
+step "wrong node name -> agent stays up, node missing reported, valid nodes listed"
+"$APP" --headless --config "$W/bad.yaml" > "$W/bad.out" 2>&1 &
+BADPID=$!
+sleep 6
+if kill -0 $BADPID 2>/dev/null; then alive=1; else alive=0; fi
+kill $BADPID 2>/dev/null; wait $BADPID 2>/dev/null
 cat "$W/bad.out"
-if [ "$rc" -eq 1 ] && grep -q "no_such_node" "$W/bad.out" \
+if [ "$alive" -eq 1 ] && grep -q "no_such_node" "$W/bad.out" \
    && grep -q "loopback_sink.monitor" "$W/bad.out" && grep -q "crosspoint_mic" "$W/bad.out"; then
-  pass "wrong node name: exit $rc, valid input and output nodes listed"
+  pass "wrong node name: still running, valid input and output nodes listed"
 else
-  fail "wrong node name: exit $rc (want 1) / listing missing"
+  fail "wrong node name: alive=$alive (want 1) / listing missing"
 fi
 
 # --- start the engine --------------------------------------------------------------

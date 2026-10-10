@@ -48,6 +48,11 @@ struct Resolved
     std::string inputJuceName;
     std::string outputJuceName;
     std::string asoundConfPath;   // generated file, when anything was pinned
+    // P2.5: a requested node is not there (yet). prepare() still succeeds, pins what
+    // it can, and leaves the printable reason here; the caller decides whether that
+    // is fatal (GUI) or retried (headless agent, AgentDeviceWatcher).
+    bool missing = false;
+    std::string missingMsg;
 };
 
 // Pure helpers (unit-testable without PipeWire).
@@ -67,8 +72,10 @@ std::string makeAsoundConf (const std::optional<std::string>& captureNode,
 bool listNodes (std::vector<Node>& out, std::string& err);
 
 // Validates the requested names, writes `confPath`, sets ALSA_CONFIG_PATH and
-// fills `r`. Returns false with a complete, printable `err` (including the list
-// of valid nodes) when a name is neither a PipeWire node nor an ALSA device.
+// fills `r`. A name that is neither a PipeWire node nor an ALSA device (or a
+// PipeWire that cannot be queried) is NOT an error here (P2.5): r.missing is
+// set with a printable r.missingMsg (including the list of valid nodes).
+// Returns false only for a real failure (e.g. cannot write confPath).
 // When PipeWire cannot be queried at all, nothing is pinned and true is
 // returned (P2.1 behaviour), with `note` explaining why.
 bool prepare (const std::optional<std::string>& inputDevice,
