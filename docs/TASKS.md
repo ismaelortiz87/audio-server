@@ -553,6 +553,20 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   `missing` (not `silent`) and the scenario **fails loudly** rather than passing
   by luck — set the override there. A true auto-detect would need a device
   enumeration the engine does not expose yet.
+- **Open, pre-existing failure in `test-evaluate.sh` (found 2026-10-10).** It
+  exits **1** with `99 passed, 1 failed`: the `steps-frozen` case. This is
+  **not** caused by the `agent-silent` fix — proven by stashing that change and
+  reproducing the identical failure on unmodified `main`. Root cause is in
+  `tests/f2/evaluate.py`'s step loop, not in the product: an `increases`
+  assertion whose baseline is captured when a hold starts, then **cleared
+  whenever any poll fails**, oscillates — poll 1 sets baseline 10 and passes,
+  poll 2 sees `10 > 10` false and fails (clearing the baseline), poll 3 passes
+  again — so the step times out while `last` holds an *OK* poll, and the
+  expected `expected to increase from 10` never reaches the report. The
+  `steps-frozen` stub is frozen at `packetsReceived: 10` on purpose, so the
+  scenario *should* fail, and it does; the defect is that the failure reason is
+  not what the test asserts. Fix: keep the baseline across failed polls (or
+  report the last *failing* poll rather than the last poll).
 - **Result:**
 
 ### P1.6 — Role-less peers
