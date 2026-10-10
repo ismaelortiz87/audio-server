@@ -1467,6 +1467,29 @@ public:
                     return;
                 }
 
+#if CROSSPOINT_HAS_CONFIG
+                // TEST ONLY: CROSSPOINT_TEST_INPUT_DEVICE / CROSSPOINT_TEST_OUTPUT_DEVICE pin a
+                // headless test peer to named devices when its YAML doesn't, so tests never
+                // run on whatever the OS default is at that moment (macOS can switch the
+                // default input to an iPhone's Continuity mic). A missing device is fatal:
+                // a metering test must not silently fall back to another microphone.
+                {
+                    crosspoint::Config pin;
+                    const auto envIn  = SystemStats::getEnvironmentVariable ("CROSSPOINT_TEST_INPUT_DEVICE", {});
+                    const auto envOut = SystemStats::getEnvironmentVariable ("CROSSPOINT_TEST_OUTPUT_DEVICE", {});
+                    if (envIn.isNotEmpty()  && ! (haveConfig && effectiveConfig.inputDevice))  pin.inputDevice  = envIn.toStdString();
+                    if (envOut.isNotEmpty() && ! (haveConfig && effectiveConfig.outputDevice)) pin.outputDevice = envOut.toStdString();
+                    if (pin.inputDevice || pin.outputDevice) {
+                        String err;
+                        if (! applyAudioConfig (pluginHolder->deviceManager, pin, err)) {
+                            std::cerr << "Error (CROSSPOINT_TEST_*_DEVICE): " << err << std::endl;
+                            failStartup();
+                            return;
+                        }
+                    }
+                }
+#endif
+
                 // P2.4: connect now and keep the session up (backoff, bad-password
                 // handling). Replaces the old one-shot connect + 500 ms sleep + join.
                 if (doInitialConnect) {

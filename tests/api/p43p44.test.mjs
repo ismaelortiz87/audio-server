@@ -16,6 +16,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// Pin test peers to the MacBook's own mic/speakers (not the OS default, which can be an iPhone mic). See tests/f2/run.sh.
+process.env.CROSSPOINT_TEST_INPUT_DEVICE ??= 'MacBook Pro Microphone';
+process.env.CROSSPOINT_TEST_OUTPUT_DEVICE ??= 'MacBook Pro Speakers';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const APP = process.env.CROSSPOINT_APP ||
   path.join(ROOT, 'build/desktop-release/SonoBus_artefacts/Release/Standalone/Crosspoint.app/Contents/MacOS/Crosspoint');
@@ -424,9 +428,12 @@ test('agent: setInput/setOutput with previous + YAML write-back, pause/resume, t
     await waitUntil(() => peakOf(r1.frames.at(-1).stations[A]) > -16, 5000, 'station audible again');
     r1.ws.close();
 
-    // test tone raises the output meter
+    // test tone raises the output meter. The VDI's output also carries the
+    // Console's mic (open mic by default), i.e. whatever the MacBook mic hears in
+    // the room, so close the Console mic first: "quiet" must not depend on the room.
+    await consoleClient.cmd('mic.setOn', { on: false });
     const m = rawMeters(apiPorts.A); await m.opened; m.send({ t: 'sub', topics: ['meters', 'deviceMeters'] });
-    await waitUntil(() => m.frames.length > 5, 3000, 'agent frames');
+    await waitUntil(() => m.frames.length > 5 && (m.frames.at(-1).output[0] === null || m.frames.at(-1).output[0] < -60), 5000, 'agent output quiet with the Console mic off');
     const f = m.frames.at(-1);
     assert.ok(f.output[0] === null || f.output[0] < -60, 'output quiet before the tone: ' + f.output);
     assert.ok(f.input.length === 2 && typeof f.devices === 'object', 'input + devices');

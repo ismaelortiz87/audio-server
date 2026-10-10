@@ -214,7 +214,9 @@ export function stations(ctx) {
       if (!list.length) {
         placeholder = st.connection.state === 'connecting'
           ? h('div', { style: { display: 'contents' } }, [0, 1, 2].map(() => h('div.skel', 'Waiting for stations…')))
-          : h('div.skel', h('span', 'No stations connected yet. VDIs appear here when their agent joins ', h('b', st.connection.group), '.'));
+          : h('div.skel', st.connection.group
+              ? h('span', 'No stations connected yet. VDIs appear here when their agent joins ', h('b', st.connection.group), '.')
+              : h('span', 'No stations connected yet. Connect to a group in Settings; VDIs appear here when their agent joins it.'));
         el.append(placeholder);
       }
       list.forEach((s, i) => {

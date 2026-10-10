@@ -64,6 +64,13 @@ INVOCATION_DIR="$(pwd)"
 DEFAULT_APP="$WORKTREE_ROOT/build/desktop-release/SonoBus_artefacts/Release/Standalone/Crosspoint.app/Contents/MacOS/Crosspoint"
 DEFAULT_SERVER="$WORKTREE_ROOT/build/aooserver-release/aooserver"
 
+# Pin every test peer to the MacBook's own devices unless overridden. Without
+# this, peers open the OS default input, which macOS may switch to an iPhone's
+# Continuity mic, and level assertions become meaningless. A scenario's YAML
+# audio.* still wins; set a var to "" to disable the pin.
+export CROSSPOINT_TEST_INPUT_DEVICE="${CROSSPOINT_TEST_INPUT_DEVICE-MacBook Pro Microphone}"
+export CROSSPOINT_TEST_OUTPUT_DEVICE="${CROSSPOINT_TEST_OUTPUT_DEVICE-MacBook Pro Speakers}"
+
 SCENARIO="mesh-stock"
 APP=""
 SERVER=""

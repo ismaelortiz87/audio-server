@@ -14,6 +14,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// Pin test peers to the MacBook's own mic/speakers (not the OS default, which can be an iPhone mic). See tests/f2/run.sh.
+process.env.CROSSPOINT_TEST_INPUT_DEVICE ??= 'MacBook Pro Microphone';
+process.env.CROSSPOINT_TEST_OUTPUT_DEVICE ??= 'MacBook Pro Speakers';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const APP = process.env.CROSSPOINT_APP ||
   path.join(ROOT, 'build/desktop-release/SonoBus_artefacts/Release/Standalone/Crosspoint.app/Contents/MacOS/Crosspoint');
