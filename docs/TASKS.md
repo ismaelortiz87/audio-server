@@ -110,11 +110,11 @@ Ordered so that every task appears after everything it depends on.
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
-| P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | todo | |
-| P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | todo | |
+| P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | wip | Claude (subagent O, sonnet) |
+| P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | wip | Claude (subagent O, sonnet) |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
-| P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | todo | |
+| P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | wip | Claude |
 | P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | todo | |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | todo | |
