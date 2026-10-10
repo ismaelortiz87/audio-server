@@ -105,6 +105,18 @@ static bool disableRoleBlocking()
     return flag;
 }
 
+// F2.1 TEST ONLY: counterfactual for B1. With this set, a blocked peer's stream
+// is accepted and decoded as it was before the sink-level fix and only silenced
+// at the playback gain. It exists so `matrix-mixed-ungated` can show that the
+// sink gate -- not some unrelated change to the routing matrix -- is what makes
+// preFaderPeakDb go silent for a blocked peer.
+//   SONOBUS_NO_SINK_DECLINE=1 -> do not decline uninvited sources
+static bool disableSinkDecline()
+{
+    static bool flag = envFlagSet("SONOBUS_NO_SINK_DECLINE");
+    return flag;
+}
+
 static bool disableRoleAdvertising()
 {
     static bool flag = envFlagSet("SONOBUS_NO_ROLE_ADVERT");
@@ -1055,6 +1067,14 @@ mState (*this, &mUndoManager, "SonoBusAoO",
         const float hz = SystemStats::getEnvironmentVariable("SONOBUS_TEST_TONE_HZ", "").trim().getFloatValue();
         mTestToneHz = (hz > 0.0f && hz < 20000.0f) ? hz : 0.0f;
     }
+
+    // F2.1 TEST ONLY: SONOBUS_TEST_START_SEND_MUTE / _RECV_MUTE = 1 start with the
+    // global send / receive mute on, through the real parameter (so the same
+    // listener the UI button reaches runs).
+    if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_SEND_MUTE", "") == "1")
+        mState.getParameter(paramMainSendMute)->setValueNotifyingHost(1.0f);
+    if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_RECV_MUTE", "") == "1")
+        mState.getParameter(paramMainRecvMute)->setValueNotifyingHost(1.0f);
 
     mFreshInit = true;
 }
@@ -6178,6 +6198,19 @@ bool SonobusAudioProcessor::applyTestControlFile(const File & file)
         setSoloDimDb((float) (double) dim);
     }
 
+    // F2.1 TEST ONLY: {"globalSendMute": bool, "globalRecvMute": bool} drive the
+    // real global mute parameters (the UI buttons' path). Only on change, since
+    // this file is re-applied every tick.
+    for (auto & kv : { std::make_pair(String("globalSendMute"), paramMainSendMute),
+                       std::make_pair(String("globalRecvMute"), paramMainRecvMute) }) {
+        const var v = root.getProperty(kv.first, var());
+        if (v.isBool() || v.isInt()) {
+            auto * param = mState.getParameter(kv.second);
+            const float want = ((bool) v) ? 1.0f : 0.0f;
+            if (param != nullptr && param->getValue() != want) param->setValueNotifyingHost(want);
+        }
+    }
+
     const var talk = root.getProperty("talk", var());
     const var solo = root.getProperty("solo", var());
     const var mute = root.getProperty("mute", var());
@@ -7121,6 +7154,20 @@ SonobusAudioProcessor::RemotePeer * SonobusAudioProcessor::doAddRemotePeerIfNece
         
         retpeer->oursink->set_dynamic_resampling(mDynamicResampling.get() ? 1 : 0);
         retpeer->oursource->set_dynamic_resampling(mDynamicResampling.get() ? 1 : 0);
+
+        // P1.4/B1: never decode a source we have not invited. Without this the
+        // AOO sink auto-adds and decodes any source that sends it data, so a
+        // peer the routing matrix blocks -- typically one that advertises no
+        // role, i.e. stock SonoBus -- kept streaming into us and was silenced
+        // only later, at the playback gain. With it the stream is refused at
+        // the sink: no decode, no resend requests, no bandwidth. The source is
+        // still discovered, so its id arrives with AOO_SOURCE_ADD_EVENT and
+        // setRemotePeerRecvActive() invites it as soon as the matrix allows.
+        // SONOBUS_NO_ROLE_BLOCK restores the old open-by-default mesh, which
+        // must keep accepting sources that were never invited, and
+        // SONOBUS_NO_SINK_DECLINE is the B1 counterfactual: it turns the gate
+        // back off on an otherwise unchanged build.
+        retpeer->oursink->set_separate_unknown_sources(!disableRoleBlocking() && !disableSinkDecline());
 
         
         retpeer->workBuffer.setSize(2, currSamplesPerBlock, false, false, true);

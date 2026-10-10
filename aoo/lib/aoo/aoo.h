@@ -358,7 +358,17 @@ typedef enum aoo_option
     // For sources, send an optional userformat blob along with the format messages
     // ---
     // Could be used for any purpose (channel layouts, labels, etc)
-    aoo_opt_userformat
+    aoo_opt_userformat,
+    // Only accept data from explicitly invited sources (int32_t) 0 or 1
+    // ---
+    // A sink normally auto-adds any source that sends it data and then decodes
+    // that source's stream, even if it was never invited. With this option set,
+    // a source that was not invited is declined instead: the sink still learns
+    // its ID (and pushes the usual AOO_SOURCE_ADD_EVENT), but ignores all data
+    // and format messages from it until invite_source() names it. That lets a
+    // caller refuse a stream at the network/decode stage rather than only
+    // muting it later in the playback chain.
+    aoo_opt_separate_unknown_sources
 } aoo_option;
 
 #define AOO_ARG(x) &x, sizeof(x)
@@ -552,6 +562,10 @@ AOO_API int32_t aoo_sink_uninvite_source(aoo_sink *sink, void *endpoint, int32_t
 
 // uninvite all sources (always threadsafe)
 AOO_API int32_t aoo_sink_uninvite_all(aoo_sink *sink);
+
+// only accept data from explicitly invited sources, 0 (default) or 1
+// (always threadsafe)
+AOO_API int32_t aoo_sink_set_separate_unknown_sources(aoo_sink *sink, int32_t separate);
 
 // handle messages from sources (threadsafe, but not reentrant)
 AOO_API int32_t aoo_sink_handle_message(aoo_sink *sink, const char *data, int32_t n,

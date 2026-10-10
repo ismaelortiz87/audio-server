@@ -233,6 +233,12 @@ public:
     // uninvite all sources (always thread safe)
     virtual int32_t uninvite_all() = 0;
 
+    // only accept data from explicitly invited sources, 0 (default) or 1
+    // (always thread safe)
+    int32_t set_separate_unknown_sources(int32_t separate){
+        return set_option(aoo_opt_separate_unknown_sources, &separate, sizeof(separate));
+    }
+
     // handle messages from sources (threadsafe, but not reentrant)
     virtual int32_t handle_message(const char *data, int32_t n,
                                    void *endpoint, aoo_replyfn fn) = 0;

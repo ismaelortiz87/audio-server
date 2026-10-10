@@ -61,7 +61,15 @@ int32_t aoo::sink::invite_source(void *endpoint, int32_t id, aoo_replyfn fn){
         src = &sources_.front();
         src->set_protocol_flags(protocol_flags_);
     }
+    // accepting an invited source is what makes it decodable when the sink only
+    // handles sources it has been told about (aoo_opt_separate_unknown_sources)
+    src->set_accepting(true);
     src->request_invite();
+    // A source that was declined earlier already has us as a sink on its side,
+    // so our /invite is dropped there ("sink already added") and it will not
+    // send its format. Ask for the format as well, exactly as we do for a
+    // source we have never heard of, so a peer that becomes allowed streams.
+    src->request_format();
 
     return 1;
 }
@@ -76,6 +84,10 @@ int32_t aoo::sink::uninvite_source(void *endpoint, int32_t id, aoo_replyfn fn){
     // try to find existing source
     auto src = find_source(endpoint, id);
     if (src){
+        // an uninvited source must stop being decoded right away, not only when
+        // the remote acts on the /uninvite we are about to send: a source that
+        // ignores it (e.g. a peer that never asked us) must cost us nothing.
+        src->set_accepting(false);
         src->request_uninvite();
         return 1;
     } else {
@@ -89,9 +101,14 @@ int32_t aoo_sink_uninvite_all(aoo_sink *sink){
 
 int32_t aoo::sink::uninvite_all(){
     for (auto& src : sources_){
+        src.set_accepting(false);
         src.request_uninvite();
     }
     return 1;
+}
+
+int32_t aoo_sink_set_separate_unknown_sources(aoo_sink *sink, int32_t separate){
+    return sink->set_option(aoo_opt_separate_unknown_sources, &separate, sizeof(separate));
 }
 
 int32_t aoo::sink::request_source_codec_change(void *endpoint, int32_t id, aoo_format & f)
@@ -202,6 +219,23 @@ int32_t aoo::sink::set_option(int32_t opt, void *ptr, int32_t size)
         CHECKARG(int32_t);
         protocol_flags_ = as<int32_t>(ptr) & 0xff;
         break;
+    // only accept data from explicitly invited sources
+    case aoo_opt_separate_unknown_sources:
+    {
+        CHECKARG(int32_t);
+        const bool separate = as<int32_t>(ptr) != 0;
+        if (separate != separate_unknown_sources_.load()){
+            separate_unknown_sources_ = separate;
+            // a source that already exists and was auto-added (i.e. never
+            // invited by us) is declined as soon as the option is switched on
+            if (separate){
+                for (auto& src : sources_){
+                    src.set_accepting(false);
+                }
+            }
+        }
+        break;
+    }
     // unknown
     default:
         LOG_WARNING("aoo_sink: unsupported option " << opt);
@@ -582,6 +616,12 @@ int32_t sink::handle_format_message(void *endpoint, aoo_replyfn fn,
         src->set_protocol_flags(protocol_flags_);
     }
 
+    if (separate_unknown_sources_.load() && !src->is_accepting()){
+        // declined: we know this source exists, but we ignore its format, so no
+        // decoder is ever built for it and nothing is ever decoded
+        return 0;
+    }
+
     return src->handle_format(*this, salt, f, (const char *)settings, size, version, (const char *) userfmt, ufsize);
 }
 
@@ -612,13 +652,28 @@ int32_t sink::handle_data_message(void *endpoint, aoo_replyfn fn,
     // try to find existing source
     auto src = find_source(endpoint, id);
     if (src){
+        if (separate_unknown_sources_.load() && !src->is_accepting()){
+            // declined: we already know this source, we just refuse its stream.
+            // The option is re-checked here, not only when the source was
+            // created: sources also stop being accepted via uninvite_source(),
+            // which leaves the local behaviour untouched when the option is off.
+            return 0;
+        }
         return src->handle_data(*this, salt, d);
     } else {
         // discard data message, add source and request format!
         sources_.emplace_front(endpoint, fn, id, salt);
         src = &sources_.front();
         src->set_protocol_flags(protocol_flags_);
-        src->request_format();
+        if (separate_unknown_sources_.load()){
+            // we did not invite this source: decline it, but keep the source so
+            // its id still reaches the AOO_SOURCE_ADD_EVENT handler (the caller
+            // needs it to invite the source once the peer's role allows it).
+            // Requesting a format here would start the very stream we refuse.
+            src->set_accepting(false);
+        } else {
+            src->request_format();
+        }
         return 0;
     }
 }
@@ -654,6 +709,10 @@ int32_t sink::handle_compact_data_message(void *endpoint, aoo_replyfn fn,
     // try to find existing source by salt
     auto src = find_source_by_salt(endpoint, salt);
     if (src){
+        if (separate_unknown_sources_.load() && !src->is_accepting()){
+            // declined source, as in handle_data_message
+            return 0;
+        }
         return src->handle_data(*this, salt, d);
     } else {
         // discard data message
