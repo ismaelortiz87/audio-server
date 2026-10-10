@@ -1017,12 +1017,29 @@ void ApiServer::setStateProvider (std::function<var()> provider)
 {
     std::lock_guard<std::mutex> g (impl->stateLock);
     impl->stateProvider = std::move (provider);
+
+    // The engine registers its provider after the listener is up, so sessions
+    // that connected earlier hold the placeholder: send them the real state
+    // (rev + 1, like any state/patch) so they never keep a stale snapshot.
+    if (impl->stateProvider)
+    {
+        ++impl->rev;
+        const auto json = impl->stateMessageLocked();
+        for (auto& s : impl->snapshotSessions())
+            if (s->isAuthenticated()) s->send (json);
+    }
 }
 
 int64 ApiServer::publishPatch (const var& ops)
 {
+    return publishPatch (ops, {});
+}
+
+int64 ApiServer::publishPatch (const var& ops, const std::function<void()>& underStateLock)
+{
     std::lock_guard<std::mutex> g (impl->stateLock);
     const auto r = ++impl->rev;
+    if (underStateLock) underStateLock();
     const auto json = toJson (makeObject ({ { "t", "patch" }, { "rev", (int64) r }, { "ops", ops } }));
     for (auto& s : impl->snapshotSessions())
         if (s->isAuthenticated()) s->send (json);

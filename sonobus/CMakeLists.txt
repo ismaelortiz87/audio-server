@@ -308,6 +308,8 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         ${PlatSourceFiles}
         Source/ApiServer.cpp
         Source/ApiServer.h
+        Source/EngineState.cpp
+        Source/EngineState.h
         Source/ApiSha1.h
         Source/AutoUpdater.cpp
         Source/AutoUpdater.h

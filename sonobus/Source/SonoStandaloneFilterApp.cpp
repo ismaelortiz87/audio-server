@@ -60,6 +60,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "SonobusPluginEditor.h"
 #include "AppIdentity.h"
 #include "ApiServer.h"   // P4.1
+#include "EngineState.h" // P4.2
 #include <csignal>
 
 // P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
@@ -154,6 +155,8 @@ public:
     bool apiPortWasGiven = false;
     bool apiOptionError = false;   // an invalid API option: quit with a non-zero status
     std::unique_ptr<crosspoint::ApiServer> apiServer;
+    std::unique_ptr<crosspoint::EngineState> engineState;   // P4.2 (declared after apiServer: destroyed first)
+    String loadedConfigPath;                                 // P4.2: agent state configPath
 
     // SIGTERM/SIGINT in headless mode request a normal quit, so shutdown()
     // runs (settings saved, API sockets closed). The handler only sets a flag;
@@ -407,6 +410,8 @@ public:
         }
 #endif
         apiConfig.features.clear();
+        // P4.2: what the state really carries (clients ignore unknown features)
+        apiConfig.features.add (isVdi ? "consoles" : "stations");
         apiConfig.selfName = cmdlineConnInfo.userName.isNotEmpty() ? cmdlineConnInfo.userName
                                                                    : SystemStats::getComputerName();
 
@@ -491,6 +496,28 @@ public:
         return !apiPortWasGiven;
     }
 
+    // P4.2: the engine state (snapshot + patches) behind the control API. Needs the
+    // processor and device manager, so it starts at the end of initialise().
+    void startEngineState()
+    {
+        if (apiServer == nullptr) return;
+        SonobusAudioProcessor* proc = nullptr;
+        AudioDeviceManager* dm = nullptr;
+        if (mainWindow != nullptr && mainWindow->pluginHolder != nullptr) {
+            proc = dynamic_cast<SonobusAudioProcessor*>(mainWindow->pluginHolder->processor.get());
+            dm = &mainWindow->getDeviceManager();
+        } else if (pluginHolder != nullptr) {
+            proc = dynamic_cast<SonobusAudioProcessor*>(pluginHolder->processor.get());
+            dm = &pluginHolder->deviceManager;
+        }
+        if (proc == nullptr) return;
+        crosspoint::EngineState::Options o;
+        o.role = apiConfig.role;
+        o.selfName = apiConfig.selfName;
+        o.configPath = loadedConfigPath;
+        engineState = std::make_unique<crosspoint::EngineState>(*proc, dm, *apiServer, o);
+    }
+
 #if CROSSPOINT_HAS_CONFIG
     //==========================================================================
     // P2.1: --config
@@ -507,6 +534,7 @@ public:
             return false;
         }
         haveConfig = true;
+        loadedConfigPath = f.getFullPathName();
         effectiveConfig = crosspoint::Config::merge(cli, yamlConfig);
         const auto & eff = effectiveConfig;
 
@@ -1135,6 +1163,8 @@ public:
         }
 
 
+        startEngineState();   // P4.2
+
         // F2: start the peer-table dump timer when --dump-peers was given. The
         // timer runs on the message thread; the dump itself takes the core lock.
         if (dumpPeersFilename.isNotEmpty() || testControlFilename.isNotEmpty()) {
@@ -1274,6 +1304,7 @@ public:
     {
         //DBG("shutdown");
         quitSignalWatcher.stopTimer();
+        engineState.reset(); // P4.2: before the server it publishes to
         apiServer.reset();   // P4.1: closes sockets and joins the API threads first
         if (mainWindow.get() != nullptr) {
             mainWindow->pluginHolder->savePluginState();

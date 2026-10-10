@@ -930,6 +930,29 @@ public:
     void setUseUniversalFont(bool flag) { mUseUniversalFont = flag; }
     bool getUseUniversalFont() const { return mUseUniversalFont; }
 
+    // P4.2 ===================================================================
+    // Read-only accessors for the control API state (EngineState.cpp). Kept in
+    // one block so it merges cleanly with the concurrent P1.5 edits.
+    struct ApiPeerInfo {
+        String userName;
+        PeerRole role = PeerRole::Unknown;
+        bool hasRole = false;
+        String kind;                 // Console kind from peer info; "" if not advertised
+        bool connected = false;
+        bool hasAgent = false;       // peer reported an agent block (P1.7)
+        AgentHealth agent;
+    };
+    // One consistent read (single mCoreLock hold) of what the public getters don't expose.
+    bool getRemotePeerApiInfo(int index, ApiPeerInfo & ret) const;
+    AgentHealth getSelfAgentHealth() const { return computeAgentHealth(); }
+    String getSelfConsoleKind() const;
+    bool isRecoveringFromServerLoss() const { return mRecoveringFromServerLoss; }
+    bool getServerEndpointInfo(String & host, int & port) const;
+    // Remembered stations (children "Station"), persisted inside ExtraState/Stations.
+    // Message thread only; the handle stays valid for the processor's lifetime.
+    ValueTree getApiStationsTree() const { return mApiStations; }
+    // end P4.2 ===============================================================
+
 private:
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SonobusAudioProcessor)
@@ -1225,6 +1248,8 @@ private:
     double mSessionConnectionStamp = 0.0;
     bool mWatchPublicGroups = false;
     String mCurrentUsername;
+
+    ValueTree mApiStations { "Stations" };   // P4.2
 
     double mPrevSampleRate = 0.0;
     Atomic<bool> mPendingUnmute {false}; // jlc

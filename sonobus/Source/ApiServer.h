@@ -120,6 +120,14 @@ public:
         session. `ops` is a var array of {op,path,value}. Returns the new rev. */
     int64 publishPatch (const var& ops);
 
+    /** As above, and runs `underStateLock` while the state lock is held, after
+        the rev was bumped and before any session can ask for a snapshot. The
+        state provider's data must be switched to the new state in there, so a
+        session joining concurrently gets either (old state, old rev) and the
+        patch, or (new state, new rev), never a state that misses the patch.
+        Do not call back into the ApiServer from it. */
+    int64 publishPatch (const var& ops, const std::function<void()>& underStateLock);
+
     //== P4.3: meters and other topics ==========================================
     void broadcast (const String& json);
     /** Only authenticated sessions subscribed to `topic` and not hidden. */
