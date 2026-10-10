@@ -24,6 +24,7 @@
 #include "SonobusPluginProcessor.h"
 
 #include <deque>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -40,6 +41,7 @@ public:
         String configPath;               // agent: the loaded YAML, else ""
         String configError;              // agent: last config load/reload error, else ""
         int intervalMs = 100;
+        std::function<String()> pttHotkey;   // P6.5: the global PTT binding ("⌥Space"), "" or unset = none (settings.pttHotkey null)
     };
 
     /** `deviceManager` may be null (no device info is reported then). Registers

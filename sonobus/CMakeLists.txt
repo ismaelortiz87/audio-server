@@ -212,6 +212,14 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         set (vst2cat "kPlugCategEffect")
    endif()
 
+    # P6.1: the Mac Console window is a WKWebView, so the SonoBus (not instrument)
+    # target needs JUCE's web browser support. Everything else stays without it.
+    if (APPLE AND "${target_name}" STREQUAL "SonoBus")
+        set (needs_web_browser TRUE)
+    else()
+        set (needs_web_browser FALSE)
+    endif()
+
     juce_add_plugin("${target_name}"
         IS_SYNTH "${is_instrument}"
         NEEDS_MIDI_INPUT TRUE
@@ -223,7 +231,7 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         
         ICON_BIG "../design/icon/crosspoint-1024.png"
         ICON_SMALL "../design/icon/crosspoint-256.png"
-        NEEDS_WEB_BROWSER FALSE
+        NEEDS_WEB_BROWSER ${needs_web_browser}
         VST2_CATEGORY "${vst2cat}"
         VST3_CATEGORIES "${vst3cats}"
         AAX_CATEGORY "AAX_ePlugInCategory_None"
@@ -317,6 +325,11 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
         Source/EngineState.cpp
         Source/EngineState.h
         Source/ApiSha1.h
+        Source/ConsoleShell.h        # P6.1
+        Source/GlobalHotkey.cpp      # P6.5
+        Source/GlobalHotkey.h
+        Source/GlobalHotkeyCarbon.cpp
+        Source/GlobalHotkeyCarbon.h
         Source/AutoUpdater.cpp
         Source/AutoUpdater.h
         Source/AppIdentity.h
@@ -701,7 +714,32 @@ function(sono_add_custom_plugin_target target_name product_name formats is_instr
     # P2.2: vendored YAML parser (rapidyaml) -- see the block above and
     # deps/rapidyaml/README.md. Gives the app target `#include <ryml_all.hpp>`.
     target_link_libraries("${target_name}" PRIVATE sono_yaml)
-            
+
+    if (APPLE)
+        # P6.5: Carbon RegisterEventHotKey (global push-to-talk hotkey)
+        target_link_libraries("${target_name}" PRIVATE "-framework Carbon")
+
+        # P6.1: bundle the Console UI (no build step, the folder is served as-is) into
+        # Crosspoint.app/Contents/Resources/console-ui for the standalone app.
+        if (TARGET ${target_name}_Standalone AND "${target_name}" STREQUAL "SonoBus")
+            set (CONSOLE_UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../console-ui")
+            set (console_ui_files "")
+            foreach (top index.html agent.html manifest.webmanifest agent.webmanifest sw.js)
+                list (APPEND console_ui_files "${CONSOLE_UI_DIR}/${top}")
+                set_source_files_properties ("${CONSOLE_UI_DIR}/${top}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/console-ui)
+            endforeach()
+            file (GLOB_RECURSE console_ui_assets CONFIGURE_DEPENDS "${CONSOLE_UI_DIR}/src/*" "${CONSOLE_UI_DIR}/icons/*")
+            foreach (f ${console_ui_assets})
+                file (RELATIVE_PATH rel "${CONSOLE_UI_DIR}" "${f}")
+                get_filename_component (reldir "${rel}" DIRECTORY)
+                set_source_files_properties ("${f}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/console-ui/${reldir}")
+                list (APPEND console_ui_files "${f}")
+            endforeach()
+            target_sources (${target_name}_Standalone PRIVATE ${console_ui_files})
+            source_group ("console-ui" FILES ${console_ui_files})
+        endif()
+    endif()
+
 endfunction()
 
 # most of the targets

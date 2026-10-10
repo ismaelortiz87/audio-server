@@ -63,6 +63,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "EngineState.h" // P4.2
 #include "AgentConnect.h" // P2.4
 #include "ApiCommands.h" // P4.3, P4.4
+#include "GlobalHotkey.h" // P6.5
 #include <csignal>
 
 // P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
@@ -172,6 +173,13 @@ public:
     std::unique_ptr<crosspoint::EngineState> engineState;   // P4.2 (declared after apiServer: destroyed first)
     std::unique_ptr<crosspoint::ApiCommands> apiCommands;   // P4.3/P4.4 (declared after engineState: destroyed first)
     String loadedConfigPath;                                 // P4.2: agent state configPath
+    String apiStartError;                                    // P6.1: why the API is not listening (shown in the window)
+    bool legacyUi = false;                                   // P6.1: hidden --legacy-ui keeps the old SonoBus editor in the window
+
+    // P6.5: global push-to-talk hotkey (windowed Console on macOS). Declared after
+    // apiCommands so it is destroyed first; shutdown() also resets it explicitly.
+    std::unique_ptr<crosspoint::GlobalHotkey> globalHotkey;
+    static constexpr const char* kPttHotkeyProp = "pttHotkey";
 
     // P2.4: headless only. Connect on launch and keep reconnecting; reopen a lost audio device.
     std::unique_ptr<crosspoint::AgentConnector> agentConnector;
@@ -494,6 +502,16 @@ public:
             }
         }
 
+        // P6.1: no --ui-dir given -> the Console UI bundled in the app
+        // (Crosspoint.app/Contents/Resources/console-ui, copied there by CMake).
+        if (! apiConfig.uiDir.isDirectory()) {
+           #if JUCE_MAC
+            auto bundled = File::getSpecialLocation (File::currentApplicationFile).getChildFile ("Contents/Resources/console-ui");
+            if (bundled.getChildFile ("index.html").existsAsFile())
+                apiConfig.uiDir = bundled;
+           #endif
+        }
+
         // Never expose the control API beyond loopback without a token.
         if (apiConfig.port > 0 && !apiConfig.isLoopbackBind() && apiConfig.token.isEmpty()) {
             std::cerr << "Error: --api-bind " << apiConfig.bindAddress
@@ -517,9 +535,53 @@ public:
             return true;
         }
         apiServer.reset();
+        apiStartError = r.getErrorMessage();
         std::cerr << (apiPortWasGiven ? "Error: " : "Warning: control API disabled: ") << r.getErrorMessage() << std::endl;
         return !apiPortWasGiven;
     }
+
+#if CROSSPOINT_HAS_WEB_SHELL
+    // P6.1: the window shows the Console UI (or, with the vdi role, the agent page)
+    // served by this engine's own API server -- or why that is not possible.
+    void showConsoleShell()
+    {
+        String error;
+        if (apiConfig.port <= 0)
+            error = "The control API is switched off (--api-port 0), and the window needs it to show the Console.\n\nStart Crosspoint without --api-port 0.";
+        else if (apiServer == nullptr)
+            error = "The control API could not start on port " + String (apiConfig.port) + ":\n" + apiStartError
+                  + "\n\nAnother Crosspoint or SonoBus may already be using that port. Quit it, or start this one with --api-port <other port>.";
+        else if (! apiConfig.uiDir.isDirectory())
+            error = "The Console UI files were not found. Expected them in the app bundle (Contents/Resources/console-ui).\n\nRebuild the app, or pass --ui-dir <path to console-ui>.";
+
+        // The window reaches the engine on loopback whatever the bind address is.
+        mainWindow->showWebShell ("http://127.0.0.1:" + String (apiConfig.port) + "/", error);
+    }
+
+    // P6.5: register the global push-to-talk hotkey (windowed Console only).
+    void startGlobalHotkey()
+    {
+        globalHotkey = std::make_unique<crosspoint::GlobalHotkey>();
+        auto* props = appProperties.getUserSettings();
+        String binding = props != nullptr ? props->getValue (kPttHotkeyProp, {}) : String();
+        String err;
+        if (binding.isEmpty() || crosspoint::GlobalHotkey::canonicalise (binding, err).isEmpty())
+            binding = crosspoint::GlobalHotkey::kDefaultBinding;
+
+        // A held hotkey is one more PTT holder next to the API clients (same logic as mic.ptt).
+        globalHotkey->onChange = [this] (bool down)
+        {
+            if (apiCommands != nullptr) { apiCommands->setHotkeyPtt (down); return; }
+            if (mainWindow != nullptr)    // no API (disabled/busy): drive the engine directly
+                if (auto* p = dynamic_cast<SonobusAudioProcessor*> (mainWindow->pluginHolder->processor.get()))
+                    p->setPttHeld (down && p->getMicMode() == SonobusAudioProcessor::MicMode::PushToTalk);
+        };
+        if (! globalHotkey->setBinding (binding, err))
+            std::cerr << "Warning: push-to-talk hotkey " << binding << " not registered: " << err << std::endl;
+        else
+            std::cerr << "Push-to-talk hotkey: " << globalHotkey->getBinding() << std::endl;
+    }
+#endif
 
     // P4.2: the engine state (snapshot + patches) behind the control API. Needs the
     // processor and device manager, so it starts at the end of initialise().
@@ -540,6 +602,8 @@ public:
         o.role = apiConfig.role;
         o.selfName = apiConfig.selfName;
         o.configPath = loadedConfigPath;
+        if (globalHotkey != nullptr)    // P6.5
+            o.pttHotkey = [this]() { return globalHotkey != nullptr ? globalHotkey->getBinding() : String(); };
         engineState = std::make_unique<crosspoint::EngineState>(*proc, dm, *apiServer, o);
 
         // P4.3 / P4.4: meters stream and command handler
@@ -550,6 +614,23 @@ public:
             agentConnector.reset();
             proc->clearAgentConnStatus();   // the state falls back to the live view
         };
+        if (globalHotkey != nullptr) {  // P6.5: settings.set { pttHotkey }, persisted in the app settings
+            hooks.setPttHotkey = [this](const String & spec, String & msg) {
+                const auto previous = globalHotkey->getBinding();
+                String canon = crosspoint::GlobalHotkey::canonicalise (spec, msg);
+                if (canon.isEmpty()) return false;
+                if (! globalHotkey->setBinding (canon, msg)) {
+                    String ignored;
+                    if (previous.isNotEmpty()) globalHotkey->setBinding (previous, ignored);   // keep what worked
+                    return false;
+                }
+                if (auto* props = appProperties.getUserSettings()) {
+                    props->setValue (kPttHotkeyProp, canon);
+                    appProperties.saveIfNeeded();
+                }
+                return true;
+            };
+        }
         hooks.initialConnection = cmdlineConnInfo;
         hooks.hasInitialConnection = cmdlineConnInfo.serverHost.isNotEmpty() && cmdlineConnInfo.groupName.isNotEmpty();
        #if CROSSPOINT_HAS_CONFIG
@@ -1192,6 +1273,7 @@ public:
 #endif
         }
 
+        legacyUi = arglist.removeOptionIfFound ("--legacy-ui");   // P6.1: hidden, troubleshooting only
         applyApiOptions (arglist);   // P4.1 (after --config, so YAML api:/role/username feed its defaults)
 
         auto testcontrol = removeLongOptionValue(arglist, testControlSpec, &testcontrolWasGiven);
@@ -1263,6 +1345,10 @@ public:
             // default. Peers use it to decide routing (P1.4), so a wrong first
             // advertisement could briefly open or close the wrong path.
             applyCommandLineRole(mainWindow->pluginHolder->processor.get());
+
+#if CROSSPOINT_HAS_WEB_SHELL
+            if (!legacyUi) showConsoleShell();   // P6.1
+#endif
 
 #if JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE
             Desktop::getInstance().setKioskModeComponent (mainWindow.get(), false);
@@ -1400,6 +1486,11 @@ public:
 
         }
 
+
+#if CROSSPOINT_HAS_WEB_SHELL
+        if (!doHeadless && apiConfig.role == "console" && crosspoint::GlobalHotkey::supported())
+            startGlobalHotkey();   // P6.5 (before the engine state: it reports the binding)
+#endif
 
         startEngineState();   // P4.2
 
@@ -1549,6 +1640,7 @@ public:
     {
         //DBG("shutdown");
         quitSignalWatcher.stopTimer();
+        if (globalHotkey != nullptr) { globalHotkey->onChange = nullptr; globalHotkey.reset(); }   // P6.5: first, releases the key
         apiCommands.reset(); // P4.3/P4.4: before the state and the server
         agentConnector.reset();        // P2.4: before the processor goes away
         agentDeviceWatcher.reset();
