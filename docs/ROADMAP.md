@@ -258,7 +258,7 @@ Replaces the current `docker/` job (VNC + raw PCM bridge).
 | P7.1 | Container runs the engine headless in Console role, joins over the VPN | done |
 | P7.2 | Serves the P5 Console UI; proxies the P4 API | done |
 | P7.3 | WebRTC (Opus) audio between browser and engine, both directions | done |
-| P7.4 | Publish through maelo's proxy at `crosspoint.app.lagreca.io` (TLS at the proxy, WebSocket upgrade, WebRTC UDP range on the VPN), D13 | todo |
+| P7.4 | Publish through maelo's proxy at `crosspoint.app.lagreca.io` (TLS at the proxy, WebSocket upgrade, WebRTC UDP range on the VPN), D13 | wip |
 | P7.5 | One container per web user; compose file + docs | done |
 | P7.6 | Remove the VNC / Xvfb / raw-PCM bridge pieces | done |
 | P7.7 | Installable PWA: manifest + service worker, "Install" in Chrome on Mac and Android | todo |

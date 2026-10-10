@@ -115,7 +115,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
-| P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | todo | |
+| P7.4 | Publish via maelo's proxy (TLS there), WS + WebRTC UDP (D13) | P7.2 | S | any | wip | |
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | done | Claude |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | done | Claude |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
@@ -1465,11 +1465,38 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   with **WebSocket upgrade** (`/api/v1/ws`), long `proxy_read_timeout`, no
   buffering, and `X-Forwarded-Proto: https` so the P7.2 session cookie gets
   `Secure`; `/rtc/` → `:8090` (plain HTTP); **UDP 40000–40019 published 1:1 on
-  the VPN IP** (media bypasses the proxy). **Remaining unknown:** where the
-  container will actually run — it must be a Linux host on the VPN (Docker
-  Desktop on macOS cannot route peers to container UDP, P7.1), and neither
-  `maelosdebian` (192.168.0.71) nor the proxy host is known to have Docker yet.
-  Blocked on that host choice + proxy credentials; then the on-phone ICE check.
+  the VPN IP** (media bypasses the proxy).
+- **Host problem solved, container running (2026-10-10).** The web Console now
+  runs on **`maelosdebian` (192.168.0.71, VPN 10.248.233.7)** under **rootless
+  podman 5.4.2** — no `sudo`, which is why this host was usable at all. The
+  amd64 image was exported, transferred and `podman load`ed there, and runs as
+  a systemd user unit `~/.config/systemd/user/crosspoint-webconsole.service`
+  (`active`, `Result=success`, `NRestarts=0`).
+  **`--network host` is mandatory:** podman's default **pasta** networking gives
+  the container a private IP that peers cannot reach, and AOO's handshake then
+  fails with `couldn't establish UDP connection to lagreca|<peer>; timed out
+  after 5 seconds` even though the group join succeeds. With host networking the
+  peers find each other — no `-p` publishing needed then. **Verified from the
+  Mac over the VPN:** `/api/v1/health` → 200 (`role: "console"`), `/` → 200
+  (`<title>Crosspoint</title>`), `/rtc/health` → 200. The Console's own state
+  showed the VDI as a station:
+  `maelosdebian: presence "online", health "clear", latencyMs 30, lossPct 0.1,
+  jitterBufferMs 22, agent {input "silent", ...}` — and it listed a genuinely
+  unknown peer (`audosrv`) in `unknownPeers`, so P1.6/P1.7 read correctly
+  through the whole stack.
+- **Still open for P7.4: the public vhost.** `crosspoint.app.lagreca.io`
+  resolves to **192.168.0.6**, which runs **nginx** and answers 443, but returns
+  **404** for our hostname (identical to a nonexistent name) while
+  `app.lagreca.io` returns **200** — so the wildcard/TLS is fine and only the
+  **vhost + proxy_pass is missing**. That host rejects our SSH keys
+  (`maelo`/`root`/`ubuntu`/`admin`), so the route must be added by maelo or with
+  credentials. Needed: `/` + `/api/` → `http://10.248.233.7:7070` with
+  **WebSocket upgrade** (`/api/v1/ws`), long `proxy_read_timeout`, no buffering,
+  `X-Forwarded-Proto: https`; `/rtc/` → `http://10.248.233.7:8090`;
+  `CROSSPOINT_API_ORIGIN=https://crosspoint.app.lagreca.io`; and **UDP
+  40000–40019 must reach 10.248.233.7 directly** (media bypasses the proxy).
+  Then the on-phone ICE check (currently unverified — the gateway is up and
+  answers `/rtc/health`, but no browser has negotiated media yet).
 
 ### P7.5 — Per-user containers, compose + docs · S
 - **Depends on:** P7.2, P7.3, P7.4
