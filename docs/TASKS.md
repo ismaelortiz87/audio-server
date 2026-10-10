@@ -69,7 +69,7 @@ Ordered so that every task appears after everything it depends on.
 | P0.4 | Record P0 findings, decide on P8 timing | P0.2, P0.3 | S | human | done | maelo |
 | F2 | Local multi-peer test harness (aooserver + N headless peers) | F1 | M | any | done | Claude (helper) |
 | F2.1 | F2 coverage gaps from the P1.4 review: mixed known + unknown, mute interaction | F2, P1.4 | S | any | todo | |
-| L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | todo | |
+| L1 | **Linux engine latency: ~10–12 s through engine↔engine in containers** (blocks P7, may affect VDIs) | P7.1 | M | any | wip | Claude (subagent J, opus) |
 | P1.1 | `Role` enum + CLI flag `--role` | F1 | S | any | done | Claude (helper) |
 | P1.2 | Advertise / parse role in peer-info JSON | P1.1 | S | any | done | Claude (helper) |
 | P1.3 | New peers start send+recv blocked | P1.2 | S | any | done | Claude (helper) |
@@ -81,8 +81,8 @@ Ordered so that every task appears after everything it depends on.
 | P2.1 | `--config file.yaml` loader | P1.1, P2.2 | M | any | done | Claude (subagent B, sonnet) |
 | P2.11 | Linux: pin input/output to PipeWire nodes via named ALSA PCMs (D12) | P2.1 | M | any | done | Claude (subagent H, sonnet) |
 | P2.7 | `vdi.example.yaml` + config docs | P2.1 | S | any | done | Claude (subagent B, with P2.1) |
-| P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | todo | |
-| P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | todo | |
+| P2.3 | VDI role locks (mono, no monitor) | P1.4, P2.1 | S | any | wip | Claude (subagent L, sonnet) |
+| P2.4 | Auto-connect + auto-reconnect with backoff | P2.1 | M | any | wip | Claude (subagent L, sonnet) |
 | P2.5 | Run as a systemd user unit on Debian 13 (D12) | P2.4 | M | any | todo | |
 | P2.9 | Minimal native tray icon (not a priority, D11) | P2.4, UX4 | S | any + design review | deferred | |
 | P2.10 | `.deb` for Debian 13, built in a trixie container (D12) | P2.5 | M | any | todo | |
@@ -101,8 +101,8 @@ Ordered so that every task appears after everything it depends on.
 | P5.1 | Scaffold `console-ui/` from the UX4 prototype + mock API | UX4, P4.5 | M | any + design review | done | Claude |
 | P4.1 | Embedded WebSocket server in the engine | P4.5 | M | any | done | Claude (subagent C, sonnet) |
 | P4.2 | State snapshot + change events | P4.1 | M | any | done | Claude (subagent I, sonnet) |
-| P4.3 | Meters stream | P4.1 | S | any | todo | |
-| P4.4 | Commands | P4.2, P1.5 | M | any | todo | |
+| P4.3 | Meters stream | P4.1 | S | any | wip | Claude (subagent K, sonnet) |
+| P4.4 | Commands | P4.2, P1.5 | M | any | wip | Claude (subagent K, sonnet) |
 | P2.6 | VDI agent web UI on localhost (D10), the UX3 prototype as designed | P5.1, P4.2, P4.4, P2.3 | M | any + design review | todo | |
 | P5.2 | Mixer view (VDI channels) per spec | P5.1 | M | any + design review | done | Claude |
 | P5.3 | Talk-back / "you" controls per spec | P5.1 | M | any + design review | done | Claude |
