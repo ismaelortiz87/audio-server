@@ -6460,6 +6460,36 @@ int SonobusAudioProcessor::indexOfRemotePeer(RemotePeer * peer) const
 }
 
 
+// P4.2: control API accessors (see the block in the header).
+bool SonobusAudioProcessor::getRemotePeerApiInfo(int index, ApiPeerInfo & ret) const
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index < 0 || index >= mRemotePeers.size()) return false;
+    auto * peer = mRemotePeers.getUnchecked(index);
+    ret.userName = peer->userName;
+    ret.role = peer->remoteRole;
+    ret.hasRole = peer->hasRemoteRole;
+    ret.kind = peer->remoteKind;
+    ret.connected = peer->connected;
+    ret.hasAgent = peer->hasRemoteAgent;
+    ret.agent = peer->remoteAgent;
+    return true;
+}
+
+String SonobusAudioProcessor::getSelfConsoleKind() const
+{
+    return consoleKindString();
+}
+
+bool SonobusAudioProcessor::getServerEndpointInfo(String & host, int & port) const
+{
+    if (!mServerEndpoint) return false;
+    host = mServerEndpoint->ipaddr;
+    port = mServerEndpoint->port;
+    return host.isNotEmpty();
+}
+
+
 // F2 test harness support: write a JSON snapshot of the peer table. Called on a
 // timer off the audio thread; never called in normal use.
 void SonobusAudioProcessor::dumpPeersToFile(const File & file)
@@ -9260,7 +9290,8 @@ void SonobusAudioProcessor::getStateInformationWithOptions(MemoryBlock& destData
     extraTree.setProperty(reconnectServerLossKey, mReconnectAfterServerLoss.get(), nullptr);
 
     extraTree.appendChild(mVideoLinkInfo.getValueTree(), nullptr);
-    
+    extraTree.appendChild(mApiStations.createCopy(), nullptr);   // P4.2
+
     ValueTree inputChannelGroupsTree = tempstate.getOrCreateChildWithName(inputChannelGroupsStateKey, nullptr);
     if (includeInputGroups) {
         inputChannelGroupsTree.removeAllChildren(nullptr);
@@ -9353,6 +9384,15 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
 
         ValueTree extraTree = mState.state.getChildWithName(extraStateCollectionKey);
         if (extraTree.isValid()) {
+            // P4.2: remembered stations. Replace the children in place so handles held by EngineState stay valid.
+            {
+                auto saved = extraTree.getChildWithName("Stations");
+                if (saved.isValid()) {
+                    mApiStations.removeAllChildren(nullptr);
+                    for (auto c : saved) mApiStations.appendChild(c.createCopy(), nullptr);
+                }
+            }
+
             int port = extraTree.getProperty(useSpecificUdpPortKey, mUseSpecificUdpPort);
             setUseSpecificUdpPort(port);
 

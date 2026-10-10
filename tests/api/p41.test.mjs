@@ -229,7 +229,7 @@ test('hello then placeholder state (loopback, no token)', async () => {
   const st = (await ws.next()).json;
   assert.equal(st.t, 'state');
   assert.equal(typeof st.rev, 'number');
-  assert.deepEqual(st.state, { self: { name: 'test-console', role: 'console' } });
+  assert.deepEqual({ name: st.state.self.name, role: st.state.self.role }, { name: 'test-console', role: 'console' });   // P4.2: the engine's full state may follow
   // resync returns a fresh state with a rev that did not go backwards
   ws.sendJson({ t: 'resync' });
   const again = (await ws.next(f => f.json?.t === 'state')).json;
@@ -240,7 +240,7 @@ test('hello then placeholder state (loopback, no token)', async () => {
 test('VDI role: hello and state say vdi', async () => {
   const ws = await RawWs.open(pVdi);
   assert.equal((await ws.next()).json.role, 'vdi');
-  assert.deepEqual((await ws.next()).json.state, { self: { name: 'test-vdi', role: 'vdi' } });
+  { const self = (await ws.next()).json.state.self; assert.deepEqual({ name: self.name, role: self.role }, { name: 'test-vdi', role: 'vdi' }); }   // P4.2
   ws.destroy();
 });
 
@@ -484,7 +484,7 @@ test('real console-ui client.js completes the handshake against the engine', asy
   let r = await open(pConsole, { expectRole: 'console' });
   assert.equal(r.s, 'ready');
   assert.equal(r.client.hello.role, 'console');
-  assert.deepEqual(r.client.store.state, { self: { name: 'test-console', role: 'console' } });
+  assert.deepEqual({ name: r.client.store.state.self.name, role: r.client.store.state.self.role }, { name: 'test-console', role: 'console' });   // P4.2
   await assert.rejects(r.client.cmd('station.setMute', { station: 'A', on: true }),
     e => e instanceof ApiError && e.code === 'not_supported');
   r.client.stop();
