@@ -190,6 +190,12 @@ public:
     void request_invite(){ streamstate_.request_invitation(stream_state::INVITE); }
 
     void request_uninvite(){ streamstate_.request_invitation(stream_state::UNINVITE); }
+
+    // aoo_opt_separate_unknown_sources: while set, a source that has not been
+    // named by invite_source() is declined -- it is still discovered, but its
+    // data and format messages are ignored, so nothing is ever decoded for it.
+    void set_accepting(bool accepting) { accepting_ = accepting; }
+    bool is_accepting() const { return accepting_.load(std::memory_order_relaxed); }
 private:
     struct data_request {
         int32_t sequence;
@@ -225,6 +231,10 @@ private:
     // audio decoder
     std::unique_ptr<aoo::decoder> decoder_;
     // state
+    // "accepting" means we may decode this source's stream; when the sink runs
+    // with aoo_opt_separate_unknown_sources it stays false until invite_source()
+    // names this source, and a declined source's data/format is dropped.
+    std::atomic<bool> accepting_{ true };
     int32_t newest_ = 0; // sequence number of most recent incoming block
     int32_t next_ = 0; // next outgoing block
     int32_t nextneedsfadein_ = -1; // sequence number that needs fadein
@@ -266,6 +276,7 @@ public:
     int32_t uninvite_source(void *endpoint, int32_t id, aoo_replyfn fn) override;
                              
     int32_t uninvite_all() override;
+
 
     int32_t handle_message(const char *data, int32_t n,
                            void *endpoint, aoo_replyfn fn) override;
@@ -333,6 +344,10 @@ private:
     std::atomic<float> resend_interval_{ AOO_RESEND_INTERVAL * 0.001 };
     std::atomic<int32_t> resend_maxnumframes_{ AOO_RESEND_MAXNUMFRAMES };
     std::atomic<int32_t> protocol_flags_{ 0 };
+    // aoo_opt_separate_unknown_sources: refuse to decode sources we have not
+    // explicitly invited. Off by default, which preserves the upstream AOO
+    // behaviour of auto-accepting any source that sends us data.
+    std::atomic<bool> separate_unknown_sources_{ false };
     // the sources
     lockfree::list<source_desc> sources_;
     // timing

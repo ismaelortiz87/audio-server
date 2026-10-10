@@ -105,6 +105,17 @@ static bool disableRoleBlocking()
     return flag;
 }
 
+// F2.1 counterfactual for B1: with this set, a blocked peer's stream is accepted
+// and decoded as before the sink-level fix and only silenced at the playback
+// gain. It exists so the test can show that the sink gate -- not some unrelated
+// change to the matrix -- is what makes preFaderPeakDb go silent.
+//   SONOBUS_NO_SINK_DECLINE=1 -> do not decline uninvited sources
+static bool disableSinkDecline()
+{
+    static bool flag = envFlagSet("SONOBUS_NO_SINK_DECLINE");
+    return flag;
+}
+
 static bool disableRoleAdvertising()
 {
     static bool flag = envFlagSet("SONOBUS_NO_ROLE_ADVERT");
@@ -7142,6 +7153,20 @@ SonobusAudioProcessor::RemotePeer * SonobusAudioProcessor::doAddRemotePeerIfNece
         
         retpeer->oursink->set_dynamic_resampling(mDynamicResampling.get() ? 1 : 0);
         retpeer->oursource->set_dynamic_resampling(mDynamicResampling.get() ? 1 : 0);
+
+        // P1.4/B1: never decode a source we have not invited. Without this the
+        // AOO sink auto-adds and decodes any source that sends it data, so a
+        // peer the routing matrix blocks -- typically one that advertises no
+        // role, i.e. stock SonoBus -- kept streaming into us and was silenced
+        // only later, at the playback gain. With it the stream is refused at
+        // the sink: no decode, no resend requests, no bandwidth. The source is
+        // still discovered, so its id arrives with AOO_SOURCE_ADD_EVENT and
+        // setRemotePeerRecvActive() invites it as soon as the matrix allows.
+        // SONOBUS_NO_ROLE_BLOCK restores the old open-by-default mesh, which
+        // must keep accepting sources that were never invited, and
+        // SONOBUS_NO_SINK_DECLINE is the B1 counterfactual: it turns the gate
+        // back off on an otherwise unchanged build.
+        retpeer->oursink->set_separate_unknown_sources(!disableRoleBlocking() && !disableSinkDecline());
 
         
         retpeer->workBuffer.setSize(2, currSamplesPerBlock, false, false, true);

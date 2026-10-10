@@ -881,6 +881,47 @@
         }
       ]
     },
+    "matrix-mixed-ungated": {
+      "description": "F2.1/B1 counterfactual for `matrix-mixed`. Same 1 console + 1 vdi + 1 no-advert peer, and the same routing matrix, but every peer runs with SONOBUS_NO_SINK_DECLINE=1, which switches off the sink-level refusal of uninvited sources on an otherwise unchanged build. The matrix still holds and every allow flag is unchanged, yet the VDI decodes and meters the blocked peer's tone again: v1 -> u1 preFaderPeakDb is loud and its packetsReceived rises. The blocked-peer pre-fader assertions are therefore inverted here (loud, not <= -60), which makes this scenario FAIL -- by design. It exists to show that the sink gate, and not the routing decision, is what fixes B1; tests/f2/counterfactual-b1.sh asserts that it fails on exactly those lines.",
+      "group": "f2-matrix-mixed-ungated",
+      "routing": "matrix",
+      "expect": "matrix",
+      "peers": [
+        {"name": "c1", "role": "console", "env": {"SONOBUS_TEST_TONE_HZ": "660", "SONOBUS_NO_SINK_DECLINE": "1"}},
+        {"name": "v1", "role": "vdi", "env": {"SONOBUS_TEST_TONE_HZ": "440", "SONOBUS_NO_SINK_DECLINE": "1"}},
+        {"name": "u1", "role": null, "advertise": false, "env": {"SONOBUS_TEST_TONE_HZ": "880", "SONOBUS_NO_SINK_DECLINE": "1"}}
+      ],
+      "steps": [
+        {
+          "name": "ungated-still-decodes",
+          "hold": 5,
+          "matrix": true,
+          "expect": [
+            {"peer": "c1", "of": "v1", "field": "sendAllow", "eq": true},
+            {"peer": "c1", "of": "v1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "sendAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "recvAllow", "eq": true},
+            {"peer": "v1", "of": "c1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "v1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "c1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "sendAllow", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "recvAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "sendAllow", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "recvAllow", "eq": false},
+            {"peer": "c1", "of": "u1", "field": "role", "eq": "unknown"},
+            {"peer": "v1", "of": "u1", "field": "role", "eq": "unknown"},
+            {"peer": "c1", "of": "u1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v1", "of": "u1", "field": "preFaderPeakDb", "min": -16},
+            {"peer": "v1", "of": "u1", "field": "packetsReceived", "increases": true},
+            {"peer": "c1", "of": "u1", "field": "receivingAudio", "eq": false},
+            {"peer": "v1", "of": "u1", "field": "receivingAudio", "eq": false},
+            {"peer": "u1", "of": "c1", "field": "preFaderPeakDb", "max": -60},
+            {"peer": "u1", "of": "v1", "field": "preFaderPeakDb", "max": -60}
+          ]
+        }
+      ]
+    },
     "mute-held": {
       "description": "F2.1: the console starts with global SEND mute on (SONOBUS_TEST_START_SEND_MUTE=1). While muted the VDI receives nothing from it; the permitted-but-muted pair keeps its permission in the cache. After a timed unmute console->vdi opens and the audio arrives, while the same-role console and the unknown peer (matrix-blocked, caches pinned false) stay blocked through the mute->unmute.",
       "group": "f2-mute-held",
