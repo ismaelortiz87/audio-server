@@ -62,6 +62,12 @@ because it is part of the public upstream story; nothing links to it.
 4. `sonobus/deps/` still holds everything that is *not* a separate repo:
    `ff_meters`, the prebuilt Opus static libs (`mac/`, `windows/`, `ios/`,
    `android/`). Their paths are unchanged.
+5. **Local patch to `juce/` (L1):** `modules/juce_audio_devices/native/juce_ALSA_linux.cpp`
+   drops the hidden capture backlog of plugin ALSA PCMs (alsa-plugins `pulse`,
+   which can queue ~11 s while reporting one buffer). Without it, the Linux
+   engine's input latency grew to 10+ s in containers. The patch is marked
+   `Crosspoint (L1)`; keep it when updating `juce/`. Measure with
+   `tests/latency/run.sh`.
 
 ## History / pulling upstream changes
 
