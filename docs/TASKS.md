@@ -870,6 +870,21 @@ UI is for checking and fixing a VDI when needed.
   Not yet exercised: device switching through PipeWire nodes on Linux
   (P4.4 path untested on Linux), and the YAML write-back from the page (covered
   at API level by p43p44).
+- **UX gap worth a design decision (D7 — Claude's call, not implemented here).**
+  `crosspoint.desktop` has `Exec=crosspoint %u`, i.e. the application-menu entry
+  launches the **GUI** binary, which is exactly what a headless VDI does not
+  want: it needs an X display (fails with "Authorization required" / a
+  `DISPLAY` that may be unset), and it does **not** start the agent. A user
+  installing the package and clicking "Crosspoint" therefore gets a broken
+  window instead of their console, and the natural-looking
+  `open crosspoint` / `xdg-open crosspoint` is a *URL* attempt, so the browser
+  reports `DNS_PROBE_FINISHED_NXDOMAIN` for the bare word "crosspoint". The
+  agent's page is at **`http://localhost:7071/`** (VDI default port).
+  Suggested fix (design owner to approve): point the desktop entry at the agent
+  page (`Exec=xdg-open http://localhost:7071/`) or drop the `.desktop` file from
+  the VDI package, and add a line to `packaging/debian/INSTALL.md` §5 giving the
+  URL explicitly. Left alone here because it is UI/copy, and D7 keeps design
+  decisions with the design session.
 
 ### P2.5 — Run as a service
 - **Depends on:** P2.4 · **Size:** M
