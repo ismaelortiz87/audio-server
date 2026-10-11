@@ -4,10 +4,10 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-**There are currently no open bugs**; B1–B3 are closed below.
+Open: **B9** and **B10** (found on the first VDI deployment, see below); B1–B8 are closed.
 
 Last updated: 2026-10-10 by Claude (lead session).
-Repo state referenced: `main` @ `36f2c5ef` (local, ahead of `origin/main`).
+Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
 | ID | Bug | Severity | Found in | Status |
@@ -15,6 +15,9 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B1](#b1--a-vdi-still-receives-and-decodes-streams-from-blocked-peers) | A VDI still receives and decodes the stream of a peer the routing matrix blocks | Medium (no audible leak) | F2.1 `matrix-mixed` | **Closed** — `bd8ede82` |
 | [B2](#b2--the-default-global-push-to-talk-hotkey-is-never-registered) | The default global push-to-talk hotkey (⌥Space) is never registered | High for P6.5 (feature dead by default) | P6.5 WIP | **Closed** — `080e6c78` |
 | [B3](#b3--steps-frozen-evaluator-self-test-is-intermittent) | `steps-frozen` evaluator self-test is intermittent | Low (test tooling only) | other agent's handoff | **Closed** — `d71a43a8` |
+| [B4–B8](#first-vdi-deployment-maelosdebian-2026-10-10) | First real deployment: VDI audio never reached the Mac Console (five causes) | Critical | maelosdebian + Mac app | **Closed** — `f3f2dcef`, `fb91e5b6` |
+| [B9](#b9--public-server-peering-is-unreliable-over-the-vpn) | Peering through `aoo.sonobus.net` is unreliable when the Console is on the VPN | High | maelosdebian | **Open** (worked around: VPN server) |
+| [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Open** |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -356,6 +359,51 @@ Mac web-view Console shell and the global push-to-talk hotkey.
 
 ---
 
+## First VDI deployment (maelosdebian, 2026-10-10)
+
+Symptom: the Console's mic reached the VDI, but the VDI's audio (music in
+Chrome) never reached the Mac. Five independent causes, all fixed and verified
+live: the Console then metered the VDI at −4…−17 dB rms and played it on the
+MacBook speakers.
+
+| ID | Cause | Evidence | Fix |
+|---|---|---|---|
+| B4 | WirePlumber 0.5 links a capture stream to a sink's monitor only if the stream has `stream.capture.sink=true`; otherwise it **silently uses the default source** (on the VDIs, the `Crosspoint-Input` virtual mic). The agent sent silence. | `pw-link`: `alsa_capture.crosspoint` ← `Crosspoint-Input`. `arecord -D crosspoint_in` rms 0.017 without the flag, 0.297 with it. The container test passed only because it had no other source. | `f3f2dcef`: `prepare()` sets `PIPEWIRE_ALSA`; the container test gains a default-source decoy and checks against it |
+| B5 | The agent page's pickers listed raw ALSA PCMs, the pinned `Crosspoint input: X` in **both** lists. Picking one was taken as a PipeWire node name → endless reopen loop, then `Default Audio Device` (= the virtual mic). | journal 20:55–20:58: `'Crosspoint input: Crosspoint-Output' is not a PipeWire node`; generated `capture_node "Crosspoint input: …"` | `f3f2dcef`: Linux pickers list PipeWire nodes; state reports the YAML node; legacy names map back; device meters and testTone follow |
+| B6 | Mac app: SonoBus's global receive mute was saved on and restored. Crosspoint has no button for it, so every peer was refused. | `mastrecvmute = 1.0` in `~/Library/Application Support/Crosspoint/Crosspoint.settings`; a fresh headless Console on the same Mac received −15 dB from the same agent | `fb91e5b6`: global send/receive mutes are not restored |
+| B7 | Mac app: on every server connect the hidden legacy editor auto-joined with its own stale connection info and re-saved it on top of recents. It raced the API's join, and its failed join **disconnected** the Console. | aooserver log: `GroupJoin` then `GroupLeave`+`UserLeave` in the same second; a stale public-server entry reappears 20 ms after the API's | `fb91e5b6`: the editor stands down when the API started the connection |
+| B8 | `connection.connect` with only a new server kept no group password (lookup was by group **and** host). | saved VPN entry had an empty `groupPassword`; joins rejected | `fb91e5b6`: falls back to the group's saved password |
+
+Also found: `.dockerignore` (P2.10) excluded `tests/`, so `tests/linux/pipewire-pin.sh`
+could not build (fixed in `fb91e5b6`). And `.deb` versions now carry the commit time
+(`1.7.2+git<YYYYmmddHHMM>.<sha>`), so apt sees newer builds as upgrades (`f3f2dcef`).
+
+## B9 — Public-server peering is unreliable over the VPN
+
+**Facts.** The Mac sends everything through the VPN (`utun4`, 10.248.233.2,
+default route). The VDI is on the same VPN (`wg0`, 10.248.233.7), but its default
+route is its LAN (192.168.0.71). Through `aoo.sonobus.net`, the peers learn each
+other's NAT and LAN addresses rather than the VPN ones, and replies leave from an
+address the other side didn't send to. Observed: after agent restarts, peers show
+`connected` but exchange no peer info and no audio (role `unknown`, 0 packets,
+`aoo_source: sink not found`), sometimes for minutes. Sometimes it recovers.
+
+**Workaround in place.** maelosdebian and the Mac app use the self-hosted server
+on the VPN, `10.248.233.7:10998` (P8). With that server, peering was immediate
+and stable across restarts.
+
+**Left.** Decide whether the VPN server becomes the default for every VDI. The
+installer still defaults to `aoo.sonobus.net:10998`; pass `--server`.
+
+## B10 — The Mac Console does not reconnect at launch
+
+The app starts with `reconnectlast = 0` (SonoBus's "reconnect to last"), so after
+every launch the Console sits at "Not connected" until Connect is pressed. A
+Console should rejoin its last server and group by itself. Decide: turn the
+setting on for the Console role, or have the shell reconnect through the API.
+
+---
+
 ## Closed
 
 | ID | Bug | Fixing commit | Merged |
@@ -363,6 +411,8 @@ Mac web-view Console shell and the global push-to-talk hotkey.
 | B1 | A VDI still receives and decodes streams from blocked peers | `bd8ede82` | `36f2c5ef` |
 | B2 | The default global push-to-talk hotkey (⌥Space) is never registered | `080e6c78` | `192e5f1f` |
 | B3 | `steps-frozen` evaluator self-test is intermittent | `d71a43a8` | `36f2c5ef` |
+| B4, B5 | Agent captured the default source, not the pinned monitor; ALSA names in the Linux pickers | `f3f2dcef` | local `main` |
+| B6, B7, B8 | Mac Console: restored global receive mute; legacy editor raced API connects; lost password on server change | `fb91e5b6` | local `main` |
 
 Earlier defects found and fixed during the build-out are recorded in the
 TASKS.md Results. Examples: the double-applied peer gain (P1.5), the
