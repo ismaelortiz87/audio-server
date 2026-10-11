@@ -416,15 +416,24 @@ public:
     {
         snd_pcm_sframes_t delay = 0;
 
+        // Only a real backlog counts. Through pipewire-alsa the reported delay also
+        // holds the graph quantum, which can be far above our ALSA buffer (a 256-frame
+        // stream in a 1024-quantum graph sits at ~1024+ frames all the time). A
+        // threshold of two buffers then dropped live audio every few blocks: audible
+        // cuts on the VDIs. So: never below 250 ms, and drop back to 100 ms at most.
+        const auto rate = sampleRate > 0.0 ? sampleRate : 48000.0;
+        const auto limit  = jmax (2 * (snd_pcm_sframes_t) bufferFrames, (snd_pcm_sframes_t) (0.25 * rate));
+        const auto target = jmax ((snd_pcm_sframes_t) bufferFrames, (snd_pcm_sframes_t) (0.10 * rate));
+
         if (handle == nullptr || bufferFrames == 0 || numSamples <= 0
             || snd_pcm_delay (handle, &delay) < 0
-            || delay <= 2 * (snd_pcm_sframes_t) bufferFrames)
+            || delay <= limit)
             return;
 
         ++overrunCount;
         const int maxBlocks = jmax (1, (int) (sampleRate / numSamples));
 
-        for (int i = 0; i < maxBlocks && delay - numSamples >= (snd_pcm_sframes_t) bufferFrames; ++i)
+        for (int i = 0; i < maxBlocks && delay - numSamples >= target; ++i)
         {
             if (! readFromInputDevice (inputChannelBuffer, numSamples))
                 return;
