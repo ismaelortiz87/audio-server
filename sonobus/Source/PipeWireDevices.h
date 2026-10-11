@@ -53,6 +53,10 @@ struct Resolved
     // is fatal (GUI) or retried (headless agent, AgentDeviceWatcher).
     bool missing = false;
     std::string missingMsg;
+    // The graph's largest quantum (clock.force-quantum, else clock.max-quantum, from
+    // the "settings" metadata); 0 when unknown. The engine's ALSA ring (two blocks)
+    // must hold one graph cycle, or it overruns every cycle: see minBufferFor().
+    int graphMaxQuantum = 0;
 };
 
 // Pure helpers (unit-testable without PipeWire).
@@ -62,6 +66,11 @@ std::vector<Node> inputCandidates (const std::vector<Node>& nodes);
 std::vector<Node> outputCandidates (const std::vector<Node>& nodes);
 // Parses `pw-dump` JSON; false (with err) if it is not the expected array.
 bool parseNodes (const std::string& json, std::vector<Node>& out, std::string& err);
+// The "settings" metadata's clock.force-quantum (if > 0) else clock.max-quantum; 0 if absent.
+int parseMaxQuantum (const std::string& json);
+// Smallest engine buffer (power of two, >= requested) whose two-block ALSA ring
+// holds one graph cycle of `maxQuantum` frames. 256 in a 1024 graph -> 512.
+int minBufferFor (int requested, int maxQuantum);
 // The text of the generated ALSA config.
 std::string makeAsoundConf (const std::optional<std::string>& captureNode,
                             const std::optional<std::string>& playbackNode,

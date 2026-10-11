@@ -34,6 +34,8 @@ sleep 0.5
 # back to it when it refuses the capture-from-sink link, which is the bug this catches.
 pactl load-module module-remap-source source_name=decoy_mic master=crosspoint_mic.monitor source_properties="device.description=Decoy-Mic" >/dev/null
 pactl set-default-source decoy_mic
+# Like the production VDIs: the graph locked at quantum 1024 (min = max = 1024).
+for k in clock.min-quantum clock.max-quantum clock.quantum; do pw-metadata -n settings 0 $k 1024 >/dev/null; done
 sleep 1
 echo "sources:"; pactl list short sources
 echo "sinks:";   pactl list short sinks
@@ -47,6 +49,7 @@ username: vdi-pw
 audio:
   input_device: loopback_sink.monitor
   output_device: crosspoint_mic
+  buffer: 256
 EOF
 # A setup file with the engine's "dry" level at 1.0: the input is passed straight to the
 # output, so a tone that enters at loopback_sink.monitor leaves at crosspoint_mic. (The
@@ -89,6 +92,12 @@ if kill -0 $ENGINE 2>/dev/null && grep -q "Config: audio input='Crosspoint input
   pass "engine is running with the crosspoint_in/crosspoint_out PCMs"
 else
   fail "engine did not start with the pinned PCMs"
+fi
+if grep -q "audio.buffer 256 raised to 512: the PipeWire graph runs up to 1024" "$W/engine.log" \
+   && grep -q "Config: audio input=.* buffer=512" "$W/engine.log"; then
+  pass "buffer 256 raised to 512 to fit the 1024-frame graph cycle"
+else
+  fail "buffer not raised to fit the graph quantum"
 fi
 echo "--- generated ALSA config ($HOME/.config/crosspoint/asound.conf)"
 cat "$HOME/.config/crosspoint/asound.conf"

@@ -101,6 +101,32 @@ bool parseNodes (const std::string& json, std::vector<Node>& out, std::string& e
     return true;
 }
 
+int parseMaxQuantum (const std::string& json)
+{
+    juce::var root;
+    if (juce::JSON::parse (juce::String (json), root).failed() || ! root.isArray()) return 0;
+    int maxQ = 0, forceQ = 0;
+    for (auto& o : *root.getArray()) {
+        if (o["type"].toString() != "PipeWire:Interface:Metadata") continue;
+        if (o["props"]["metadata.name"].toString() != "settings") continue;
+        if (auto* items = o["metadata"].getArray())
+            for (auto& m : *items) {
+                const auto key = m["key"].toString();
+                const int v = m["value"].toString().getIntValue();
+                if (key == "clock.max-quantum") maxQ = v;
+                if (key == "clock.force-quantum") forceQ = v;
+            }
+    }
+    return forceQ > 0 ? forceQ : maxQ;
+}
+
+int minBufferFor (int requested, int maxQuantum)
+{
+    int b = juce::jmax (1, requested);
+    while (maxQuantum > 0 && 2 * b < maxQuantum) b *= 2;
+    return b;
+}
+
 std::vector<Node> inputCandidates (const std::vector<Node>& nodes)
 {
     std::vector<Node> r;
@@ -140,7 +166,8 @@ std::string makeAsoundConf (const std::optional<std::string>& captureNode,
     return s;
 }
 
-bool listNodes (std::vector<Node>& out, std::string& err)
+namespace {
+bool readPwDump (std::string& json, std::string& err)
 {
     juce::ChildProcess p;
     if (! p.start (juce::StringArray { "pw-dump" })) {
@@ -153,7 +180,15 @@ bool listNodes (std::vector<Node>& out, std::string& err)
         err = "pw-dump failed (is the PipeWire daemon running and XDG_RUNTIME_DIR set?)";
         return false;
     }
-    return parseNodes (text.toStdString(), out, err);
+    json = text.toStdString();
+    return true;
+}
+} // namespace
+
+bool listNodes (std::vector<Node>& out, std::string& err)
+{
+    std::string json;
+    return readPwDump (json, err) && parseNodes (json, out, err);
 }
 
 bool prepare (const std::optional<std::string>& inputDevice,
@@ -167,9 +202,11 @@ bool prepare (const std::optional<std::string>& inputDevice,
     if (! inputDevice && ! outputDevice) return true;
 
     std::vector<Node> nodes;
-    std::string listErr;
+    std::string listErr, dump;
     bool listFailed = false;
-    if (! listNodes (nodes, listErr)) {
+    if (readPwDump (dump, listErr) && parseNodes (dump, nodes, listErr))
+        r.graphMaxQuantum = parseMaxQuantum (dump);
+    else {
         note = "PipeWire node lookup unavailable (" + listErr + "); audio devices are matched against the ALSA device list";
         listFailed = true;   // P2.5: PipeWire may just not be up yet at boot; names below are retried
         nodes.clear();

@@ -947,6 +947,19 @@ public:
         }
         if (!pipewirePins.inputJuceName.empty())  audioCfg.inputDevice = pipewirePins.inputJuceName;
         if (!pipewirePins.outputJuceName.empty()) audioCfg.outputDevice = pipewirePins.outputJuceName;
+        // The engine's two-block ALSA ring must hold one PipeWire cycle, else the
+        // pinned PCMs overrun every cycle: 256 in a 1024-quantum graph lost ~30% of
+        // the audio in 5 ms gaps (first VDI deployment). Raise the buffer to fit.
+        if (pipewirePins.graphMaxQuantum > 0
+            && (!pipewirePins.inputJuceName.empty() || !pipewirePins.outputJuceName.empty())) {
+            int requested = audioCfg.buffer ? *audioCfg.buffer : dm.getAudioDeviceSetup().bufferSize;
+            if (requested <= 0) requested = 512;
+            const int fit = crosspoint::pipewire::minBufferFor(requested, pipewirePins.graphMaxQuantum);
+            if (fit != requested || audioCfg.buffer) audioCfg.buffer = fit;
+            if (fit != requested)
+                std::cerr << "Config: audio.buffer " << requested << " raised to " << fit
+                          << ": the PipeWire graph runs up to " << pipewirePins.graphMaxQuantum << " frames per cycle" << std::endl;
+        }
        #endif
         if (!audioCfg.inputDevice && !audioCfg.outputDevice && !audioCfg.sampleRate && !audioCfg.buffer) {
             dm.restartLastAudioDevice();   // nothing configured: reopen whatever was last open
