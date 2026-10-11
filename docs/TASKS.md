@@ -119,6 +119,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
+| P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
 | P7.1 | Container: headless engine in Console role | P2.1, P1.4 | M | any | done | Claude (subagent G, sonnet); latency blocker → L1 |
 | P7.3 | WebRTC (Opus) audio gateway browser ↔ engine | P7.1 | L | any | done | Claude (subagent E, sonnet) |
 | P7.2 | Serve Console UI + proxy API from container | P7.1, P5.6 | S | any | done | Claude |
@@ -1419,6 +1420,27 @@ Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
 
 Location: replaces `docker/`. Keep the old files until P7.6.
 
+
+### P6.6 — Mac window: modern unified title bar · S
+- **Asked by** maelo, 2026-10-11 (not scheduled). The Mac app has the classic
+  separate title bar. Modern macOS apps (Music, Notes, Slack) run their content
+  to the top edge, with the traffic lights sitting in the app's own header.
+- **Today:** a JUCE `DocumentWindow` with the native title bar
+  (`setUsingNativeTitleBar(true)`, `sonobus/Source/SonoStandaloneFilterWindow.h:864`)
+  and the Console UI in a WKWebView (`ConsoleShell.h`).
+- **Do (native, in `CrossPlatformUtilsMac.mm`):** on the window's `NSWindow`, set
+  `titlebarAppearsTransparent = YES`, `titleVisibility = NSWindowTitleHidden` and add
+  `NSWindowStyleMaskFullSizeContentView`, so the web view fills the window and the
+  traffic lights float over it. Keep the window title for Mission Control and the
+  Window menu.
+- **Do (page, design: Claude):** the Console top bar reserves space for the traffic
+  lights (macOS shell only: the shell tells the page, e.g. a class on `<html>`)
+  and becomes the drag handle. A WKWebView does not move the window on its own:
+  a mousedown on empty header area posts a message to native code, which calls
+  `-[NSWindow performWindowDragWithEvent:]`, and a double-click there zooms (or
+  follows the user's "double-click a title bar" setting). Check full screen, where
+  the traffic lights hide, and the light and dark themes.
+- **Result:**
 ### P7.1 — Headless engine in Console role · M
 - **Depends on:** P2.1, P1.4
 - **Do:** container image builds the engine and runs it headless from a YAML
