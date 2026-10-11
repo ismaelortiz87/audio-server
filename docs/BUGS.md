@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-There are no open bugs; B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -18,6 +18,8 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B4–B8](#first-vdi-deployment-maelosdebian-2026-10-10) | First real deployment: VDI audio never reached the Mac Console (five causes) | Critical | maelosdebian + Mac app | **Closed** — `f3f2dcef`, `fb91e5b6` |
 | [B9](#b9--public-server-peering-is-unreliable-over-the-vpn) | Peers connected but silent after a restart (peer info sent once) | High | maelosdebian | **Closed** — `2303725a` |
 | [B11](#b11--choppy-vdi-audio-buffer-smaller-than-the-pipewire-cycle) | Choppy VDI audio: agent buffer smaller than the PipeWire cycle | Critical | maelosdebian | **Closed** — `369ea89c` |
+| [B12](#b12--the-web-console-offers-the-containers-audio-devices) | The web Console's device pickers list the container's devices, not the browser's | Medium (misleading; can break audio) | web Console | **Open**, not scheduled |
+| [B13](#b13--station-card-controls-overflow-at-narrow-widths) | Station card controls overflow their card at narrow widths ("Will hear you") | Low (layout) | all Console UIs | **Open**, not scheduled |
 | [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
@@ -423,6 +425,46 @@ connection through the API (`ApiCommands::connectToMostRecent`), and while
 disconnected the state shows the last saved server and group. Verified: after a
 plain relaunch the app was `connected` to `10.248.233.7:10998` / `lagreca` with
 no input. Note: it rejoins even if you pressed Disconnect before quitting.
+
+## B12 — The web Console offers the container's audio devices
+
+**Reported** by maelo, 2026-10-11. **Owner:** design is Claude (lead session).
+
+**Facts.** Settings → Audio shows Microphone and Output pickers filled from the
+engine's `devices` list (`console-ui/src/console/components.js:437-492`,
+`devices.setInput` / `devices.setOutput`). In the web Console the engine runs
+in the container, so the list is the container's PulseAudio devices
+("Playback/recording through the PulseAudio sound server" and so on), not the
+browser's. The browser's mic and speakers are chosen by the browser, and the
+WebRTC gateway is wired to the engine's `engine_out` / `engine_in` null sinks.
+Picking another engine device can therefore **silence** the web Console.
+
+**Options.** (a) Hide the engine device fields whenever the page runs over
+WebRTC (`ctx.rtc` available). (b) Replace them with the browser's own devices:
+`navigator.mediaDevices.enumerateDevices()` (labels appear once the mic is
+allowed), `getUserMedia({ audio: { deviceId } })` for the mic, and
+`HTMLMediaElement.setSinkId()` for the output. `setSinkId` works in Chrome and
+Edge; Firefox and Safari support is partial, so hide the Output field where it
+is missing. (b) is possible and is what the user expects; (a) is the minimum.
+
+## B13 — Station card controls overflow at narrow widths
+
+**Reported** by maelo, 2026-10-11, in **all** Console UIs (Mac shell and web).
+**Owner:** design is Claude (lead session).
+
+**Facts.** At some compact window widths the per-station controls stop
+fitting the station card and spill out of its frame instead of shrinking or
+wrapping. The worst offender is the talk toggle in its longest state,
+**"Will hear you"** + the `T` key hint (`components.js:338-345`; styles
+`.tog.talk[data-state=…]` in `console-ui/src/styles/console.css:86-90`).
+Its four labels differ a lot in length ("Hears you", "Will hear you",
+"Doesn't hear", "Paused by solo"), so the row width jumps with the state.
+
+**Left.** Reproduce the widths (step the window down, every talk state). Then
+fix the card layout: let the control row wrap, give the talk toggle a fixed or
+minimum width that fits its longest label, and drop to icon-only plus the key
+hint below a breakpoint (the full label stays in the tooltip). Check the solo
+and mute buttons and the level control at the same widths.
 
 ---
 

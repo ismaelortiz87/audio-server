@@ -126,6 +126,7 @@ Ordered so that every task appears after everything it depends on.
 | P7.5 | One container per user: compose + docs | P7.2, P7.3, P7.4 | S | any | done | Claude |
 | P7.6 | Remove VNC / Xvfb / raw-PCM bridge | P7.5 | S | any | done | Claude |
 | P7.7 | Installable PWA, the phone Console (manifest, icons, service worker) | P7.4, UX4 | S | any + design review | todo | |
+| P7.8 | Web Console audio starts on load, no "Start audio" click when the browser allows it | P7.3 | S | any + design review | todo | |
 | P8.1 | Dockerfile for `aooserver/` | F1 | S | any | done | Claude (subagent D, sonnet) |
 | P8.2 | Deploy aooserver on a VPN-reachable host | P8.1 | S | human | done | |
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
@@ -1650,6 +1651,24 @@ Location: replaces `docker/`. Keep the old files until P7.6.
 
 ## P9 — Later
 
+
+### P7.8 — Audio starts on load · S
+- **Asked by** maelo, 2026-10-11 (not scheduled). Today the web Console shows
+  "Audio isn't connected in this browser" with a **Start audio** button
+  (`console-ui/src/console/components.js:170-186`), and audio starts only after
+  the click (`RtcLink.start()`, `console-ui/src/lib/rtc.js`).
+- **Why there is a click:** browsers block audible playback until the user has
+  interacted with the page (autoplay policy). The mic prompt also has to appear
+  at some point.
+- **Do:** call `start()` on load. If `audio.play()` is rejected
+  (`NotAllowedError`), keep the connection up and resume playback on the first
+  click or key press anywhere on the page, instead of asking for a separate
+  button. Chrome usually allows playback with sound once the site already has
+  mic permission, or once the user interacts with it regularly (its "media
+  engagement" score), and an installed PWA (P7.7) usually does too. Measure
+  this in Chrome and Safari, record the results here, and keep the banner only
+  for what is still blocked.
+- **Result:**
 ### P9.1 — Mac menu-bar panel · M · deferred
 - **Depends on:** P6.1, P6.5
 - **Do:** a menu-bar item showing station activity, talk toggles and mic
