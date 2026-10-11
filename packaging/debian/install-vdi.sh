@@ -68,14 +68,24 @@ pactl info >/dev/null 2>&1 || die "can't talk to PipeWire/PulseAudio as $USER (i
 say "Installing $(basename "$DEB") for user $USER on $(hostname)"
 
 # --- stock SonoBus check ---------------------------------------------------------
+# Matches a native install (/usr/bin/sonobus) and the Flatpak, whose process is a
+# bare `sonobus` under bwrap (the args hold no path or app id).
+STOCK_RE='net\.sonobus\.SonoBus|(^|/)sonobus( |$)'
 stock_running=0
-pgrep -u "$USER" -fi 'net\.sonobus\.SonoBus|/sonobus( |$)' >/dev/null 2>&1 && stock_running=1
+pgrep -u "$USER" -fi "$STOCK_RE" >/dev/null 2>&1 && stock_running=1
 autostarts="$(grep -lis 'sonobus' "$HOME"/.config/autostart/*.desktop 2>/dev/null || true)"
 if [ "$stock_running" = 1 ] || [ -n "$autostarts" ]; then
   warn "stock SonoBus is running and/or set to autostart on this VDI."
   echo "         Running it next to the Crosspoint agent on the same devices doubles the audio."
   if [ "$STOPSTOCK" = 1 ]; then
-    pkill -u "$USER" -fi 'net.sonobus.SonoBus|/sonobus( |$)' 2>/dev/null || true
+    command -v flatpak >/dev/null 2>&1 && flatpak kill net.sonobus.SonoBus 2>/dev/null || true
+    pkill -u "$USER" -fi "$STOCK_RE" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do pgrep -u "$USER" -fi "$STOCK_RE" >/dev/null 2>&1 || break; sleep 1; done
+    if pgrep -u "$USER" -fi "$STOCK_RE" >/dev/null 2>&1; then
+      warn "stock SonoBus is still running; close it yourself."
+    elif [ "$stock_running" = 1 ]; then
+      echo "         stopped stock SonoBus"
+    fi
     for f in $autostarts; do mv -f "$f" "$f.disabled-by-crosspoint"; echo "         disabled autostart: $f"; done
   else
     echo "         Re-run with --stop-stock-sonobus to stop it and disable its autostart, or do it yourself."
@@ -100,6 +110,12 @@ if [ -e "$U" ] || [ -L "$U" ]; then
   mv -f "$U" "$U.bak-$STAMP"
 fi
 rm -f "$HOME/.config/systemd/user/default.target.wants/crosspoint-agent.service"
+# Drop-ins can override ExecStart (e.g. a test build) and would outlive the upgrade.
+DD="$HOME/.config/systemd/user/crosspoint-agent.service.d"
+if [ -d "$DD" ] && [ -n "$(ls -A "$DD" 2>/dev/null)" ]; then
+  mv -f "$DD" "$DD.bak-$STAMP"
+  echo "    moved user drop-ins aside: $DD.bak-$STAMP"
+fi
 [ -e "$HOME/.local/bin/crosspoint" ] && { mv -f "$HOME/.local/bin/crosspoint" "$HOME/.local/bin/crosspoint.bak-$STAMP"; echo "    moved old ~/.local/bin/crosspoint aside"; }
 systemctl --user daemon-reload
 

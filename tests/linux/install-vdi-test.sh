@@ -49,13 +49,19 @@ sleep 0.5
 U pactl load-module module-remap-source source_name=Crosspoint-Input source_properties=device.description=Crosspoint_Input master=crosspoint_input_null.monitor master_channel_map=front-left,front-right channels=2 >/dev/null
 U pactl list short sources | grep -q '^.*Crosspoint-Output.monitor' && pass "production device layout present" || fail "device layout"
 
-step "leftovers: shadowing user-local unit, ~/.local/bin/crosspoint, stock SonoBus autostart"
+step "leftovers: shadowing unit, ExecStart drop-in, ~/.local/bin/crosspoint, stock SonoBus (Flatpak-style process + autostart)"
 X bash -c "mkdir -p /home/vdi/.config/systemd/user /home/vdi/.local/bin /home/vdi/.config/autostart
 printf '[Service]\nExecStart=/bin/false\n[Install]\nWantedBy=default.target\n' > /home/vdi/.config/systemd/user/crosspoint-agent.service
 printf '#!/bin/sh\necho old\n' > /home/vdi/.local/bin/crosspoint; chmod +x /home/vdi/.local/bin/crosspoint
 printf '[Desktop Entry]\nName=SonoBus\nExec=flatpak run net.sonobus.SonoBus\n' > /home/vdi/.config/autostart/net.sonobus.SonoBus.desktop
+mkdir -p /home/vdi/.config/systemd/user/crosspoint-agent.service.d
+printf '[Service]\nExecStart=\nExecStart=/bin/false\n' > /home/vdi/.config/systemd/user/crosspoint-agent.service.d/zz-test-build.conf
 printf 'secret-group-pw\n' > /home/vdi/pw; chmod 600 /home/vdi/pw
 chown -R vdi:vdi /home/vdi"
+
+# The Flatpak's process is a bare "sonobus" (no path, no app id in its args).
+X runuser -u vdi -- bash -c 'cp /bin/sleep /tmp/sonobus; cd /tmp; exec -a sonobus ./sonobus 600' &
+sleep 1; X pgrep -u vdi -x sonobus >/dev/null && pass "fake Flatpak-style 'sonobus' process running" || fail "could not start the fake stock process"
 
 step "run install-vdi.sh (as the user)"
 U bash -lc "cd ~/dist && ./install-vdi.sh --server 127.0.0.1:10998 --group installtest --username vdi-test --password-file ~/pw --stop-stock-sonobus --yes" > "$CTX/run1.log" 2>&1; rc=$?
@@ -67,6 +73,9 @@ FP="$(U systemctl --user show crosspoint-agent -p FragmentPath --value)"
 [ "$FP" = /usr/lib/systemd/user/crosspoint-agent.service ] && pass "packaged unit in use (shadowing unit retired)" || fail "unit in use: $FP"
 X test ! -e /home/vdi/.local/bin/crosspoint && pass "old ~/.local/bin/crosspoint moved aside" || fail "old binary still in PATH"
 X test -e /home/vdi/.config/autostart/net.sonobus.SonoBus.desktop.disabled-by-crosspoint && pass "stock SonoBus autostart disabled" || fail "autostart not disabled"
+X pgrep -u vdi -x sonobus >/dev/null && fail "stock 'sonobus' process still running" || pass "stock 'sonobus' process stopped"
+X test ! -e /home/vdi/.config/systemd/user/crosspoint-agent.service.d && pass "ExecStart drop-in moved aside" || fail "drop-in still active"
+[ "$(U systemctl --user show crosspoint-agent -p ExecStart --value | grep -o '/usr/bin/crosspoint' | head -1)" = /usr/bin/crosspoint ] && pass "agent runs /usr/bin/crosspoint" || fail "agent ExecStart not the packaged binary"
 [ "$(X stat -c %a /home/vdi/.config/crosspoint/vdi.yaml)" = 600 ] && pass "config mode 600" || fail "config mode"
 X grep -q 'input_device: "Crosspoint-Output.monitor"' /home/vdi/.config/crosspoint/vdi.yaml && X grep -q 'output_device: "crosspoint_input_null"' /home/vdi/.config/crosspoint/vdi.yaml \
   && pass "devices auto-detected: Crosspoint-Output.monitor -> crosspoint_input_null" || fail "device detection"
