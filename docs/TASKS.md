@@ -118,6 +118,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
 | P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | done | Claude |
+| P5.8 | Network (jitter) buffer control in the Console: per-station auto/manual, re-measure, faster start | P5.6 | M | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
 | P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
@@ -1422,6 +1423,43 @@ Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
   ⌘- or Shift-click / `Shift+S` = add; un-solo stays a plain toggle. Mock engine,
   API doc and tests updated: `console-ui` 15/15, `tests/api/p43p44` 9/9 on the
   real engine (incl. the headless-Chrome Solo click).
+
+### P5.8 — Network (jitter) buffer control in the Console · M
+- **Asked by** maelo, 2026-10-11 (not scheduled), for **both** the Mac app and the
+  web Console.
+- **Today:**
+  - The Mac app starts every station with a buffer that is too small. It then
+    grows on each drop and can take **up to a minute** of cuts to settle.
+  - Stock SonoBus settles faster. Per peer it lets you reset (re-measure) the
+    buffer and choose auto or manual with a slider.
+  - The Console only **shows** the buffer: Settings → Advanced → "Network buffer:
+    Auto (currently N ms)" (`console-ui/src/console/components.js:454,498`).
+    `settings.set { networkBuffer }` answers `not_supported`
+    (`ApiCommands::setSettings`, `sonobus/Source/ApiCommands.cpp`). Each station
+    reports `jitterBufferMs` in state.
+- **Engine, already there:**
+  - Per peer: `setRemotePeerBufferTime(i, ms)` and
+    `setRemotePeerAutoresizeBufferMode(i, mode)`, with the modes
+    `Off` (manual) / `Auto-Increase` / `Auto-Full` / `Initial-Auto`.
+  - Defaults: `defnetauto` (Auto-Full here) and `defnetbuf`, the starting buffer,
+    which is **1 ms** on this Mac. That is why it climbs for so long.
+- **Do, API** (`docs/control-api.md`):
+  - `station.setBuffer { station, mode: "auto" | "manual", ms? }`
+  - `station.resetBuffer { station }`: re-measure, the Initial-Auto pass stock
+    SonoBus does, then continue in the chosen mode.
+  - `settings.set { networkBuffer: { mode, startMs } }` as the default for new
+    stations.
+  - State: per station `buffer: { mode, ms }`, next to `jitterBufferMs`.
+- **Do, UI (design: Claude):**
+  - Per station: Auto / Manual, a ms slider in Manual, and a "Re-measure" action.
+    This lives in the station's details, not the main row.
+  - Settings → Advanced: the default mode and starting buffer.
+  - Keep the existing "Audio may break up, the buffer is growing" hint, and offer
+    "Re-measure" there.
+- **Quick win to try first:** a saner starting buffer, e.g. 20–40 ms instead of
+  1 ms, and Initial-Auto for new stations. Measure how long it takes to settle
+  without cuts on the Mac over Wi-Fi, against stock SonoBus, and record it here.
+- **Result:**
 ### P6.1 — Mac shell · M
 - **Depends on:** P5.6
 - **Do:** replace the JUCE editor (Console role) with a `WebBrowserComponent`
