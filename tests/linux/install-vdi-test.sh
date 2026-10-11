@@ -60,8 +60,8 @@ printf 'secret-group-pw\n' > /home/vdi/pw; chmod 600 /home/vdi/pw
 chown -R vdi:vdi /home/vdi"
 
 # The Flatpak's process is a bare "sonobus" (no path, no app id in its args).
-X runuser -u vdi -- bash -c 'cp /bin/sleep /tmp/sonobus; cd /tmp; exec -a sonobus ./sonobus 600' &
-sleep 1; X pgrep -u vdi -x sonobus >/dev/null && pass "fake Flatpak-style 'sonobus' process running" || fail "could not start the fake stock process"
+docker exec -d "$C" runuser -u vdi -- bash -c 'mkdir -p ~/fake && cp /bin/sleep ~/fake/sonobus; cd ~/fake; exec -a sonobus ./sonobus 600'
+sleep 2; X pgrep -u vdi -x sonobus >/dev/null && pass "fake Flatpak-style 'sonobus' process running" || fail "could not start the fake stock process"
 
 step "run install-vdi.sh (as the user)"
 U bash -lc "cd ~/dist && ./install-vdi.sh --server 127.0.0.1:10998 --group installtest --username vdi-test --password-file ~/pw --stop-stock-sonobus --yes" > "$CTX/run1.log" 2>&1; rc=$?
