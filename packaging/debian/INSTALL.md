@@ -8,6 +8,7 @@ The agent is a headless program configured from one YAML file and run as a
 ```sh
 scripts/build-deb.sh                        # -> build/deb/crosspoint_<version>_<arch>.deb
 PLATFORM=linux/amd64 scripts/build-deb.sh   # force amd64 (see below)
+BUILDER=<buildx-builder> PLATFORM=linux/amd64 scripts/build-deb.sh   # on a remote/native amd64 buildx builder
 ```
 
 The build runs in a `debian:trixie` container and uses the Docker host's
@@ -15,6 +16,27 @@ architecture. For an amd64 `.deb` run the script on an amd64 machine, or on an
 arm64 host with qemu binfmt (`docker run --privileged --rm tonistiigi/binfmt
 --install amd64`); the emulated compile takes hours, so prefer a native amd64
 builder (CI, or any x86-64 Linux box).
+
+## Quick path: `install-vdi.sh`
+
+Copy the `.deb` and `packaging/debian/install-vdi.sh` into one directory on the
+VDI and run, as the desktop user (not root, it uses `sudo` itself):
+
+```sh
+./install-vdi.sh --group <group> [--server host:port] [--username <name>]
+```
+
+It installs the package, retires any old hand-installed unit or binary, finds
+the Crosspoint PipeWire nodes (`Crosspoint-Output.monitor` → agent input,
+`crosspoint_input_null` → agent output; falls back to the older `sb_*` names,
+else asks), writes `~/.config/crosspoint/vdi.yaml` (mode 600; the group
+password is asked for hidden, or `--password-file`), enables linger and the
+service, and waits until the agent reports connected. Re-running it is safe;
+`--reconfigure` rewrites the config, `--stop-stock-sonobus` stops and disables
+a stock SonoBus that would hold the same devices. `--help` lists everything.
+Tested end to end by `tests/linux/install-vdi-test.sh <deb>`.
+
+The steps below are what it does, for doing it by hand.
 
 ## 2. Install
 
