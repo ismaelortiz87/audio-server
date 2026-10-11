@@ -39,6 +39,11 @@ public:
     bool match_token(int64_t token) const;
     
     void set_public_address(const ip_address & addr);
+
+    // Crosspoint: an address that pinged us with this peer's token but is neither
+    // address the server gave us (see client::handle_message). Adopted by send()
+    // only if no known address answers within a short wait.
+    void set_candidate_address(const ip_address & addr);
     
     const std::string& group() const { return group_; }
 
@@ -75,6 +80,10 @@ private:
     time_tag start_time_;
     double last_pingtime_ = 0;
     bool timeout_ = false;
+    ip_address candidate_address_;
+    std::atomic<bool> has_candidate_{false};
+    double candidate_since_ = 0;
+    void establish(ip_address *which, const ip_address& addr);
 };
 
 enum class client_state {

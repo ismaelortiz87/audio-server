@@ -403,6 +403,17 @@ int32_t aoo::net::client::handle_message(const char *data, int32_t n, void *addr
                     if (p->match(address)){
                         p->handle_message(msg, onset, address);
                         success = true;
+                    } else if (!p->has_real_address() && token > 0 && p->match_token(token)
+                               && get_token() < token) {
+                        // Crosspoint: two peers with more than one path between them (e.g. a VDI that is
+                        // also on the Console's VPN) each see the other first from an address the server
+                        // never announced. If BOTH adopt it, each sends on a different path and each
+                        // ignores what the other sends: connected, but no data. So only one side, the
+                        // one with the larger token, adopts right away; the other waits for a ping from
+                        // a known address, which arrives as soon as the first side sends on its path
+                        // (falling back to this address after a short wait, see peer::send).
+                        p->set_candidate_address(address);
+                        success = true;
                     } else if (!p->has_real_address() && token > 0 && p->match_token(token)) {
                         // this message doesn't match one of the addresses given by the server for this peer
                         // but it DOES match the random token for the peer, which means we might be dealing
@@ -1316,6 +1327,32 @@ void peer::set_public_address(const ip_address & addr)
     public_address_ = addr;
 }
 
+void peer::set_candidate_address(const ip_address & addr)
+{
+    if (has_candidate_.load()) return;
+    candidate_address_ = addr;
+    candidate_since_ = time_tag::duration(start_time_, time_tag::now());
+    has_candidate_.store(true);
+    LOG_VERBOSE("aoo_client: " << *this << " pinged from unannounced " << addr.name() << ":" << addr.port()
+                << "; waiting for a known address (the other side adopts)");
+}
+
+void peer::establish(ip_address *which, const ip_address& addr)
+{
+    address_.store(which);
+
+    // push event
+    auto e = std::make_unique<client::peer_event>(
+                AOONET_CLIENT_PEER_JOIN_EVENT,
+                group().c_str(), user().c_str(), &addr.address, addr.length);
+    client_->push_event(std::move(e));
+
+    LOG_VERBOSE("aoo_client: successfully established connection with " << *this);
+
+    // force last_pingtime_ to zero to make sure we ping them back immediately, avoiding race condition
+    last_pingtime_ = 0;
+}
+
 
 std::ostream& operator << (std::ostream& os, const peer& p)
 {
@@ -1341,6 +1378,15 @@ void peer::send(time_tag now){
             last_pingtime_ = elapsed_time;
         }
     } else if (!timeout_) {
+        // Crosspoint: no known address answered in time; take the unannounced one
+        // after all (a genuine symmetric NAT on the other side).
+        if (has_candidate_.load() && elapsed_time - candidate_since_ >= 2.0){
+            LOG_VERBOSE("aoo_client: no known address answered; adopting "
+                        << candidate_address_.name() << ":" << candidate_address_.port() << " for " << *this);
+            set_public_address(candidate_address_);
+            establish(&public_address_, public_address_);
+            return;
+        }
         // try to establish UDP connection with peer
         if (elapsed_time > client_->request_timeout()){
             // couldn't establish peer connection!
@@ -1384,24 +1430,13 @@ void peer::handle_message(const osc::ReceivedMessage &msg, int onset,
             if (!address_.load()){
                 // this is the first ping!
                 if (addr == public_address_){
-                    address_.store(&public_address_);
+                    establish(&public_address_, addr);
                 } else if (addr == local_address_){
-                    address_.store(&local_address_);
+                    establish(&local_address_, addr);
                 } else {
                     LOG_ERROR("aoo_client: bug in peer::handle_message");
                     return;
                 }
-
-                // push event
-                auto e = std::make_unique<client::peer_event>(
-                            AOONET_CLIENT_PEER_JOIN_EVENT,
-                            group().c_str(), user().c_str(), &addr.address, addr.length);
-                client_->push_event(std::move(e));
-
-                LOG_VERBOSE("aoo_client: successfully established connection with " << *this);
-                
-                // force last_pingtime_ to zero to make sure we ping them back immediately, avoiding race condition
-                last_pingtime_ = 0;
                 
             } else {
                 LOG_DEBUG("aoo_client: got ping from " << *this);
