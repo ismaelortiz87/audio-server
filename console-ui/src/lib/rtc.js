@@ -6,6 +6,12 @@
 // The browser always sends its mic to the gateway; the engine decides who hears
 // it (talk, solo, push-to-talk, mic on/off), so this module has no routing logic.
 
+// Adds stereo=1 to the Opus fmtp line(s) of an SDP, once (see start()).
+export function withStereoReceive(sdp) {
+  return sdp.replace(/^(a=fmtp:\d+ [^\r\n]*useinbandfec=1[^\r\n]*)$/gm,
+    line => /(^|;|\s)stereo=1/.test(line) ? line : `${line};stereo=1`);
+}
+
 export class RtcLink {
   constructor() {
     this.state = 'unavailable';  // unavailable | idle | starting | connected | failed
@@ -74,7 +80,12 @@ export class RtcLink {
         if (pc.connectionState === 'connected') { this.retry = 0; this.set('connected'); }
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') this.fail('Audio connection lost');
       };
-      await pc.setLocalDescription(await pc.createOffer());
+      // Chrome decodes Opus to stereo only when its own SDP asks for it (stereo=1
+      // is the receiver's preference, RFC 7587); without it the Console mix, pans
+      // included, is played in mono. Our uplink (the mic) stays mono.
+      const offer = await pc.createOffer();
+      offer.sdp = withStereoReceive(offer.sdp);
+      await pc.setLocalDescription(offer);
       await new Promise(r => {  // non-trickle: the gateway answers once, with all candidates
         if (pc.iceGatheringState === 'complete') return r();
         pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();

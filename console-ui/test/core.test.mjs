@@ -5,6 +5,7 @@ import { applyPatch, diff, clone } from '../src/lib/patch.js';
 import { Client } from '../src/api/client.js';
 import { MockEngine } from '../src/api/mock.js';
 import { panText, dbText, listNames } from '../src/lib/format.js';
+import { withStereoReceive } from '../src/lib/rtc.js';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 async function settle(n = 5) { for (let i = 0; i < n; i++) await tick(); }
@@ -167,4 +168,12 @@ test('format helpers match the spec copy', () => {
   assert.equal(dbText(-6), '−6.0 dB');
   assert.equal(dbText(2.5), '+2.5 dB');
   assert.equal(listNames(['A', 'B', 'C']), 'A, B and C');
+});
+
+test('rtc: the browser offer asks to receive Opus in stereo (pans survive), once', () => {
+  const sdp = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 63\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10;useinbandfec=1\r\na=rtpmap:63 red/48000/2\r\na=fmtp:63 111/111\r\n';
+  const out = withStereoReceive(sdp);
+  assert.match(out, /a=fmtp:111 minptime=10;useinbandfec=1;stereo=1\r\n/);
+  assert.match(out, /a=fmtp:63 111\/111\r\n/, 'other codecs untouched');
+  assert.equal(withStereoReceive(out), out, 'idempotent');
 });
