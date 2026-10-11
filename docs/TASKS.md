@@ -119,6 +119,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
 | P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | done | Claude |
 | P5.8 | Network (jitter) buffer control in the Console: per-station auto/manual, re-measure, faster start | P5.6 | M | any + design review | todo | |
+| P5.9 | Muting a station also stops sending your mic to it | P1.5, P5.3 | S | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
 | P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
@@ -1459,6 +1460,33 @@ Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
 - **Quick win to try first:** a saner starting buffer, e.g. 20–40 ms instead of
   1 ms, and Initial-Auto for new stations. Measure how long it takes to settle
   without cuts on the Mac over Wi-Fi, against stock SonoBus, and record it here.
+- **Result:**
+
+### P5.9 — Muting a station also stops sending your mic to it · S
+- **Asked by** maelo, 2026-10-11 (not scheduled). **Why:** a station you can't hear
+  shouldn't hear you either.
+- **Today:**
+  - Station Mute (`station.setMute`) only silences what you hear from that
+    station (the P1.5 gain).
+  - The mic send gate is `mic transmitting AND (anything soloed ? this station
+    is soloed : this station's Talk is on)`, in the per-peer send loop
+    (`sonobus/Source/SonobusPluginProcessor.cpp`, the "P1.5 send gate"). It is
+    mirrored by `computeHearsYou()`, which feeds `hearsYou` in state.
+  - Mute is not part of either.
+- **Do:**
+  - Add `&& !muted` (the station's mute) to both the send gate and
+    `computeHearsYou()`, so state and audio stay in step.
+  - Leave the station's **Talk** flag untouched, as solo already does, so
+    un-muting restores whatever Talk was.
+  - Mute wins over solo: a muted, soloed station doesn't hear you.
+  - Mock engine, `docs/control-api.md` (the mute and `hearsYou` rows), and an API
+    test: mute → `hearsYou` false and the send gate closes (peer dump
+    `sendGateGain` 0); unmute → back as before. Also an F2 scenario, so the
+    station really gets no mic audio while muted.
+- **UI (design: Claude):** the talk button gets a held state for this, like
+  "Paused by solo": e.g. **"Muted: doesn't hear you"**, not clickable. Its tooltip
+  says to un-mute to talk to this station. Check the label against B13 (talk
+  button width).
 - **Result:**
 ### P6.1 — Mac shell · M
 - **Depends on:** P5.6
