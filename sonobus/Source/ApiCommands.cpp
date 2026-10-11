@@ -522,6 +522,18 @@ void ApiCommands::pollPendingConnect()
     }
 }
 
+bool ApiCommands::connectToMostRecent()
+{
+    if (processor.isConnectedToServer()) return false;
+    Array<AooServerConnectionInfo> recents;
+    processor.getRecentServerConnectionInfos (recents);
+    if (recents.isEmpty() || recents.getReference (0).serverHost.isEmpty()
+        || recents.getReference (0).groupName.isEmpty()) return false;
+    try { connectionConnect (var (new DynamicObject())); }
+    catch (const CmdError&) { return false; }
+    return true;
+}
+
 void ApiCommands::connectionConnect (const var& a)
 {
     if (hooks.takeOverConnection) hooks.takeOverConnection();

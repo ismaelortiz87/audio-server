@@ -640,6 +640,13 @@ public:
         hooks.reloadConfig = [this, proc, dm](String & code, String & msg) { return apiReloadConfig(proc, dm, code, msg); };
        #endif
         apiCommands = std::make_unique<crosspoint::ApiCommands>(*proc, dm, *apiServer, *engineState, apiConfig.role, std::move(hooks));
+
+        // B10: a Console started without -c/-g rejoins its last server and group.
+        if (apiConfig.role == "console" && cmdlineConnInfo.groupName.isEmpty())
+            Timer::callAfterDelay (1000, [this]() {
+                if (apiCommands != nullptr && apiCommands->connectToMostRecent())
+                    DBG ("Console: rejoining the most recent server and group");
+            });
     }
 
 #if CROSSPOINT_HAS_CONFIG

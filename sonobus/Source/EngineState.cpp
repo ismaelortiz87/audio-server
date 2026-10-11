@@ -519,15 +519,21 @@ var EngineState::connectionVar (double now, bool agent)
                       { "attempt", attemptV }, { "retryInSec", retry }, { "error", error } });
     }
 
-    bool pwSaved = false;
-    if (group.isNotEmpty())
+    Array<AooServerConnectionInfo> recents;
+    processor.getRecentServerConnectionInfos (recents);
+    // Not connected: show the last connection, so the form is filled in at launch.
+    String shownServer = server, shownGroup = group;
+    if (! connected && shownServer.isEmpty() && ! recents.isEmpty())
     {
-        Array<AooServerConnectionInfo> recents;
-        processor.getRecentServerConnectionInfos (recents);
-        for (auto& r : recents)
-            if (r.groupName == group && r.groupPassword.isNotEmpty()) { pwSaved = true; break; }
+        const auto& r = recents.getReference (0);
+        if (r.serverHost.isNotEmpty()) shownServer = r.serverHost + ":" + String (r.serverPort);
+        if (shownGroup.isEmpty()) shownGroup = r.groupName;
     }
-    return obj ({ { "state", state }, { "server", server }, { "group", group }, { "passwordSaved", pwSaved },
+    bool pwSaved = false;
+    if (shownGroup.isNotEmpty())
+        for (auto& r : recents)
+            if (r.groupName == shownGroup && r.groupPassword.isNotEmpty()) { pwSaved = true; break; }
+    return obj ({ { "state", state }, { "server", shownServer }, { "group", shownGroup }, { "passwordSaved", pwSaved },
                   { "reason", strOrNull (reason) }, { "retryInSec", retry } });
 }
 

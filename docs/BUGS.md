@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B9** and **B10** (found on the first VDI deployment, see below); B1–B8 are closed.
+Open: **B9** (found on the first VDI deployment, see below); B1–B8 and B10 are closed.
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -17,7 +17,7 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B3](#b3--steps-frozen-evaluator-self-test-is-intermittent) | `steps-frozen` evaluator self-test is intermittent | Low (test tooling only) | other agent's handoff | **Closed** — `d71a43a8` |
 | [B4–B8](#first-vdi-deployment-maelosdebian-2026-10-10) | First real deployment: VDI audio never reached the Mac Console (five causes) | Critical | maelosdebian + Mac app | **Closed** — `f3f2dcef`, `fb91e5b6` |
 | [B9](#b9--public-server-peering-is-unreliable-over-the-vpn) | Peering through `aoo.sonobus.net` is unreliable when the Console is on the VPN | High | maelosdebian | **Open** (worked around: VPN server) |
-| [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Open** |
+| [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -399,8 +399,15 @@ installer still defaults to `aoo.sonobus.net:10998`; pass `--server`.
 
 The app starts with `reconnectlast = 0` (SonoBus's "reconnect to last"), so after
 every launch the Console sits at "Not connected" until Connect is pressed. A
-Console should rejoin its last server and group by itself. Decide: turn the
-setting on for the Console role, or have the shell reconnect through the API.
+Console should rejoin its last server and group by itself. Also, while not
+connected the state reported an empty server and group, so Settings showed blank
+fields at every launch.
+
+**Fixed:** a Console started without `-c/-g` rejoins the most recent saved
+connection through the API (`ApiCommands::connectToMostRecent`), and while
+disconnected the state shows the last saved server and group. Verified: after a
+plain relaunch the app was `connected` to `10.248.233.7:10998` / `lagreca` with
+no input. Note: it rejoins even if you pressed Disconnect before quitting.
 
 ---
 

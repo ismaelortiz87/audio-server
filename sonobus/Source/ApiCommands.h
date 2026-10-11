@@ -56,6 +56,10 @@ public:
         Used by connection.connect, agent.retryNow and agent.reloadConfig. */
     void connectWith (const AooServerConnectionInfo& info);
 
+    /** Console start-up: rejoin the most recent saved server and group (as
+        connection.connect {} would). False when there is nothing to rejoin. */
+    bool connectToMostRecent();
+
     /** P6.5: the global hotkey as one more push-to-talk holder (the same per-holder
         logic as a client's mic.ptt, so a UI hold and the hotkey combine: the mic is
         held while either is down). Ignored unless the mic is in push-to-talk mode. */
