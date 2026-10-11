@@ -514,6 +514,9 @@ struct SonobusAudioProcessor::RemotePeer {
     double lastSendPingTimeMs = -1;
     bool   gotNewStylePing = false;
     bool   haveSentFirstPeerInfo = false;
+    // Crosspoint: the remote said it does not know our role yet ("knowsYou": false);
+    // answer with our peer info on the next send tick.
+    std::atomic<bool> peerInfoReplyWanted { false };
     stats::RunCumulantor1D  smoothPingTime; // ms
     stats::RunCumulantor1D  fillRatio;
     stats::RunCumulantor1D  fillRatioSlow;
@@ -3465,6 +3468,10 @@ void SonobusAudioProcessor::handleRemotePeerInfoUpdate(RemotePeer * peer, const 
             << " paused=" << (int) peer->remoteAgent.paused);
     }
 
+    // Crosspoint: the remote has not received our peer info yet: reply (doSendData).
+    if (infodata.hasProperty("knowsYou") && ! (bool) infodata.getProperty("knowsYou", true))
+        peer->peerInfoReplyWanted = true;
+
     // P1.2: role advertised by the remote peer. Absent for stock SonoBus
     // peers, which must remain Unknown (and therefore blocked, P1.6).
     bool roleChanged = false;
@@ -3715,6 +3722,9 @@ void SonobusAudioProcessor::sendRemotePeerInfoUpdate(int index, RemotePeer * top
 
         auto buftimeMs = jmax((double)peer->buffertimeMs, 1e3 * currSamplesPerBlock / getSampleRate());
         info->setProperty("jitbuf", buftimeMs);
+        // Crosspoint: tell the remote whether its peer info (role) reached us, so
+        // it can answer while we are still missing it (ignored by stock SonoBus).
+        info->setProperty("knowsYou", peer->hasRemoteRole);
 
         String jsonstr = JSON::toString(info.get(), true, 6);
 
@@ -3791,10 +3801,17 @@ void SonobusAudioProcessor::doSendData()
             if ( nowtimems > (remote->lastSendPingTimeMs + PEER_PING_INTERVAL_MS) ) {
                 sendPingEvent(remote);
                 remote->lastSendPingTimeMs = nowtimems;
-                if (!remote->haveSentFirstPeerInfo) {
+                // Crosspoint: a peer stays blocked until its role arrives (P1.3), and
+                // peer info is one UDP packet. Sent once, a lost packet left the pair
+                // connected but silent. Keep sending until we know the remote's role.
+                if (!remote->haveSentFirstPeerInfo || !remote->hasRemoteRole) {
                     sendRemotePeerInfoUpdate(-1, remote);
                     remote->haveSentFirstPeerInfo = true;
+                    remote->peerInfoReplyWanted = false;
                 }
+            }
+            if (remote->peerInfoReplyWanted.exchange(false)) {
+                sendRemotePeerInfoUpdate(-1, remote);   // they are still missing ours
             }
         }
     }
