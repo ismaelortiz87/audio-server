@@ -20,6 +20,7 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B11](#b11--choppy-vdi-audio-buffer-smaller-than-the-pipewire-cycle) | Choppy VDI audio: agent buffer smaller than the PipeWire cycle | Critical | maelosdebian | **Closed** — `369ea89c` |
 | [B12](#b12--the-web-console-offers-the-containers-audio-devices) | The web Console's device pickers list the container's devices, not the browser's | Medium (misleading; can break audio) | web Console | **Open**, not scheduled |
 | [B13](#b13--station-card-controls-overflow-at-narrow-widths) | Station card controls overflow their card at narrow widths ("Will hear you") | Low (layout) | all Console UIs | **Open**, not scheduled |
+| [B14](#b14--a-vdi-that-is-also-on-the-vpn-stays-offline-for-the-mac) | A VDI that is also on the Mac's VPN connects but exchanges no data with it | High | cebastian (.71) | **Closed** — `446dd3e2` |
 | [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
@@ -466,6 +467,31 @@ minimum width that fits its longest label, and drop to icon-only plus the key
 hint below a breakpoint (the full label stays in the tooltip). Check the solo
 and mute buttons and the level control at the same widths.
 
+## B14 — A VDI that is also on the VPN stays offline for the Mac
+
+**Symptom (2026-10-11).** In the Mac Console `cebastian` (.71) stayed offline
+while `ada` and `alan` were online. Both ends were AOO-`connected`, but .71 had
+sent 2344 packets to the Mac and received 0, with role `unknown`.
+
+**Cause.** .71 is the only VDI that is itself a WireGuard peer (`wg0`), so there
+are two paths between it and the Mac. Mac → `192.168.0.71` arrives at .71 from
+`192.168.0.3` (the VPN server's NAT); .71 → the Mac's VPN address leaves via
+`wg0` and arrives from `10.248.233.7` (measured with a UDP echo). Each side first
+heard the other on an address the server never announced, and AOO's token
+(symmetric-NAT) path made **both** adopt it at once: the Mac latched
+`10.248.233.7`, .71 latched `192.168.0.3`, and each ignored what the other sent
+(verbose log: `changing public address ... TO 10.248.233.7`, then
+`ignoring UDP message /aoo/peer/ping from endpoint 192.168.0.71`). A first
+theory (token-less established pings, `b1b11147`) was wrong and is reverted.
+
+**Fix `446dd3e2`.** Only the side with the larger token adopts an unannounced
+address at once. The other waits for a ping from a known address, which comes as
+soon as the first side sends on its path, and adopts the unannounced one only
+after 2 s (a genuine symmetric NAT). Verified: 4/4 probe restarts and the Mac
+app peer with `cebastian` (~1830 packets like the others). `tests/api/p42` 6/6,
+`p43p44` 9/9. Both ends need the fix: the Mac app has it, and .71 runs it from the
+preview build until the `446dd3e2` .deb is installed.
+
 ---
 
 ## Closed
@@ -480,6 +506,7 @@ and mute buttons and the level control at the same widths.
 | B9 | Peer info sent once: connected but silent after restarts | `2303725a` | local `main` |
 | B10 | Console did not reconnect at launch | `4916472b` | local `main` |
 | B11 | Agent buffer smaller than the PipeWire cycle: choppy audio | `369ea89c` | local `main` |
+| B14 | Two paths between a VDI and the Mac: both adopted different addresses | `446dd3e2` | local `main` |
 
 Earlier defects found and fixed during the build-out are recorded in the
 TASKS.md Results. Examples: the double-applied peer gain (P1.5), the
