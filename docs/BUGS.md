@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B9** (found on the first VDI deployment, see below); B1–B8 and B10 are closed.
+There are no open bugs; B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -16,7 +16,8 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B2](#b2--the-default-global-push-to-talk-hotkey-is-never-registered) | The default global push-to-talk hotkey (⌥Space) is never registered | High for P6.5 (feature dead by default) | P6.5 WIP | **Closed** — `080e6c78` |
 | [B3](#b3--steps-frozen-evaluator-self-test-is-intermittent) | `steps-frozen` evaluator self-test is intermittent | Low (test tooling only) | other agent's handoff | **Closed** — `d71a43a8` |
 | [B4–B8](#first-vdi-deployment-maelosdebian-2026-10-10) | First real deployment: VDI audio never reached the Mac Console (five causes) | Critical | maelosdebian + Mac app | **Closed** — `f3f2dcef`, `fb91e5b6` |
-| [B9](#b9--public-server-peering-is-unreliable-over-the-vpn) | Peering through `aoo.sonobus.net` is unreliable when the Console is on the VPN | High | maelosdebian | **Open** (worked around: VPN server) |
+| [B9](#b9--public-server-peering-is-unreliable-over-the-vpn) | Peers connected but silent after a restart (peer info sent once) | High | maelosdebian | **Closed** — `2303725a` |
+| [B11](#b11--choppy-vdi-audio-buffer-smaller-than-the-pipewire-cycle) | Choppy VDI audio: agent buffer smaller than the PipeWire cycle | Critical | maelosdebian | **Closed** — `369ea89c` |
 | [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
@@ -380,20 +381,34 @@ could not build (fixed in `fb91e5b6`). And `.deb` versions now carry the commit 
 
 ## B9 — Public-server peering is unreliable over the VPN
 
-**Facts.** The Mac sends everything through the VPN (`utun4`, 10.248.233.2,
-default route). The VDI is on the same VPN (`wg0`, 10.248.233.7), but its default
-route is its LAN (192.168.0.71). Through `aoo.sonobus.net`, the peers learn each
-other's NAT and LAN addresses rather than the VPN ones, and replies leave from an
-address the other side didn't send to. Observed: after agent restarts, peers show
-`connected` but exchange no peer info and no audio (role `unknown`, 0 packets,
-`aoo_source: sink not found`), sometimes for minutes. Sometimes it recovers.
+**Symptom.** After an agent or Console restart, peers showed `connected` but role
+`unknown`, no peer info, no audio, sometimes for minutes. Stock SonoBus peered
+fine on the same network and server.
 
-**Workaround in place.** maelosdebian and the Mac app use the self-hosted server
-on the VPN, `10.248.233.7:10998` (P8). With that server, peering was immediate
-and stable across restarts.
+**Cause (fork).** Our peers stay blocked until the remote's role arrives (P1.3),
+but peer info was sent once, as a single UDP packet at the first ping. A lost
+packet (typical while the NAT path is still being punched) left the pair
+silent. A VPN-only server only hid it; that workaround was reverted (the public
+server is the choice; the self-hosted server on a VDI is being removed).
 
-**Left.** Decide whether the VPN server becomes the default for every VDI. The
-installer still defaults to `aoo.sonobus.net:10998`; pass `--server`.
+**Fix `2303725a`.** Peer info carries `knowsYou`; each side keeps sending its
+info every ping while it lacks the remote's role and replies when the remote
+says it lacks ours. Verified: after restarts the Mac and maelosdebian re-peer
+at once through `aoo.sonobus.net`.
+
+## B11 — Choppy VDI audio: buffer smaller than the PipeWire cycle
+
+**Symptom.** Cut and frozen VDI audio on the Console; stock SonoBus on the same
+VDI and network was clean. **Cause.** The VDI's graph is locked at quantum 1024
+(`clock.min-quantum` = `max-quantum` = 1024 at runtime, although
+`90-low-latency.conf` says 256); stock SonoBus runs JACK at 1024. The agent ran
+256-frame ALSA blocks, so its two-block ring (512) could not hold one cycle and
+overran every cycle. **Evidence** (`tests/linux/vdi-gap-test.sh`, 440 Hz,
+5 ms windows, 23 s): 256 → 30–36 % silent, 570–631 gaps; 512/1024 → 0.1–0.2 %,
+1–6 gaps. A first theory (the L1 capture-backlog drop) was tested and wrong
+(`719679fd`, reverted in `32c0d978`). **Fix `369ea89c`.** The agent reads the
+graph's max/forced quantum and raises a too-small `audio.buffer` to fit, with
+a log line. The container test locks its graph at 1024 and checks 256 → 512.
 
 ## B10 — The Mac Console does not reconnect at launch
 
@@ -420,6 +435,9 @@ no input. Note: it rejoins even if you pressed Disconnect before quitting.
 | B3 | `steps-frozen` evaluator self-test is intermittent | `d71a43a8` | `36f2c5ef` |
 | B4, B5 | Agent captured the default source, not the pinned monitor; ALSA names in the Linux pickers | `f3f2dcef` | local `main` |
 | B6, B7, B8 | Mac Console: restored global receive mute; legacy editor raced API connects; lost password on server change | `fb91e5b6` | local `main` |
+| B9 | Peer info sent once: connected but silent after restarts | `2303725a` | local `main` |
+| B10 | Console did not reconnect at launch | `4916472b` | local `main` |
+| B11 | Agent buffer smaller than the PipeWire cycle: choppy audio | `369ea89c` | local `main` |
 
 Earlier defects found and fixed during the build-out are recorded in the
 TASKS.md Results. Examples: the double-applied peer gain (P1.5), the
