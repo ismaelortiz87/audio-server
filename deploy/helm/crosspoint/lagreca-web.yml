@@ -25,3 +25,6 @@ console:
   nodeSelector:
     kubernetes.io/hostname: iac-lagreca-workers-tgbwh7
   rtcPublicIP: "192.168.70.10"
+  # Traefik Ingress for crosspoint.app.lagreca.io (/, /api/ -> engine, /rtc/ ->
+  # gateway); the external proxy forwards *.app.lagreca.io to traefik and owns TLS.
+  exposure: ingress
