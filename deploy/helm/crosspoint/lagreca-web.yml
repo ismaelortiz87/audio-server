@@ -15,7 +15,7 @@ imagePullSecrets:
 console:
   image:
     repository: ghcr.io/ismaelortiz87/audio-server/crosspoint-web-console
-    tag: "661ec8fb"
+    tag: "5824ea8c"
   config:
     server: "aoo.sonobus.net:10998"
     group: "lagreca"
