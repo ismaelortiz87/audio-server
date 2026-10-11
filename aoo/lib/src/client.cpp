@@ -1331,9 +1331,14 @@ void peer::send(time_tag now){
     if (real_addr){
         // send regular ping if it is time, or if we have never sent one (handles race condition on initial peer join)
         if (delta >= client_->ping_interval() || last_pingtime_ <= 0){
-            char buf[64];
+            char buf[80];   // (was 64; the token adds 8 bytes, as in the handshake ping)
             osc::OutboundPacketStream msg(buf, sizeof(buf));
-            msg << osc::BeginMessage(AOONET_MSG_PEER_PING) << osc::EndMessage;
+            // Crosspoint: carry our token here too, like the handshake pings. A
+            // multi-homed peer (e.g. a VDI that is also on a WireGuard VPN) can answer
+            // from an address the other side never heard of; with the token, that side
+            // adopts the address (see the symmetric-NAT path in client::handle_message)
+            // instead of ignoring us forever. Receivers read the token only if present.
+            msg << osc::BeginMessage(AOONET_MSG_PEER_PING) << client_->get_token() << osc::EndMessage;
 
             client_->send_message_udp(msg.Data(), (int32_t) msg.Size(), *real_addr);
             LOG_DEBUG("send regular ping to " << *this);
