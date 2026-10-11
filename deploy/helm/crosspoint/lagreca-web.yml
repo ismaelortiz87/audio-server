@@ -1,0 +1,27 @@
+# Profile overlay: the lagreca web Console on the omni-iac-lagreca cluster.
+#   PROFILE=lagreca-web.yml SECRETS_FILE=<path to secrets.yml> ./install.sh
+# Secrets (secrets.apiToken, secrets.groupPassword) never go in this file.
+#
+# The public AOO server is used, as for the VDI agents and the Mac Console:
+# no aooserver in the cluster.
+aooserver:
+  enabled: false
+
+# The GHCR package is private: pulled with this docker-registry Secret, created
+# by hand in the namespace (kubectl create secret docker-registry ghcr-pull ...).
+imagePullSecrets:
+  - name: ghcr-pull
+
+console:
+  image:
+    repository: ghcr.io/ismaelortiz87/audio-server/crosspoint-web-console
+    tag: "959f7d33"
+  config:
+    server: "aoo.sonobus.net:10998"
+    group: "lagreca"
+    username: "web-console"
+  # hostNetwork: the WebRTC media (UDP 40000-40019) binds on the node, so the
+  # pod is pinned to one node and that node's IP is what the browser dials.
+  nodeSelector:
+    kubernetes.io/hostname: iac-lagreca-workers-tgbwh7
+  rtcPublicIP: "192.168.70.10"
