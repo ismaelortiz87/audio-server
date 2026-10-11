@@ -1,6 +1,9 @@
 // Control API meters (P4.3) and commands (P4.4). See ApiCommands.h.
 
 #include "ApiCommands.h"
+#if defined(__linux__)
+ #include "PipeWireDevices.h"   // P2.11
+#endif
 
 #include <cmath>
 
@@ -123,7 +126,10 @@ void ApiCommands::sendMeters()
             auto* devs = new DynamicObject();
             if (deviceManager != nullptr)
             {
-                const auto name = deviceManager->getAudioDeviceSetup().inputDeviceName;
+                auto name = deviceManager->getAudioDeviceSetup().inputDeviceName;
+               #if defined(__linux__)
+                name = String (pipewire::nodeForJuceName (name.toStdString(), true));   // keyed like devices.inputs[].node
+               #endif
                 if (name.isNotEmpty()) devs->setProperty (name, input);
             }
             frame->setProperty ("devices", var (devs));
@@ -609,8 +615,13 @@ var ApiCommands::agentCommand (const String& cmd, const var& a)
         const String node = P44_VALIDATE (needString (a, "node"));
         // The engine plays through the one output it has open; a tone into another
         // node would first have to switch to it.
-        const String current = deviceManager != nullptr ? deviceManager->getAudioDeviceSetup().outputDeviceName : String();
+        String current = deviceManager != nullptr ? deviceManager->getAudioDeviceSetup().outputDeviceName : String();
         auto* type = deviceManager != nullptr ? deviceManager->getCurrentDeviceTypeObject() : nullptr;
+       #if defined(__linux__)
+        const String juceCurrent = current;
+        current = String (pipewire::nodeForJuceName (current.toStdString(), false));   // as state.output.node
+        if (node == juceCurrent) { processor.armApiTestTone (1.5); return {}; }
+       #endif
         if (node != current)
         {
             if (type == nullptr || ! type->getDeviceNames (false).contains (node))

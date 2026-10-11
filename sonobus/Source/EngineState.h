@@ -28,6 +28,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 namespace crosspoint {
 
@@ -158,6 +159,15 @@ private:
     var connectionVar (double nowMs, bool agent);
     var devicesVar (bool agent);
     String deviceName (bool input) const;
+    String agentNode (bool input) const;          // the node name shown for the open device
+    String nodeDescription (bool input, const String& node);
+
+    // Linux agent (P2.11): PipeWire nodes for the pickers, from pw-dump, cached.
+    struct PwNode { String node, description; };
+    std::vector<PwNode> pwInputs, pwOutputs;
+    double pwListedAtMs = -1e12;
+    bool pwListed = false;
+    void refreshPipeWireNodes (double nowMs);
 
     //==========================================================================
     SonobusAudioProcessor& processor;

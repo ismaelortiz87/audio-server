@@ -651,9 +651,14 @@ public:
     // Switches one audio device live and, with --config, writes it to the YAML
     // (Config::setAudioDevices + save(), comments kept). `previous` is the name
     // that was in use (the PipeWire node on Linux when the YAML named one).
-    bool apiSetAgentDevice (AudioDeviceManager * dm, bool isInput, const String & node, bool writeYaml,
+    bool apiSetAgentDevice (AudioDeviceManager * dm, bool isInput, const String & requested, bool writeYaml,
                             String & previous, String & code, String & msg)
     {
+        String node = requested;
+       #if JUCE_LINUX
+        // An older picker offered the pinned PCMs by JUCE name: take the node behind it.
+        node = String(crosspoint::pipewire::nodeForJuceName(node.toStdString(), isInput));
+       #endif
         if (dm == nullptr) { code = "not_supported"; msg = "No audio device manager"; return false; }
         const auto before = dm->getAudioDeviceSetup();
         previous = isInput ? before.inputDeviceName : before.outputDeviceName;

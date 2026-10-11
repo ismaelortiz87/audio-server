@@ -1,6 +1,9 @@
 // Engine side of the control API state (P4.2). See EngineState.h.
 
 #include "EngineState.h"
+#if defined(__linux__)
+ #include "PipeWireDevices.h"   // P2.11
+#endif
 
 #include <cmath>
 #include <ctime>
@@ -406,9 +409,61 @@ String EngineState::deviceName (bool input) const
     return input ? setup.inputDeviceName : setup.outputDeviceName;
 }
 
+String EngineState::agentNode (bool input) const
+{
+   #if defined(__linux__)
+    return String (pipewire::nodeForJuceName (deviceName (input).toStdString(), input));
+   #else
+    return deviceName (input);
+   #endif
+}
+
+void EngineState::refreshPipeWireNodes (double nowMs)
+{
+   #if defined(__linux__)
+    if (nowMs - pwListedAtMs < 5000.0) return;   // pw-dump is a process spawn: every 5 s at most
+    pwListedAtMs = nowMs;
+    std::vector<pipewire::Node> nodes;
+    std::string err;
+    pwListed = pipewire::listNodes (nodes, err);
+    pwInputs.clear(); pwOutputs.clear();
+    if (! pwListed) return;
+    // Our virtual devices use underscores for spaces (VDI-VIRTUAL-AUDIO-SETUP.md).
+    const auto desc = [] (const std::string& d) { return String (d).replaceCharacter ('_', ' '); };
+    for (auto& n : pipewire::inputCandidates (nodes))  pwInputs.push_back ({ String (n.name), desc (n.description) });
+    for (auto& n : pipewire::outputCandidates (nodes)) pwOutputs.push_back ({ String (n.name), desc (n.description) });
+   #else
+    ignoreUnused (nowMs);
+   #endif
+}
+
+String EngineState::nodeDescription (bool input, const String& node)
+{
+    for (auto& n : input ? pwInputs : pwOutputs)
+        if (n.node == node && n.description.isNotEmpty()) return n.description;
+    return node;
+}
+
 var EngineState::devicesVar (bool agent)
 {
     Array<var> ins, outs;
+    if (agent && pwListed)
+    {
+        // Linux agent: the YAML names PipeWire nodes, so the pickers offer exactly
+        // those (not the ALSA PCM list), plus whatever is open if it is not one.
+        for (auto& n : pwInputs)  ins.add (obj ({ { "node", n.node }, { "description", n.description }, { "hint", "" } }));
+        for (auto& n : pwOutputs) outs.add (obj ({ { "node", n.node }, { "description", n.description }, { "hint", "" } }));
+        const auto addCurrent = [this] (Array<var>& list, bool input)
+        {
+            const auto cur = agentNode (input);
+            if (cur.isEmpty()) return;
+            for (auto& v : list) if (v["node"].toString() == cur) return;
+            list.add (obj ({ { "node", cur }, { "description", cur }, { "hint", "" } }));
+        };
+        addCurrent (ins, true);
+        addCurrent (outs, false);
+        return obj ({ { "inputs", var (ins) }, { "outputs", var (outs) } });
+    }
     if (deviceManager != nullptr)
     {
         if (auto* type = deviceManager->getCurrentDeviceTypeObject())
@@ -695,7 +750,8 @@ var EngineState::buildAgentState (double now)
     const auto health = processor.getSelfAgentHealth();
     const String sending = health.paused ? "paused" : (consoles.isEmpty() ? "idle" : "active");
 
-    const String inName = deviceName (true), outName = deviceName (false);
+    refreshPipeWireNodes (now);
+    const String inName = agentNode (true), outName = agentNode (false);
     String name = processor.getCurrentUsername();
     if (name.isEmpty()) name = options.selfName;
 
@@ -704,9 +760,9 @@ var EngineState::buildAgentState (double now)
         { "connection", connectionVar (now, true) },
         { "sending", sending },
         { "consoles", var (consoles) },
-        { "input",  obj ({ { "node", inName },  { "description", inName },  { "status", health.input },
+        { "input",  obj ({ { "node", inName },  { "description", nodeDescription (true, inName) },  { "status", health.input },
                            { "silentForMin", var() } }) },
-        { "output", obj ({ { "node", outName }, { "description", outName }, { "status", health.output } }) },
+        { "output", obj ({ { "node", outName }, { "description", nodeDescription (false, outName) }, { "status", health.output } }) },
         { "devices", devicesVar (true) },
         { "configPath", strOrNull (options.configPath) },
         { "configError", strOrNull (configError.isNotEmpty() ? configError : health.configError) } });   // P2.4 + P4.4

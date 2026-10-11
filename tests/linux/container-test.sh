@@ -29,6 +29,11 @@ pipewire-pulse > "$W/pipewire-pulse.log" 2>&1 &
 for _ in $(seq 20); do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
 pactl load-module module-null-sink sink_name=loopback_sink sink_properties="device.description=Loopback-Sink node.driver=true" >/dev/null
 pactl load-module module-null-sink sink_name=crosspoint_mic sink_properties="device.description=Crosspoint-Mic node.driver=true" >/dev/null
+sleep 0.5
+# Like the production VDIs: a real default source (the virtual mic). WirePlumber falls
+# back to it when it refuses the capture-from-sink link, which is the bug this catches.
+pactl load-module module-remap-source source_name=decoy_mic master=crosspoint_mic.monitor source_properties="device.description=Decoy-Mic" >/dev/null
+pactl set-default-source decoy_mic
 sleep 1
 echo "sources:"; pactl list short sources
 echo "sinks:";   pactl list short sinks
@@ -96,6 +101,11 @@ if grep -A1 "^loopback_sink:monitor_FL" "$W/links.txt" | grep -q "|-> .*:input_F
   pass "capture stream is linked to loopback_sink (monitor ports)"
 else
   fail "no capture stream linked to loopback_sink:monitor"
+fi
+if grep -A2 "^decoy_mic:capture_FL" "$W/links.txt" | grep -q "|-> alsa_capture"; then
+  fail "capture stream fell back to the default source (decoy_mic): stream.capture.sink missing"
+else
+  pass "capture stream is not on the default source"
 fi
 if grep -B1 -E "^\s+\|-> crosspoint_mic:playback_FL" "$W/links.txt" | grep -q ":output_FL"; then
   pass "playback stream is linked to crosspoint_mic"

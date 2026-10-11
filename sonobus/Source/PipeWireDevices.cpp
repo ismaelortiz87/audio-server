@@ -20,6 +20,10 @@ namespace {
 std::string inputDesc (const std::string& node)  { return "Crosspoint input: " + node; }
 std::string outputDesc (const std::string& node) { return "Crosspoint output: " + node; }
 
+// What the last prepare() pinned: YAML node name per direction (for display).
+std::string pinnedIn, pinnedOut;
+std::string pinnedInJuce, pinnedOutJuce;
+
 bool isSink (const Node& n)   { return n.mediaClass == "Audio/Sink" || n.mediaClass == "Audio/Duplex"; }
 bool isSource (const Node& n) { return n.mediaClass == "Audio/Source" || n.mediaClass == "Audio/Source/Virtual"
                                     || n.mediaClass == "Audio/Duplex"; }
@@ -158,6 +162,8 @@ bool prepare (const std::optional<std::string>& inputDevice,
               Resolved& r, std::string& err, std::string& note)
 {
     r = {};
+    pinnedIn.clear(); pinnedInJuce.clear(); pinnedOut.clear(); pinnedOutJuce.clear();
+    ::unsetenv ("PIPEWIRE_ALSA");
     if (! inputDevice && ! outputDevice) return true;
 
     std::vector<Node> nodes;
@@ -172,6 +178,7 @@ bool prepare (const std::optional<std::string>& inputDevice,
     const auto outs = outputCandidates (nodes);
 
     std::optional<std::string> capNode, playNode;
+    bool capFromSink = false;
     std::string bad;
 
     if (inputDevice) {
@@ -179,9 +186,10 @@ bool prepare (const std::optional<std::string>& inputDevice,
         for (auto& n : ins) if (n.name == *inputDevice) hit = &n;
         if (hit != nullptr) {
             // A sink's ".monitor" is captured by pointing the stream at the sink
-            // node itself; PipeWire links a capture stream targeted at a sink to
-            // that sink's monitor ports.
+            // node itself, flagged stream.capture.sink (below) so WirePlumber links
+            // it to that sink's monitor ports.
             capNode = hit->target;
+            capFromSink = hit->target != hit->name;
         } else if (! matchesAlsaDeviceName (*inputDevice)) {
             bad += "audio.input_device '" + *inputDevice + "' is not a PipeWire node";
             // P2.5: pin the PCM to where the node WILL be, so that JUCE's one-time ALSA
@@ -190,6 +198,7 @@ bool prepare (const std::optional<std::string>& inputDevice,
             const bool mon = inputDevice->size() > suffix.size()
                              && inputDevice->compare (inputDevice->size() - suffix.size(), suffix.size(), suffix) == 0;
             capNode = mon ? inputDevice->substr (0, inputDevice->size() - suffix.size()) : *inputDevice;
+            capFromSink = mon;
         }
     }
     if (outputDevice) {
@@ -223,9 +232,34 @@ bool prepare (const std::optional<std::string>& inputDevice,
     snd_config_update_free_global();
 
     r.asoundConfPath = confPath;   // (r.missing/missingMsg set above survive)
+    // The pipewire ALSA plugin reads this at every PCM open; the playback stream
+    // ignores the flag. Without a monitor input it must not be set: with no target,
+    // a stream.capture.sink stream defaults to the default sink's monitor.
+    if (capFromSink) ::setenv ("PIPEWIRE_ALSA", "{ stream.capture.sink = true }", 1);
+    else             ::unsetenv ("PIPEWIRE_ALSA");
+
     if (capNode) r.inputJuceName = inputDesc (*capNode);
     if (playNode) r.outputJuceName = outputDesc (*playNode);
+    pinnedIn = capNode ? *inputDevice : std::string();
+    pinnedInJuce = r.inputJuceName;
+    pinnedOut = playNode ? *outputDevice : std::string();
+    pinnedOutJuce = r.outputJuceName;
     return true;
+}
+
+std::string nodeForJuceName (const std::string& juceName, bool input)
+{
+    const auto& juce = input ? pinnedInJuce : pinnedOutJuce;
+    if (! juce.empty() && juceName == juce) return input ? pinnedIn : pinnedOut;
+    return juceName;
+}
+
+std::string juceNameForNode (const std::string& node, bool input)
+{
+    if (! input) return outputDesc (node);
+    const std::string suffix = ".monitor";
+    const bool mon = node.size() > suffix.size() && node.compare (node.size() - suffix.size(), suffix.size(), suffix) == 0;
+    return inputDesc (mon ? node.substr (0, node.size() - suffix.size()) : node);
 }
 
 } // namespace pipewire

@@ -19,8 +19,10 @@ cd "$ROOT"
 
 BASE="$(sed -n 's/^project(SonoBus VERSION \([0-9.]*\)).*/\1/p' sonobus/CMakeLists.txt)"
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
-VERSION="${CROSSPOINT_DEB_VERSION:-${BASE}+git${SHA}}"
 SDE="$(git log -1 --format=%ct 2>/dev/null || echo 1700000000)"
+# The commit time first, so versions sort (apt upgrades; a bare sha does not order).
+STAMP="$(TZ=UTC git log -1 --date=format-local:%Y%m%d%H%M --format=%cd 2>/dev/null || echo 0)"
+VERSION="${CROSSPOINT_DEB_VERSION:-${BASE}+git${STAMP}.${SHA}}"
 TAG="crosspoint-deb-build-$$"
 OUT="$ROOT/build/deb"
 mkdir -p "$OUT"

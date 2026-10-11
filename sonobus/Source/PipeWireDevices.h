@@ -78,10 +78,22 @@ bool listNodes (std::vector<Node>& out, std::string& err);
 // Returns false only for a real failure (e.g. cannot write confPath).
 // When PipeWire cannot be queried at all, nothing is pinned and true is
 // returned (P2.1 behaviour), with `note` explaining why.
+//
+// A sink's ".monitor" as input also sets PIPEWIRE_ALSA to
+// { stream.capture.sink = true }: without it WirePlumber 0.5 refuses to link a
+// capture stream to a sink and silently falls back to the default source.
 bool prepare (const std::optional<std::string>& inputDevice,
               const std::optional<std::string>& outputDevice,
               const std::string& confPath,
               Resolved& r, std::string& err, std::string& note);
+
+// The node name to show for an open JUCE device: the YAML node behind the last
+// pinned PCM ("Crosspoint input: X" -> "X.monitor" when that is what was asked
+// for), else the JUCE name unchanged.
+std::string nodeForJuceName (const std::string& juceName, bool input);
+
+// Pure: the pinned PCM's JUCE name for a node in that direction.
+std::string juceNameForNode (const std::string& node, bool input);
 
 } // namespace pipewire
 } // namespace crosspoint
