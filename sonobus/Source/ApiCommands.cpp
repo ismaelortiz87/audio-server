@@ -495,6 +495,7 @@ void ApiCommands::connectWith (const AooServerConnectionInfo& info)
         processor.disconnectFromServer();
     }
     state.setUserDisconnected (false);
+    processor.setApiDrivesConnection (true);
     if (! processor.connectToServer (info.serverHost, info.serverPort, info.userName, info.userPassword))
         throw CmdError { "internal", "Could not start the connection" };
 
@@ -573,6 +574,10 @@ void ApiCommands::connectionConnect (const var& a)
     {
         for (auto& r : recents)
             if (r.groupName == group && r.serverHost == host) { password = r.groupPassword; break; }
+        // a new server for the same group (e.g. the VPN one): keep the group's password
+        if (password.isEmpty())
+            for (auto& r : recents)
+                if (r.groupName == group && r.groupPassword.isNotEmpty()) { password = r.groupPassword; break; }
         if (password.isEmpty() && hooks.hasInitialConnection && hooks.initialConnection.groupName == group)
             password = hooks.initialConnection.groupPassword;
     }

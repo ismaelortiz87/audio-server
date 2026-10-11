@@ -3888,7 +3888,10 @@ void SonobusAudioProcessorEditor::handleAsyncUpdate()
             if (ev.success) {
                 statstr = TRANS("Connected to server");                
             } else {
-                if (String(ev.message).contains("access denied")) {
+                if (String(ev.message).contains("access denied") && processor.getApiDrivesConnection()) {
+                    statstr = TRANS("Already connected with this user name");   // the API reports it
+                }
+                else if (String(ev.message).contains("access denied")) {
                     statstr = TRANS("Already connected with this user name");
 
                     // try again with different username (auto-incremented)
@@ -3906,7 +3909,8 @@ void SonobusAudioProcessorEditor::handleAsyncUpdate()
             }
             
             // we might already have autojoined a group, only attempt if we haven't
-            if (processor.getCurrentJoinedGroup().isEmpty()) {
+            // (Crosspoint: nor when the control API started this connection; it joins itself)
+            if (processor.getCurrentJoinedGroup().isEmpty() && ! processor.getApiDrivesConnection()) {
                 
                 // now attempt to join group
                 if (ev.success) {

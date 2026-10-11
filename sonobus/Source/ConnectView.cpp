@@ -1265,6 +1265,7 @@ void ConnectView::connectWithInfo(const AooServerConnectionInfo & info, bool all
         processor.disconnectFromServer();
 
         Timer::callAfterDelay(100, [this] {
+            processor.setApiDrivesConnection(false);   // the user connected from this view
             processor.connectToServer(currConnectionInfo.serverHost, currConnectionInfo.serverPort, currConnectionInfo.userName, currConnectionInfo.userPassword);
            // updateState();
             listeners.call(&ConnectView::Listener::connectionsChanged, this);

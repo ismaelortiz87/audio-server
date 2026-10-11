@@ -328,6 +328,11 @@ public:
     
     bool connectToServer(const String & host, int port, const String & username, const String & passwd="");
     bool isConnectedToServer() const;
+    // Crosspoint: the control API (Console UI) started this server connection, so
+    // the legacy editor must not auto-join its own stale group info or rename and
+    // reconnect: it raced the API's join and its failed join disconnected us.
+    void setApiDrivesConnection (bool b) { mApiDrivesConnection = b; }
+    bool getApiDrivesConnection() const { return mApiDrivesConnection.get(); }
     bool disconnectFromServer();
     double getElapsedConnectedTime() const { return mSessionConnectionStamp > 0 ? (Time::getMillisecondCounterHiRes() - mSessionConnectionStamp) * 1e-3 : 0.0; }
 
@@ -1151,6 +1156,7 @@ private:
     Atomic<double>   mMaxBufferTime     { 1.0 };
     Atomic<bool>   mMainSendMute    {   false };
     Atomic<bool>   mMainRecvMute    {   false };
+    Atomic<bool>   mApiDrivesConnection { false };
     Atomic<bool>   mMainInMute    {   false };
     Atomic<bool>   mMainMonitorSolo    {   false };
     Atomic<bool>   mMetEnabled  { false };

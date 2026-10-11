@@ -10045,8 +10045,15 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
         // don't recover the metronome enable state, always default it to off
         mState.getParameter(paramMetEnabled)->setValueNotifyingHost(0.0f);
 
-        // don't recover the recv mute either (actually recover it after all)
-        //mState.getParameter(paramMainRecvMute)->setValueNotifyingHost(0.0f);
+        // Crosspoint: don't recover the global send / receive mutes. Neither UI has
+        // a button for them, and the 250 ms receive-mute toggle around a device
+        // change (see doSendData) gets saved when the state is written inside that
+        // window: the Console then silently refused every peer's audio (found on
+        // the first VDI deployment). The F2 test switches still apply.
+        if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_RECV_MUTE", "") != "1")
+            mState.getParameter(paramMainRecvMute)->setValueNotifyingHost(0.0f);
+        if (SystemStats::getEnvironmentVariable("SONOBUS_TEST_START_SEND_MUTE", "") != "1")
+            mState.getParameter(paramMainSendMute)->setValueNotifyingHost(0.0f);
 
         // don't recover main solo
         mState.getParameter(paramMainMonitorSolo)->setValueNotifyingHost(0.0f);

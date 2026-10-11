@@ -27,6 +27,8 @@ docker/README.md
 # Docs, tests and local tooling are not copied into either image.
 docs/
 tests/
+# ...except what tests/linux/Dockerfile (P2.11 PipeWire test) copies from this context.
+!tests/linux/container-test.sh
 scripts/
 design/prototypes/
 design/tokens/
