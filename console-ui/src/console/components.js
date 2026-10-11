@@ -261,7 +261,9 @@ function stationCard(ctx, id) {
   const talk = h('button.tog.talk');
   let cur = null;
   mute.onclick = () => send('station.setMute')({ on: !cur.mute });
-  solo.onclick = () => send('station.setSolo')({ on: !cur.solo });
+  // P5.7: soloing makes this the only solo; ⌘-click (or Shift-click) adds to the solos.
+  solo.onclick = e => send('station.setSolo')(cur.solo ? { on: false }
+    : { on: true, exclusive: !(e.metaKey || e.ctrlKey || e.shiftKey) });
   talk.onclick = () => { if (talk.dataset.state !== 'held') send('station.setTalk')({ on: !cur.talk }); };
 
   const el = h('article.station', { onpointerdown: () => ctx.select(id) },
@@ -331,7 +333,7 @@ function stationCard(ctx, id) {
 
       setAttr(mute, 'aria-pressed', s.mute);
       setAttr(solo, 'aria-pressed', s.solo);
-      setAttr(solo, 'title', `Dims the others by ${Math.abs(st.settings.soloDimDb)} dB, and only soloed stations hear your mic`);
+      setAttr(solo, 'title', `Solo this station: dims the others by ${Math.abs(st.settings.soloDimDb)} dB, and only soloed stations hear your mic. ⌘-click or Shift+S adds it to the stations already soloed`);
 
       // talk (spec §3.5 talk table)
       const held = s.talk && soloHeld(st, s);
@@ -389,7 +391,7 @@ export function youBar(ctx) {
     h('span.spacer'),
     h('div.master', h('span.label', 'Output'), out, outVal),
     h('div.hint', 'Keys: ', h('kbd', '1'), '–', h('kbd', '4'), ' pick station · ', h('kbd', '←'), h('kbd', '→'), ' place · ',
-      h('kbd', 'M'), ' mute · ', h('kbd', 'S'), ' solo · ', h('kbd', 'T'), ' hears you · ', h('kbd', '`'), ' mic on/off · hold ',
+      h('kbd', 'M'), ' mute · ', h('kbd', 'S'), ' solo (', h('kbd', '⇧S'), ' add) · ', h('kbd', 'T'), ' hears you · ', h('kbd', '`'), ' mic on/off · hold ',
       h('kbd', 'Space'), ' to talk (push-to-talk mode)'));
 
   return {

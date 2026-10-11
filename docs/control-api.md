@@ -274,7 +274,7 @@ Agent:
 | `station.setLevel` | `{ station, db }` | clamp −40…+6 |
 | `station.setPan` | `{ station, pan }` | clamp −1…+1 |
 | `station.setMute` | `{ station, on }` | |
-| `station.setSolo` | `{ station, on }` | several solos allowed |
+| `station.setSolo` | `{ station, on, exclusive? }` | `exclusive: true` (with `on: true`) makes it the only solo: every other solo is cleared in the same step, the new one set first (P5.7). Without it, solos add up |
 | `station.setTalk` | `{ station, on }` | stored even while paused by solo; `hearsYou` follows the gate |
 | `station.forget` | `{ station }` | only for `offline` stations; error `busy` otherwise |
 | `stations.talkToAll` | `{}` | `talk=true` on all |

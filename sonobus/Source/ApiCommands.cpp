@@ -243,7 +243,7 @@ void ApiCommands::setStationMix (const String& id, std::optional<float> level, s
     }
 }
 
-void ApiCommands::setStationSolo (const String& id, bool on)
+void ApiCommands::setStationSolo (const String& id, bool on, bool exclusive)
 {
     const int idx = state.stationIsPresent (id) ? processor.getRemotePeerIndexByName (id) : -1;
     if (idx < 0)
@@ -251,7 +251,8 @@ void ApiCommands::setStationSolo (const String& id, bool on)
         if (! on) return;      // un-solo of an offline station: nothing to undo
         throw CmdError { "busy", "Station " + id + " is offline; only a connected station can be soloed" };
     }
-    processor.setRemotePeerSoloed (idx, on);
+    if (on && exclusive) processor.setRemotePeerSoloExclusive (idx);   // P5.7
+    else                 processor.setRemotePeerSoloed (idx, on);
 }
 
 void ApiCommands::setHotkeyPtt (bool down)
@@ -307,7 +308,9 @@ var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const v
     {
         requireStation (a);
         const bool v = P44_VALIDATE (needBool (a, "on"));
-        setStationSolo (a["station"].toString(), v);
+        // P5.7: exclusive (optional, default false) = this becomes the only solo
+        const bool excl = a.hasProperty ("exclusive") ? P44_VALIDATE (needBool (a, "exclusive")) : false;
+        setStationSolo (a["station"].toString(), v, excl);
         return {};
     }
     if (cmd == "station.forget")

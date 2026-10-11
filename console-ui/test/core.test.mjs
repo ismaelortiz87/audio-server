@@ -177,3 +177,18 @@ test('rtc: the browser offer asks to receive Opus in stereo (pans survive), once
   assert.match(out, /a=fmtp:63 111\/111\r\n/, 'other codecs untouched');
   assert.equal(withStereoReceive(out), out, 'idempotent');
 });
+
+test('mock: exclusive solo clears the other solos; plain solo adds (P5.7)', async () => {
+  const engine = new MockEngine('console', 'busy', { timers: false });
+  const client = new Client(() => engine.connect(), { expectRole: 'console' }).start();
+  await settle(10);
+  const ids = Object.keys(client.store.state.stations).slice(0, 3);
+  assert.ok(ids.length >= 2, 'scenario has stations');
+  await client.cmd('station.setSolo', { station: ids[0], on: true }); await settle();
+  await client.cmd('station.setSolo', { station: ids[1], on: true }); await settle();
+  assert.deepEqual(ids.slice(0, 2).map(i => client.store.state.stations[i].solo), [true, true], 'plain solos add up');
+  await client.cmd('station.setSolo', { station: ids[0], on: true, exclusive: true }); await settle();
+  const solos = Object.values(client.store.state.stations).filter(s => s.solo).map(s => s.id);
+  assert.deepEqual(solos, [ids[0]], 'exclusive leaves only that one soloed');
+  await assert.rejects(client.cmd('station.setSolo', { station: ids[0], on: true, exclusive: 'yes' }), /exclusive must be true or false/);
+});

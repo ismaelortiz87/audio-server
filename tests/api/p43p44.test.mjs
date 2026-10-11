@@ -267,6 +267,18 @@ test('station.* setters: effects in the next patch, clamping, errors', async () 
   await cmd('station.setSolo', { station: A, on: false });
   await waitState(s => !s.stations[A].solo && s.stations[B].hearsYou, 3000, 'unsolo');
 
+  // P5.7: plain solos add up; exclusive leaves only that station soloed.
+  await cmd('station.setSolo', { station: A, on: true });
+  await cmd('station.setSolo', { station: B, on: true });
+  await waitState(s => s.stations[A].solo && s.stations[B].solo && s.stations[A].hearsYou && s.stations[B].hearsYou, 3000, 'two solos');
+  await cmd('station.setSolo', { station: A, on: true, exclusive: true });
+  await waitState(s => s.stations[A].solo && !s.stations[B].solo && s.stations[A].hearsYou && !s.stations[B].hearsYou, 3000, 'exclusive solo A');
+  await cmd('station.setSolo', { station: B, on: true, exclusive: true });
+  await waitState(s => s.stations[B].solo && !s.stations[A].solo && s.stations[B].hearsYou && !s.stations[A].hearsYou, 3000, 'exclusive solo moves to B');
+  await expectErr(cmd('station.setSolo', { station: B, on: true, exclusive: 'yes' }), 'bad_request');
+  await cmd('station.setSolo', { station: B, on: false });
+  await waitState(s => !s.stations[A].solo && !s.stations[B].solo && s.stations[A].hearsYou && s.stations[B].hearsYou, 3000, 'no solo');
+
   await expectErr(cmd('station.setLevel', { station: A, db: 'loud' }), 'bad_request');
   await expectErr(cmd('station.setPan', { station: A }), 'bad_request');
   await expectErr(cmd('station.setMute', { station: A, on: 'yes' }), 'bad_request');

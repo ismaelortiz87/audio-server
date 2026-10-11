@@ -197,7 +197,12 @@ export class MockEngine {
       case 'station.setLevel': { const s = this.station(a); const v = clamp(num(a.db, 'db'), -40, 6); this.change(() => { s.level = v; }); return; }
       case 'station.setPan': { const s = this.station(a); const v = clamp(num(a.pan, 'pan'), -1, 1); this.change(() => { s.pan = v; }); return; }
       case 'station.setMute': { const s = this.station(a); const v = bool(a.on, 'on'); this.change(() => { s.mute = v; }); return; }
-      case 'station.setSolo': { const s = this.station(a); const v = bool(a.on, 'on'); this.change(() => { s.solo = v; }); return; }
+      case 'station.setSolo': {
+        const s = this.station(a); const v = bool(a.on, 'on');
+        const excl = a.exclusive === undefined ? false : bool(a.exclusive, 'exclusive');   // P5.7
+        this.change(st => { if (v && excl) Object.values(st.stations).forEach(x => { x.solo = false; }); s.solo = v; });
+        return;
+      }
       case 'station.setTalk': { const s = this.station(a); const v = bool(a.on, 'on'); this.change(() => { s.talk = v; }); return; }
       case 'station.forget': {
         const s = this.station(a);

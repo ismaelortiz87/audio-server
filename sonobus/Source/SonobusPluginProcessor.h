@@ -541,6 +541,9 @@ public:
     bool getRemotePeerRecvAllow(int index, bool cached=false) const;
 
     void setRemotePeerSoloed(int index, bool soloed);
+    // P5.7: solo this peer and un-solo every other one. The new solo is set first,
+    // so the solo-gated mic routing never passes through "nothing soloed".
+    void setRemotePeerSoloExclusive(int index);
     bool getRemotePeerSoloed(int index) const;
 
     

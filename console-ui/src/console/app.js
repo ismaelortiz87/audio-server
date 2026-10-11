@@ -69,7 +69,7 @@ boot('console', client => {
 
   // spec §4.2 keyboard map
   addEventListener('keydown', e => {
-    if (!state || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!state || e.metaKey || e.ctrlKey || e.altKey) return;   // (Shift is allowed: Shift+S adds a solo)
     if (e.key === 'Escape' && ui.settingsOpen) { ctx.closeSettings(); return; }
     if (e.target instanceof HTMLElement && e.target.matches('input, select, textarea')) return;
     if (e.key === ' ' && state.mic.mode === 'ptt') { e.preventDefault(); if (!e.repeat) ctx.ptt(true); return; }
@@ -81,7 +81,8 @@ boot('console', client => {
     const k = e.key.toLowerCase();
     const anySolo = list.some(x => x.solo);
     if (k === 'm') client.fire('station.setMute', { station: s.id, on: !s.mute });
-    else if (k === 's') client.fire('station.setSolo', { station: s.id, on: !s.solo });
+    else if (k === 's') client.fire('station.setSolo', s.solo ? { station: s.id, on: false }
+      : { station: s.id, on: true, exclusive: !e.shiftKey });   // P5.7
     else if (k === 't') { if (!(anySolo && !s.solo)) client.fire('station.setTalk', { station: s.id, on: !s.talk }); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       if (e.target instanceof HTMLElement && e.target.closest('.pan, .puck')) return;

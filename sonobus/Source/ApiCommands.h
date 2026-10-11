@@ -79,7 +79,7 @@ private:
     // console helpers
     void setStationMix (const String& id, std::optional<float> level, std::optional<float> pan,
                         std::optional<bool> mute, std::optional<bool> talk);
-    void setStationSolo (const String& id, bool on);
+    void setStationSolo (const String& id, bool on, bool exclusive = false);
     void requireStation (const var& a);
     void applyPtt();
     void connectionConnect (const var& a);

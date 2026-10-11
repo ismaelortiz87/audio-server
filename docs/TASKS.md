@@ -117,7 +117,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
-| P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | todo | |
+| P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | done | Claude |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
 | P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
@@ -1415,7 +1415,13 @@ Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
   soloed stations hear your mic", "Paused by solo") never passes through a state
   with two or zero solos. Update the mock engine, `docs/control-api.md`, and the
   API test (A then B exclusive → only B soloed; one state patch).
-- **Result:**
+- **Result (Claude, 2026-10-11):** done. `station.setSolo` takes `exclusive`
+  (`SonobusAudioProcessor::setRemotePeerSoloExclusive` sets the new solo first,
+  then clears the others, so the mic routing never passes through "nothing
+  soloed"; at worst two solos for a few microseconds). Click / `S` = exclusive;
+  ⌘- or Shift-click / `Shift+S` = add; un-solo stays a plain toggle. Mock engine,
+  API doc and tests updated: `console-ui` 15/15, `tests/api/p43p44` 9/9 on the
+  real engine (incl. the headless-Chrome Solo click).
 ### P6.1 — Mac shell · M
 - **Depends on:** P5.6
 - **Do:** replace the JUCE editor (Console role) with a `WebBrowserComponent`

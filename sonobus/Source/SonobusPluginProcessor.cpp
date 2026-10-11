@@ -6053,6 +6053,16 @@ void SonobusAudioProcessor::setRemotePeerSoloed(int index, bool soloed)
     mAnythingSoloed = anysoloed;
 }
 
+void SonobusAudioProcessor::setRemotePeerSoloExclusive(int index)
+{
+    const ScopedReadLock sl (mCoreLock);
+    if (index < 0 || index >= mRemotePeers.size()) return;
+    mRemotePeers.getUnchecked(index)->soloed = true;
+    mAnythingSoloed = true;
+    for (int i = 0; i < mRemotePeers.size(); ++i)
+        if (i != index) mRemotePeers.getUnchecked(i)->soloed = false;
+}
+
 bool SonobusAudioProcessor::getRemotePeerSoloed(int index) const
 {
     const ScopedReadLock sl (mCoreLock);        
