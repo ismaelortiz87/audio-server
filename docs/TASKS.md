@@ -117,6 +117,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.4 | Connection / onboarding flow per spec | P5.1 | S | any + design review | done | Claude |
 | P5.5 | Phone layout per spec | P5.2, P5.3 | S | any + design review | done | Claude |
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
+| P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | todo | |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
 | P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
@@ -1394,6 +1395,27 @@ build against the spec. Implementers don't make design decisions (see
 Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
 (P7.7). The old Android cards are kept under P9.2.
 
+
+### P5.7 — Exclusive solo · S
+- **Asked by** maelo, 2026-10-11 (not scheduled).
+- **Today:** solo is additive. Soloing station A and then station B leaves both
+  soloed. `station.setSolo { station, on }` changes one station
+  (`ApiCommands::setStationSolo`, `sonobus/Source/ApiCommands.cpp:246`), and
+  `docs/control-api.md` says "several solos allowed". The button
+  (`console-ui/src/console/components.js:264`) and the `S` key (`app.js:84`) send it
+  for that station only.
+- **Wanted:** soloing a station makes it **the** solo, clearing every other solo.
+  Pressing solo on the station that is already the only solo un-solos it, as today.
+- **Design (Claude):** plain click / `S` = exclusive. Keep multi-solo for the rare
+  case on a modifier, as in DAWs: ⌘-click / `Shift+S` adds to the solo set. Show it
+  in the button's tooltip.
+- **Do:** add `exclusive: true` to `station.setSolo` (default false, so existing
+  clients and tests keep working). Apply it atomically in the engine (clear the
+  others and set this one in one step), so the solo-gated mic routing ("only
+  soloed stations hear your mic", "Paused by solo") never passes through a state
+  with two or zero solos. Update the mock engine, `docs/control-api.md`, and the
+  API test (A then B exclusive → only B soloed; one state patch).
+- **Result:**
 ### P6.1 — Mac shell · M
 - **Depends on:** P5.6
 - **Do:** replace the JUCE editor (Console role) with a `WebBrowserComponent`
