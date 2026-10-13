@@ -1953,10 +1953,11 @@ toolchain install itself has not been run (no JDK/SDK/NDK on this Mac).
   UI. Desktop build (F1) and F2 are unchanged.
 - **Result (Claude, 2026-10-12)**: the `.jucer` and the Android compile fixes are
 in; the link is unproven because there is no NDK on this machine.
-- Added the 18 files the engine includes but the mobile `.jucer` never listed:
-  `AgentConnect`, `ApiCommands`, `ApiServer`, `ApiSha1.h`, `AppIdentity.h`,
-  `Config`, `ConsoleShell.h`, `EngineState`, `GlobalHotkey`,
-  `GlobalHotkeyCarbon`, plus `ReverbView.h`. Found by walking the include
+- Added the 16 source files the engine includes but the mobile `.jucer` never
+  listed (plus the `crosspoint-ui.zip` resource, A6): `AgentConnect`,
+  `ApiCommands`, `ApiServer`, `ApiSha1.h`, `AppIdentity.h`, `ConsoleShell.h`,
+  `EngineState`, `GlobalHotkey`, `GlobalHotkeyCarbon` (`.cpp`/`.h` pairs where
+  they exist) and `ReverbView.h`. Found by walking the include
   closure of the files the `.jucer` already listed, not by eyeballing: 118
   source entries now, and the closure is complete.
 - **Found and fixed a real Android blocker:** the NDK defines `__linux__`, so
@@ -1965,7 +1966,7 @@ in; the link is unproven because there is no NDK on this machine.
   `&& !defined(__ANDROID__)` in `PipeWireDevices.{h,cpp}`, `EngineState.cpp`
   and `ApiCommands.cpp` (6 sites). JUCE's own `JUCE_LINUX` is safe — JUCE
   checks `JUCE_ANDROID` first (TargetPlatform.h:62), so `JUCE_LINUX` stays 0.
-- `Config`/rapidyaml stay out (`CROSSPOINT_HAS_CONFIG` is 0 on Android), the
+- `Config`/rapidyaml are **not** added (`CROSSPOINT_HAS_CONFIG` is 0 on Android), the
   PipeWire files are not listed, and the iOS-only `.mm` files that the Projucer
   already emitted for Android are untouched.
 - Rejected a `release`-only keystore: the Projucer points **every** build type
