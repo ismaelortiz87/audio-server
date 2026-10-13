@@ -158,7 +158,7 @@ Ordered so that every task appears after everything it depends on.
 | A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`); maelo verified on the Samsung 2026-10-13 |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
@@ -3119,7 +3119,49 @@ is ever needed, adds 1–2 days.
   Unit (DHU) as far as it allows, then maelo checks in the car.
 - **Done when:** findings are recorded (works, works with caveats, or
   doesn't), with the chosen behaviour implemented or documented.
-- **Result:**
+- **Result (2026-10-13, `task/A22-bt-mic-setting`):** implemented behind the
+  `settings.bluetoothMic: "phone" | "headset"` setting (android.md §14).
+  - **Findings:** works, with the §14 caveats. Classic Bluetooth: the headset
+    mic is only reachable on the call channel — the engine's A8
+    VoiceCommunication streams follow the route, so "headset" engages
+    `setCommunicationDevice()` (API 31+) or `MODE_IN_COMMUNICATION` + SCO
+    (24–30) while a headset/car is connected, and releases it otherwise.
+    That route is mono at call quality: **placement is off** (the Console says
+    so), both ears get the same mix. LE Audio keeps stereo. A real call always
+    owns the route and is never overridden; the app's own engagement sets
+    `PlatformMonitor.appOwnsAudioMode`, so **A14 call detection is not broken**.
+    The mic on/off state never changes (A14 §6 rule). `platform.bluetoothRoute`
+    reports `{ name, stereo }` (null when nothing is connected); the Console
+    shows the Phone/Headset mic control (with the §14 notes) only while a
+    headset or car is connected.
+  - **Code:** `BluetoothRoute.java` (main-looper route controller), JNI
+    `nativeBtRoute`/`nativeBtMicSetting`, `Signals.btRoute/btMic`, engine
+    setting + persistence, Console UI + placement note, `platform.js btRoute`
+    (unit-tested). **Build-verified:** debug APK assembles (all ABIs), JNI
+    symbols present in libjuce_jni.so, Console strings embedded in the A6 zip.
+  - **Design review (Claude, 2026-10-13): PASSED with two fixes** (in this PR).
+    Checked against android.md §14 + §6: setting, notes, mic-state rule,
+    `platform.bluetoothRoute`, placement note, and the "Bluetooth · {name}"
+    Microphone label (§6) all match. The two bugs found and fixed in
+    `BluetoothRoute.java`:
+    1. **LE Audio must not switch the route.** §14 says LE Audio "keeps
+       stereo" — it can carry media and the mic together, so there is nothing
+       to move. The code engaged `setCommunicationDevice()` for LE too, which
+       would have forced the mono call channel and dropped the stereo it
+       exists to keep (the 2024+ default; maelo's case). Now LE only sets
+       `sHeld`/`appOwnsAudioMode`; only classic A2DP moves to the
+       communication route.
+    2. **Reported route must follow the actual route.** `platform.bluetoothRoute`
+       was set whenever the *setting* was "headset", even when the route
+       wasn't engaged (e.g. a real call owns it). §14 says it is null unless
+       engaged. Now it is null unless the route is on, and the `stereo` flag
+       is the engaged-and-LE case. `releaseRoute()` also no longer clobbers
+       the mode if a call took over first.
+    Not yet: maelo's buds/car check (A13 covers the car).
+    Gotcha: this box's `android-33` SDK jar postdates the
+    `OUTPUT_DEVICE_*`→`TYPE_*` rename, so `BluetoothRoute.java` resolves the
+    type constants at runtime (both names) instead of referencing them at
+    compile time.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

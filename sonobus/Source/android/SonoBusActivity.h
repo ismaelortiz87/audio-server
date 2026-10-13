@@ -62,6 +62,8 @@ private:
     CALLBACK (nativePlayerButtonJni,     "nativePlayerButton",     "(I)V") \
     CALLBACK (nativeSelectStationJni,    "nativeSelectStation",    "(Ljava/lang/String;)V") \
     CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
+    CALLBACK (nativeBtRouteJni,          "nativeBtRoute",          "(Ljava/lang/String;Z)V") \
+    CALLBACK (nativeBtMicSettingJni,     "nativeBtMicSetting",     "()Ljava/lang/String;") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
 #undef JNI_CLASS_MEMBERS
@@ -128,6 +130,42 @@ private:
         auto& sig = crosspoint::android::Signals::get();
         sig.shutdownRequested.store (true);
         if (sig.onShutdown) sig.onShutdown();
+    }
+
+    /** A22 (android.md 14): the Bluetooth route changed. `name` is the connected
+        headset/car (null when none); `stereo` is true for LE Audio (stereo + mic
+        together, placement stays on) and false for the call/SCO route (both ears
+        get the same mix). Recorded here; EngineState turns it into
+        platform.bluetoothRoute. */
+    static void JNIEXPORT nativeBtRouteJni (JNIEnv* env, jclass, jstring name, jboolean stereo)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        std::lock_guard<std::mutex> lock (sig.btRouteNameLock);
+        if (name == nullptr)
+        {
+            sig.btRoute.store (false);
+            sig.btRouteStereo.store (false);
+            sig.btRouteName.clear();
+        }
+        else
+        {
+            sig.btRoute.store (true);
+            sig.btRouteStereo.store (stereo != JNI_FALSE);
+            sig.btRouteName = juceString (env, name).toStdString();
+        }
+    }
+
+    /** A22 (android.md 14): the current "Bluetooth mic" setting, read by the Java
+        route controller on its main-looper tick. The controller's own tick mirrors
+        the processor value into the Signals global on the message thread, so this
+        needs no engine handle and is safe before the engine exists (returns the
+        default "phone" until the first tick). */
+    static jstring JNIEXPORT nativeBtMicSettingJni (JNIEnv* env, jclass)
+    {
+        const bool headset = crosspoint::android::Signals::get().btMic.load() == 1;
+        // A new local jstring; the Java caller owns it (do not wrap in LocalRef,
+        // whose destructor would delete the very reference we return).
+        return env->NewStringUTF (headset ? "headset" : "phone");
     }
 
  

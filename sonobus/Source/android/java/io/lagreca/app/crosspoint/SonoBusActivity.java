@@ -38,6 +38,10 @@ public class SonoBusActivity   extends Activity
     /** A20 (section 13.1): the Android Auto browse list selected a station. */
     static native void nativeSelectStation(String station);
     static native void nativeShutdown();                       // swipe-away: leave the group, save state
+    /** A22: the Bluetooth route changed (null name = none; stereo = LE Audio). */
+    static native void nativeBtRoute(String name, boolean stereo);
+    /** A22: the current "Bluetooth mic" setting ("phone" | "headset"), from the engine. */
+    static native String nativeBtMicSetting();
 
     private final static String TAG = "Crosspoint";
 
@@ -69,6 +73,7 @@ public class SonoBusActivity   extends Activity
     {
         super.onStart();
         PlatformMonitor.start(this);
+        BluetoothRoute.start(this);       // A22: the Bluetooth/headset mic route
     }
 
     @Override
@@ -102,6 +107,7 @@ public class SonoBusActivity   extends Activity
         if (sQuitting) return;
         sQuitting = true;
         try { nativeShutdown(); } catch (Throwable t) { Log.w(TAG, "native shutdown failed", t); }
+        BluetoothRoute.stop();               // A22: drop the communication route before the process ends
         SonoBusService.apply(ctx, false, "", "", false, 0);
         // Let the leave messages leave the socket before the process goes.
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {

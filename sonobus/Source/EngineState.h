@@ -22,6 +22,7 @@
 #include "JuceHeader.h"
 #include "ApiServer.h"
 #include "SonobusPluginProcessor.h"
+#include "android/AndroidPlatform.h"   // A22: crosspoint::android::Signals (self-guards to #if JUCE_ANDROID)
 
 #include <deque>
 #include <functional>
@@ -176,6 +177,7 @@ private:
     const char* androidOutputRoute() const;
     var androidDevicesVar();
     var androidPlatformVar (bool anyHearsYou);
+    var androidBluetoothRouteVar (const crosspoint::android::Signals&);   // A22
     int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
     double androidRouteAtMs = -1e12;
     bool aecChecked = false, aecWorking = false;

@@ -114,6 +114,7 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
 
 /* 3.7 settings sheet */
 .connform { display: flex; flex-direction: column; gap: 10px; }
+.note { color: var(--ink4); font-size: 11px; line-height: 1.4; }
 .field2 input, .field2 select { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px 10px; color: var(--ink); min-width: 0; }
 .field2 > .readonly { background: none; border: 0; padding: 2px 0; color: var(--ink2); }
 .field2 input:disabled { color: var(--ink2); background: var(--panel2); }
