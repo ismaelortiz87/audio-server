@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled), **B15** (phone touch size, found 2026-10-12). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -481,10 +481,12 @@ width. Styles: `.seg button` in `console-ui/src/styles/base.css` (padding
 5px 10px, 12 px text). The phone container query in `console.css` doesn't
 override it.
 
-**Left.** In the `@container (max-width: 640px)` block, give `.seg button`
-`min-height: var(--size-touchMin)` (the segment can keep its look; grow the
-hit area). Check that the You bar still wraps cleanly at 360 px, and
-screenshot before and after (spec §9).
+**Closed** (Claude, 2026-10-12, branch `android-apk`). In the phone container
+query, `.seg button`, the placement-field buttons (Spread, All centre; they are
+`.btn.small`, not a segment) and the You bar's "Talk to all" now have
+`min-height: var(--size-touchMin)`. Checked in headless renders at 390 px
+(`everyday`, `twocalls`): the You bar wraps "Talk to all" onto its own row,
+nothing clips. Desktop is unchanged (container query only).
 
 ## B14 — A VDI that is also on the VPN stays offline for the Mac
 

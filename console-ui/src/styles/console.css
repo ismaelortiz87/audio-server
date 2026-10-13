@@ -149,6 +149,10 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
   .tog kbd, .hint { display: none; }
   .pan button { min-height: var(--size-touchMin); }
   .pan { height: var(--size-touchMin); }
+  /* B15: talk-mode segments, Spread / All centre and Talk to all at touch size (spec §1.3, §5) */
+  .seg button { min-height: var(--size-touchMin); padding: 5px 14px; }
+  .seg { padding: 2px; }
+  .stagehead .btn, .you .btn { min-height: var(--size-touchMin); padding: 6px 14px; }
   .you { padding: 10px 12px 14px; gap: 10px; }
   .mic { width: 100%; justify-content: center; min-height: var(--size-micButtonPhone); order: -1; }
   .micmeter { flex: 1; width: auto; }
