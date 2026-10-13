@@ -154,6 +154,7 @@ Ordered so that every task appears after everything it depends on.
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | wip | Sonnet agent (worktree), awaiting design review |
+| A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
@@ -2839,6 +2840,31 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 - **Done when:** added to Quick Settings on the emulator, it toggles the mic
   locked and unlocked, its state follows changes made in the app, and design
   review passed.
+- **Result:**
+
+#### A24 — Build the APK after the lock-screen player · S · any
+- **Depends on:** A18 merged into `android-apk` *and design-approved* (its index
+  row says `done`). Include A9 if it has merged by then; otherwise say so.
+- **Do:**
+  1. `git merge android-apk` (or work on it directly) and run the checks:
+     console-ui `npm test`, `scripts/test-android-ui.sh`,
+     `scripts/build-desktop.sh --app-only`.
+  2. Build the **debug** APK (`scripts/build-android.sh`).
+  3. Build a **release** APK (`--release`), but only if maelo's keystore
+     variables are set (docs/ANDROID.md, "Release APK"). Never create or commit
+     a keystore for him.
+  4. Copy each APK to `build/apk/crosspoint-<debug|release>-<short sha>.apk`.
+     That folder is git-ignored and survives cleanups; build intermediates
+     don't.
+  5. Smoke-test on an emulator: it installs and launches, the Console loads,
+     it connects to a group, and the lock-screen player shows with working
+     buttons.
+  6. Delete the build intermediates (`Builds/Android/app/build`, `.cxx`) and
+     discard the resave noise.
+- **Done when:** the APK paths, sizes and the commit they were built from are
+  recorded here, plus one line on what changed since maelo's last APK
+  (`348618c6`) and the install command (`adb install -r …`, or "uninstall
+  first" if the signing key differs).
 - **Result:**
 
 ### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
