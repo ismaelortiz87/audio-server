@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Now Bar mock</title>
+<style>
+/* Exploration for A15: Crosspoint as a media session on the Samsung lock screen
+   (Now Bar + expanded player). System UI is mocked in neutral greys; only the
+   content we supply (artwork, title, subtitle, action icons) uses Crosspoint tokens. */
+:root { --s1:#9085e9; --s2:#199e70; --s3:#c98500; --live:#ff4f7b; --accent:#2e6b66; --accentInk:#8fc3ba; --panel:#12161a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #07090a; font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #eef0f1; }
+.row { display: flex; gap: 28px; padding: 24px; justify-content: center; flex-wrap: wrap; }
+figure { margin: 0; }
+figcaption { color: #9aa3a8; font-size: 12px; margin: 0 0 8px 4px; max-width: 340px; }
+figcaption b { color: #dfe4e6; }
+.phone { width: 340px; height: 720px; border-radius: 30px; overflow: hidden; position: relative;
+  background: radial-gradient(130% 80% at 20% 0%, #2a3b4a 0%, #121820 55%, #0a0d10 100%); border: 1px solid #2a3036; }
+.sb { display: flex; justify-content: space-between; padding: 12px 20px 0; font-size: 12px; color: #dfe4e6; }
+.clock { text-align: center; margin-top: 54px; font-size: 76px; font-weight: 300; letter-spacing: -.02em; line-height: 1; }
+.date { text-align: center; color: #c9d0d4; margin-top: 8px; font-size: 14px; }
+.lockic { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); font-size: 12px; color: #c9d0d4; }
+.bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 14px 22px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.corner { position: absolute; bottom: 26px; width: 42px; height: 42px; border-radius: 50%; background: #ffffff1a; display: grid; place-items: center; color: #dfe4e6; font-size: 16px; }
+.corner.l { left: 22px; } .corner.r { right: 22px; }
+.handle { width: 110px; height: 4px; border-radius: 2px; background: #ffffffaa; }
+
+/* collapsed Now Bar pill */
+.nowbar { display: flex; align-items: center; gap: 10px; background: #1d2328ee; border-radius: 999px; padding: 6px 6px 6px 8px; width: 236px; margin-bottom: 52px;
+  box-shadow: 0 6px 20px #0008; }
+.nowbar .art { width: 30px; height: 30px; border-radius: 50%; flex: none; }
+.nowbar .t { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nowbar .t small { display: block; font-weight: 400; color: #aab3b8; font-size: 11px; }
+.nowbar .mic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+
+/* expanded player card */
+.player { width: 100%; background: #1d2328f2; border-radius: 26px; padding: 16px 16px 14px; box-shadow: 0 8px 26px #0009; }
+.ph { display: flex; gap: 12px; align-items: center; }
+.art { width: 64px; height: 64px; border-radius: 14px; flex: none; position: relative; display: grid; place-items: center; }
+.art svg { width: 34px; height: 34px; }
+.meta { flex: 1; min-width: 0; }
+.app { font-size: 11px; color: #aab3b8; display: flex; align-items: center; gap: 6px; }
+.app i { width: 14px; height: 14px; border-radius: 4px; background: var(--panel); display: inline-grid; place-items: center; }
+.ttl { font-size: 17px; font-weight: 650; margin-top: 3px; }
+.sub { font-size: 12.5px; color: #c4ccd0; margin-top: 2px; }
+.dots { display: flex; gap: 5px; margin-top: 7px; }
+.dots span { width: 18px; height: 4px; border-radius: 2px; background: #ffffff33; }
+.dots span.on { background: #fff; }
+.ctl { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding: 0 2px; }
+.b { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #e6eaec; position: relative; }
+.b svg { width: 24px; height: 24px; }
+.b.on::after { content: ""; position: absolute; inset: 2px; border-radius: 50%; background: #ffffff22; z-index: -1; }
+.b .lbl { position: absolute; top: 46px; font-size: 10px; color: #aab3b8; white-space: nowrap; }
+.big { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; }
+.big svg { width: 28px; height: 28px; }
+.note { color: #8b959a; font-size: 11.5px; max-width: 980px; margin: 0 auto; padding: 0 24px 24px; line-height: 1.5; }
+.note b { color: #c9d0d4; }
+</style>
+</head>
+<body>
+<div class="row" id="root"></div>
+<p class="note"><b>How it maps (Android media session):</b> play/pause = <b>Mic on/off</b> (also the headset button) ·
+previous/next = <b>pick a station</b> · title = the selected station · subtitle = its state, plus who hears you ·
+artwork = station colour · two custom buttons = <b>Mute</b> and <b>Solo</b> for that station.
+<b>Solo</b> is exclusive (as in the app): it dims the others and only that station hears you. It doesn't switch the mic on; the big Mic button does.
+The system allows about 5 buttons, so per-station <b>Hears you</b> stays in the app.
+Layout, sizes and shapes belong to Samsung's player; we only supply the content and icons.</p>
+<script>
+const I = {
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  micOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.9 2.3M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.4 2.3M12 18v3M3 3l18 18"/></svg>',
+  prev: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>',
+  next: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>',
+  spk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>',
+  spkOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>',
+  solo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="7.5" opacity=".55"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2" opacity=".55"/></svg>',
+  mark: '<svg viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M3 12 H6.4"/><path d="M12 17.6 V21"/></g><path fill="#fff" fill-rule="evenodd" d="M12 7.6 a4.4 4.4 0 1 0 0.001 0 Z M12 10.3 a1.7 1.7 0 1 1 -0.001 0 Z"/></svg>',
+};
+const shell = (inner, open) => `<div class="phone"><div class="sb"><span>T-Mobile</span><span>▲ ◢ ▮ 82%</span></div>
+  <div class="lockic">🔒</div><div class="clock">10:25</div><div class="date">Tue, Oct 13</div>
+  <div class="bottom">${inner}<div class="handle"></div></div>
+  ${open ? '' : '<div class="corner l">☏</div><div class="corner r">◎</div>'}</div>`;
+
+const nowbar = () => shell(`<div class="nowbar">
+  <span class="art" style="background:var(--s1);display:grid;place-items:center"><span style="width:16px;height:16px;display:block">${I.mark}</span></span>
+  <span class="t">ACCT-07 hears you<small>Live · 2 of 3 stations</small></span>
+  <span class="mic" style="background:var(--live);color:#1a0008">${I.mic}</span></div>`);
+
+const player = ({ color, idx, name, sub, live, muted, solo }) => shell(`<div class="player">
+  <div class="ph"><div class="art" style="background:${color}">${I.mark}</div>
+    <div class="meta"><div class="app"><i>${I.mark.replace('<svg', '<svg width="10" height="10"')}</i>Crosspoint · ops</div>
+      <div class="ttl">${name}</div><div class="sub">${sub}</div>
+      <div class="dots">${[0, 1, 2].map(i => `<span class="${i === idx ? 'on' : ''}"></span>`).join('')}</div></div></div>
+  <div class="ctl">
+    <span class="b ${muted ? 'on' : ''}">${muted ? I.spkOff : I.spk}<span class="lbl">${muted ? 'Muted' : 'Mute'}</span></span>
+    <span class="b">${I.prev}<span class="lbl">Station</span></span>
+    <span class="big" style="background:${live ? 'var(--live)' : '#ffffff26'};color:${live ? '#1a0008' : '#e6eaec'}">${live ? I.mic : I.micOff}</span>
+    <span class="b">${I.next}<span class="lbl">Station</span></span>
+    <span class="b ${solo ? 'on' : ''}" style="${solo ? 'color:var(--accentInk)' : ''}">${I.solo}<span class="lbl">${solo ? 'Soloed' : 'Solo'}</span></span>
+  </div><div style="height:12px"></div></div>`, true);
+
+document.getElementById('root').innerHTML = [
+  ['<b>1 · Lock screen, Now Bar collapsed.</b> Live line plus a Mic button. Tap the pill to expand.', nowbar()],
+  ['<b>2 · Expanded, ACCT-07 soloed.</b> The others are dimmed and only ACCT-07 hears you, mic live. No unlock needed.',
+    player({ color: 'var(--s1)', idx: 0, name: 'VDI-ACCT-07', sub: 'Solo · only ACCT-07 hears you · Clear 32 ms', live: true, solo: true })],
+  ['<b>3 · After “next station”, with Solo released and DEV-02 muted.</b> Mic off.',
+    player({ color: 'var(--s2)', idx: 1, name: 'VDI-DEV-02', sub: 'Muted · Mic off · nobody hears you', live: false, muted: true, solo: false })],
+].map(([c, p]) => `<figure><figcaption>${c}</figcaption>${p}</figure>`).join('');
+</script>
+</body>
+</html>

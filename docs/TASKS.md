@@ -149,13 +149,13 @@ Ordered so that every task appears after everything it depends on.
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | wip, awaiting design review | |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | |
-| A12 | Mic toggle from the headset button (optional) | A14, A7 | S | any + design review | todo | |
+| A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
-| A15 | UX addendum: lock-screen station controls (expanded notification + mic tile) | A2, A10 | S | design | todo | |
+| A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | wip | Claude (mock `design/prototypes/android-nowbar/`) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | todo | |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | todo | |
-| A18 | Expanded notification with per-station Mute / Solo / Hears you + Mic, usable locked | A15, A16, A17 | M | any + design review | todo | |
-| A19 | Quick Settings tile: Crosspoint mic on/off | A15, A17 | S | any + design review | todo | |
+| A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
+| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
@@ -2627,11 +2627,25 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
 
 maelo asked for this on 2026-10-13 after using the APK. The notification is
 not practical as it stands: once dismissed it doesn't come back until the app
-restarts, and it only has Mic and Disconnect. Android has no Live Activities
-for custom controls; Android 16 "Live Updates" don't allow custom layouts. The
-closest fit is the **expanded foreground-service notification with a custom
-layout**: buttons that work without unlocking, one row per station. A
-**Quick Settings tile** adds the mic toggle.
+restarts, and it only has Mic and Disconnect.
+
+**Approach, agreed with maelo:** publish an Android **media session**, as
+Spotify does. That puts Crosspoint in Samsung's **Now Bar** and in the
+expanded lock-screen player, with buttons that work without unlocking. The
+system keeps a media notification while audio plays, so it can't be swiped
+away. The system owns the layout; we supply the artwork, title, subtitle and
+about 5 buttons:
+
+| Button / field | Crosspoint |
+|---|---|
+| play/pause (also the headset button) | **Mic on/off** |
+| previous / next | **pick a station** |
+| custom 1 | **Mute** (selected station) |
+| custom 2 | **Solo** (selected station, exclusive: dims the others, and only it hears you. It never switches the mic on) |
+
+The title is the selected station, the subtitle is its state plus who hears
+you, and the artwork is the station colour. Per-station "Hears you" stays in
+the app. Mock: `design/prototypes/android-nowbar/index.html`.
 
 **Who does what**
 - **Claude (lead, design) only:** A15, and the design reviews of A9, A18 and A19.
@@ -2656,18 +2670,21 @@ layout**: buttons that work without unlocking, one row per station. A
 All of them edit the `.jucer` manifest XML: keep those edits small, resolve
 conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 
-#### A15 — UX addendum: lock-screen controls · S · design (Claude) · lane D
+#### A15 — UX addendum: lock-screen player · S · design (Claude) · lane D
 - **Depends on:** A2, A10 · **Touches:** `docs/design/android.md` (new §12),
-  `design/prototypes/android/`
-- **Do:** spec the collapsed view (live line + Mic on/off), the expanded view
-  (one row per station: swatch-like marker, short name, Mute / Solo / Hears
-  you toggles in their states, then Mic on/off + Disconnect), the order and
-  maximum (4 rows; what a 5th does), button states and copy, what works while
-  locked (all toggles; tapping the body unlocks and opens the app), the solo
-  rule (exclusive, as P5.7), behaviour when the lock screen hides
-  notification content, light/dark system shade, and the Quick Settings mic
-  tile (label, states, locked behaviour). Add a prototype screen.
-- **Done when:** A18 and A19 can be built without inventing anything.
+  `design/prototypes/android-nowbar/`
+- **Do:** turn the mock into spec, covering:
+  - Now Bar pill text (live line), and how the expanded player maps (table
+    above)
+  - title, subtitle and artwork per state: live, mic off, PTT, call (A14),
+    disconnected, lost/offline station
+  - which station is selected first (the soloed one, else the first in
+    `stationOrder`), and how ◀ ▶ wrap
+  - button icons and labels for each state, and the accessibility labels
+  - what happens with another media app playing
+  - how this replaces or sits beside the A10 connection notification, and
+    whether the A19 tile is still worth it
+- **Done when:** A18 can be built without inventing anything.
 - **Result:**
 
 #### A17 — Native control bridge · M · any · lane P
@@ -2704,25 +2721,31 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   Disconnect or swipe-away from Recents it stays gone.
 - **Result:**
 
-#### A18 — Expanded notification with station controls · M · any + design review · lane P
+#### A18 — Lock-screen player (media session) · M · any + design review · lane P
 - **Depends on:** A15, A16, A17 · **Touches:** `SonoBusService.java`, new
-  `res/layout/notification_*.xml` (`RemoteViews`, `DecoratedCustomViewStyle`;
-  hand-added res files survive a resave, as A7's did), `.jucer` if needed
-- **Do:** build A15's collapsed and expanded views, wired to A17's commands.
-  The views must update from the pushed state without flicker or sound, and
-  work locked: no `setAuthenticationRequired`, `VISIBILITY_PUBLIC`. Keep the
-  existing title/text copy as the collapsed text.
-- **Done when:** on the emulator, locked, every button changes the engine
-  state, and the notification reflects it within a second. Captures go to
-  `/private/tmp/claude-501/a18-review/` (locked collapsed, locked expanded,
-  shade expanded, 4 stations, 1 station, a soloed station, mic live). Design
-  review passed.
-- **Result:**
-
+  `CrosspointMediaSession.java` (MediaSession + PlaybackState custom actions,
+  a MediaStyle notification as the foreground notification),
+  `AndroidServiceController.h`, `.jucer` (androidx.media if needed)
+- **Do:** build A15's design on A17's command bridge:
+  - play/pause → `mic.setOn`, with the earcon
+  - skip previous/next → the selected station
+  - custom actions → `station.setMute` and `station.setSolo` (exclusive), on
+    the selected station
+  - metadata (title, subtitle, artwork) and button states follow the pushed
+    state without flicker or sound
+  - the media button from headsets maps to play/pause; this absorbs A12
+  - keep "mixes with other apps" (A8): no audio-focus request unless A15 says
+    otherwise
+- **Done when:**
+  - On the emulator's lock screen, the media player shows and every button
+    changes the engine state within a second.
+  - Captures go to `/private/tmp/claude-501/a18-review/`.
+  - The real check is maelo's Samsung Now Bar in A13.
+  - Design review passed.
 #### A19 — Quick Settings mic tile · S · any + design review · lane P
 - **Depends on:** A15, A17 · **Touches:** new `MicTileService.java`, `.jucer`
   manifest (`TileService` with `BIND_QUICK_SETTINGS_TILE`)
-- **Do:** a tile "Crosspoint mic" that toggles the mic through A17, with
+- **Optional, only if A15 keeps it.** **Do:** a tile "Crosspoint mic" that toggles the mic through A17, with
   states per A15 (active = live, inactive = off, unavailable when disconnected
   or the mic isn't granted). It must work from the lock screen if A15 says so.
 - **Done when:** added to Quick Settings on the emulator, it toggles the mic
