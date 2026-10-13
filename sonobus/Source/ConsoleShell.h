@@ -21,6 +21,8 @@
 // which only the app's one translation unit includes (JUCE's JNI helpers have no include guard).
 namespace crosspoint_android
 {
+    void setSystemBarColours (uint32 statusArgb, uint32 navigationArgb);   // both bars `rail`
+    void applyFontScale (void* webView);          // WebSettings.setTextZoom from the system font scale
     bool paintWebViewBackground (void* webView, uint32 argb);   // the web view's background, before any page paints
     void haptic (void* webView, bool starting);                  // performHapticFeedback (honours the system setting)
     void moveTaskToBack();                        // same as Home; never disconnects
@@ -259,9 +261,22 @@ private:
         if (page == nullptr || attempt > 100)
             return;
         if (crosspoint_android::paintWebViewBackground (page->nativeView(), 0xff0b0d0f))
+        {
+            fontScaleTick();
             return;
+        }
         Component::SafePointer<ConsoleShellView> sp (this);
         Timer::callAfterDelay (10, [sp, attempt] { if (sp != nullptr) sp->paintWebViewWhenAttached (attempt + 1); });
+    }
+
+    // The activity handles fontScale itself, so follow it by hand (once a second, cheap).
+    void fontScaleTick()
+    {
+        if (page == nullptr)
+            return;
+        crosspoint_android::applyFontScale (page->nativeView());
+        Component::SafePointer<ConsoleShellView> sp (this);
+        Timer::callAfterDelay (1000, [sp] { if (sp != nullptr) sp->fontScaleTick(); });
     }
    #endif
 

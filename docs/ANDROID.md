@@ -249,8 +249,8 @@ Check with `aapt dump badging <apk> | head -1`.
 | A2 design | done (`docs/design/android.md`) |
 | A3 debug APK builds the engine | done: builds, installs, launches on the emulator, joins a group on aoo.sonobus.net (via the control API) |
 | A4 identity | done: `io.lagreca.app.crosspoint`, "Crosspoint", adaptive icon, `crosspoint://` filter |
-| A5 control API on the phone | Console role, loopback `7070`, no token, `self.kind: "android"`; confirmed live on the emulator |
-| A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()`; confirmed live (the WebView shows the Console) |
+| A5 control API on the phone | done: smoke-tested over `adb forward`, settings persist across a relaunch |
+| A6 Console UI in the APK | done: fresh install and upgrade both serve the current UI |
 | A7 Android web shell | renders on the emulator; open: duplicated top inset/empty band, clipped station list |
 | A9 mic permission | not started (UI states + `platform.micPermission`) |
 | A10 background service | not started |

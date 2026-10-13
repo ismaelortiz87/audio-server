@@ -636,6 +636,8 @@ public:
         webShellShown = true;
 
        #if JUCE_ANDROID
+        crosspoint_android::setSystemBarColours (0xff0d1013, 0xff0d1013);   // --rail, both bars
+
         // android.md section 2: portrait on phones (smallest width < 600 dp), tablets rotate.
         // On Android the display area is in dp already (scale = density).
         if (auto* d = Desktop::getInstance().getDisplays().getPrimaryDisplay())
