@@ -16,12 +16,23 @@
 #if (JUCE_MAC || JUCE_ANDROID) && JUCE_WEB_BROWSER
  #define CROSSPOINT_HAS_WEB_SHELL 1
 
+/** How the "can't show the Console at all" page looks and behaves. All fields are
+    optional: the defaults are the Mac's reviewed P6.1 page (default title, no button). */
+struct ConsoleShellFatal
+{
+    String title;                      // empty = the platform's default heading
+    String buttonLabel;                // empty = the platform's default label
+    std::function<bool()> onRetry;     // set = the page has a button; it calls this, and a
+                                       // true result loads the Console page (false: stay)
+};
+
 class ConsoleShellView : public Component
 {
 public:
     /** `url` = the engine's UI root; `fatalError` non-empty = show it instead of a page. */
-    ConsoleShellView (const String& url, const String& fatalError)
-        : baseUrl (url), retryButton ("Retry")
+    ConsoleShellView (const String& url, const String& fatalError, ConsoleShellFatal fatalOptions = {})
+        : baseUrl (url), retryButton (fatalOptions.buttonLabel.isNotEmpty() ? fatalOptions.buttonLabel : defaultButtonLabel()),
+          fatalRetry (std::move (fatalOptions.onRetry))
     {
         setOpaque (true);
         setWantsKeyboardFocus (false);
@@ -47,10 +58,20 @@ public:
         addChildComponent (title);
         addChildComponent (message);
         addChildComponent (retryButton);
-        retryButton.onClick = [this] { loadPage(); };
+        retryButton.onClick = [this]
+        {
+            if (fatalRetry != nullptr)
+            {
+                // Asked to start the engine's API again: only load the page if it did.
+                if (! fatalRetry())
+                    return;
+                fatalRetry = nullptr;   // from here on the button is the plain page reload
+            }
+            loadPage();
+        };
 
         if (fatalError.isNotEmpty())
-            showError (errorTitle(), fatalError, false);
+            showError (fatalOptions.title.isNotEmpty() ? fatalOptions.title : errorTitle(), fatalError, fatalRetry != nullptr);
         else
             loadPage();
     }
@@ -87,6 +108,15 @@ public:
     bool isShowingError() const { return page == nullptr; }
 
 private:
+    static String defaultButtonLabel()
+    {
+       #if JUCE_ANDROID
+        return "Try again";
+       #else
+        return "Retry";
+       #endif
+    }
+
     // android.md section 8 gives the phone its own error copy; the Mac keeps its
     // original heading.
     static String errorTitle()
@@ -182,6 +212,7 @@ private:
     std::unique_ptr<Page> page;
     Label title, message;
     TextButton retryButton;
+    std::function<bool()> fatalRetry;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ConsoleShellView)
 };

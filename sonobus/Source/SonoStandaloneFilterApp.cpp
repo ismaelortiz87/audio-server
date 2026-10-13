@@ -629,6 +629,34 @@ public:
     void showConsoleShell()
     {
         String error;
+        ConsoleShellFatal fatal;
+       #if JUCE_ANDROID
+        // android.md section 8, copy verbatim. Missing UI files come first: no
+        // retry can fix them. The port is fixed (7070) so "off" cannot happen.
+        if (! apiConfig.uiDir.isDirectory())
+        {
+            fatal.title = "This copy of Crosspoint is incomplete";
+            error = "Some of its files are missing. Reinstall Crosspoint.";
+        }
+        else if (apiServer == nullptr)
+        {
+            error = "Its audio engine couldn't open its local connection (port " + String (apiConfig.port)
+                  + " is in use by another app). Close that app or restart the phone, then try again.";
+            fatal.buttonLabel = "Try again";
+            fatal.onRetry = [this]
+            {
+                // Same start as launch; the engine state needs the server, so it
+                // follows. The shell then loads the page.
+                apiStartError.clear();
+                startApiServer();
+                if (apiServer == nullptr)
+                    return false;
+                if (engineState == nullptr)
+                    startEngineState();
+                return true;
+            };
+        }
+       #else
         if (apiConfig.port <= 0)
             error = "The control API is switched off (--api-port 0), and the window needs it to show the Console.\n\nStart Crosspoint without --api-port 0.";
         else if (apiServer == nullptr)
@@ -636,11 +664,12 @@ public:
                   + "\n\nAnother Crosspoint or SonoBus may already be using that port. Quit it, or start this one with --api-port <other port>.";
         else if (! apiConfig.uiDir.isDirectory())
             error = "The Console UI files were not found. Expected them in the app bundle (Contents/Resources/console-ui).\n\nRebuild the app, or pass --ui-dir <path to console-ui>.";
+       #endif
 
         webShellShown = true;
 
         // The window reaches the engine on loopback whatever the bind address is.
-        mainWindow->showWebShell ("http://127.0.0.1:" + String (apiConfig.port) + "/", error);
+        mainWindow->showWebShell ("http://127.0.0.1:" + String (apiConfig.port) + "/", error, std::move (fatal));
     }
 
     // P6.5: register the global push-to-talk hotkey (windowed Console only).

@@ -936,7 +936,7 @@ public:
         Mac: title "Crosspoint", minimum 360 x 560, last size and position restored.
         Android: the window is already fullscreen (android.md section 2), so there is
         no geometry to set and no title bar to hide. */
-    void showWebShell (const String& url, const String& fatalError)
+    void showWebShell (const String& url, const String& fatalError, ConsoleShellFatal fatal = {})
     {
         auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent());
         if (mc == nullptr) return;
@@ -945,10 +945,10 @@ public:
         optionsButton.setVisible (false);
 
        #if JUCE_ANDROID
-        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), getWidth(), getHeight());
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), getWidth(), getHeight());
        #else
         setResizeLimits (360, 560, 10000, 10000);
-        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), 440, 760);
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), 440, 760);
 
         int x = -100, y = -100, w = -100, h = -100;
         if (auto* props = pluginHolder->settings.get())
