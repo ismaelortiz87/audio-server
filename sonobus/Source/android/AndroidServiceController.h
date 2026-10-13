@@ -109,7 +109,7 @@ private:
         if (auto* ids = order.getArray())
             for (auto& idv : *ids)
             {
-                const var s = stations[idv.toString()];
+                const var s = stations.getProperty (idv.toString(), var());
                 if (! s.isObject()) continue;
                 ++in.stationsKnown;
                 if (s["presence"].toString() == "online") ++in.stationsOnline;
@@ -133,6 +133,10 @@ private:
 
         const auto content = notification::build (in);
 
+        // The user allowed notifications after the service started: post it again so it shows now.
+        const bool notifOk = sig.notificationsEnabled.load();
+        if (notifOk != lastNotifOk) { lastNotifOk = notifOk; pushedActive = false; }
+
         const double now = Time::getMillisecondCounterHiRes();
         const bool startedOrStopped = serviceWanted != pushedActive;
         const bool changed = content != pushed;
@@ -152,7 +156,7 @@ private:
     EngineState& state;
     std::function<void()> disconnect;
 
-    bool serviceWanted = false, pushedActive = false;
+    bool serviceWanted = false, pushedActive = false, lastNotifOk = true;
     notification::Content pushed;
     double lastPushMs = 0;
 };

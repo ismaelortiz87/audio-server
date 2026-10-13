@@ -146,9 +146,9 @@ Ordered so that every task appears after everything it depends on.
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: shell + manifest done; needs emulator screenshots |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
 | A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
-| A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | todo | |
+| A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | wip, awaiting design review | |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
-| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | todo | |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | |
 | A12 | Mic toggle from the headset button (optional) | A14, A7 | S | any + design review | todo | |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -2377,7 +2377,48 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
 - **Done when:** on the emulator, the app backgrounded with the screen off for
   10 minutes keeps meters moving and the API answering; the notification
   matches A2. The real-phone check is A13.
-- **Result:**
+- **Result (Claude sonnet, 2026-10-12)**: implemented and verified on the emulator (API 33, arm64); wip,
+  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/`.
+  - **Where the copy lives:** `sonobus/Source/ConnectionNotification.h` (pure C++, no JUCE) builds title,
+    text, tint and the Mic action from the Console state (the same data as the live band);
+    `tests/android/a10-notification.cpp` checks every row of android.md section 4's tables (host, passes).
+    `android/AndroidServiceController.h` (250 ms message-thread timer) reads `EngineState::getLastState()`,
+    and pushes to Java (`SonoBusActivity.updateConnectionNotification`) only when the content or the service
+    state changes, at most once a second. Java only draws it.
+  - **Lifecycle (section 1):** the service is wanted from the first connect attempt until Disconnect (state
+    `failed` + reason "Disconnected"), through reconnecting/failed. A fresh install ("Not connected to a
+    server") has no service. `SonoBusService`: channel `connection` (LOW, public on the lock screen, ongoing),
+    `ic_stat_crosspoint`, tint #2e6b66 / #ff4f7b live, actions Mic off/Mic on + Disconnect, tap opens the app,
+    `START_NOT_STICKY`, partial wake lock + Wi-Fi locks only while it runs. `stopWithTask="false"`:
+    swipe-away -> `onTaskRemoved` (and `Activity.onDestroy` while finishing) -> `quitApp()` = native
+    disconnect + save, remove the notification, `killProcess` 500 ms later. Back goes home (A7) and keeps
+    everything. `suspended()` no longer closes the audio device while the service is wanted.
+  - **Manifest:** `foregroundServiceType="microphone|mediaPlayback"` (the microphone type is only passed to
+    `startForeground` while RECORD_AUDIO is granted), FOREGROUND_SERVICE_MICROPHONE / _MEDIA_PLAYBACK,
+    POST_NOTIFICATIONS, WAKE_LOCK, ACCESS_WIFI_STATE, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+    POST_NOTIFICATIONS is requested (Android 13+, once) right after the mic answer in
+    `SonoStandaloneFilterWindow.h` (A9: move it with the mic flow).
+  - **API:** `platform.notifications` (granted|denied), `platform.backgroundRestricted` (added to A8's
+    `platform` object), commands `platform.openSettings {page}` and `platform.allowBackground` (one
+    `Hooks::platformCommand` hook; A9 adds `platform.requestMic` there). `backgroundRestricted` = the user set
+    Restricted battery use or the system put the app in the restricted standby bucket. Plain "Optimized" is not
+    reported: **with the app unplugged, screen off and `dumpsys deviceidle force-idle` (deep Doze) for 90 s the
+    engine stayed connected and meters kept moving**, so the foreground service is enough. console-ui: problem
+    rows (panel, 3 px warning border, circle, ink2 text, 44 px `.btn`) only when needed, mock scenario
+    `android-problems`, `lib/platform.js` + tests (21/21).
+  - **Verified on the emulator:** notification content for live ("Live: TEST-01 hears you", pink tint, Mic off
+    + Disconnect), mic off ("Mic off · nobody hears you", Mic on), PTT (no mic action), reconnecting
+    (Wi-Fi off), phone call; lock screen (readable); the Mic off action toggles the engine; screen off with the
+    battery unplugged for 12 minutes: state `connected`, station online, meters at 30 Hz, API answering over
+    `adb forward`; swipe-away from Recents: process gone, notification gone; Back keeps the process.
+  - **Finding:** Android 12+ hides *silent* notifications on the lock screen unless the user enables
+    "Show silent notifications" (`lock_screen_show_silent_notifications`, default off). The capture
+    needed that setting. Our LOW-importance channel therefore is not visible on a default lock screen.
+    Raising the channel to DEFAULT would play a sound and pop up on every update. Design call.
+  - **Not verified / open:** the notification-blocked row and the background row were checked as a headless
+    render of the mock (the real WebView layout is A7's open clipped-sheet bug, so the sheet did not render on
+    the phone); `platform.openSettings` / `allowBackground` intents were not tapped through; Android 14 FGS
+    rules (target is 33); settings sheet 130% font.
 
 #### A11 — Release APK + install docs · S · any · lane B
 - **Depends on:** A4 · **Touches:** `scripts/build-android.sh`, `.jucer`
@@ -2432,7 +2473,38 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
   shows the §6 states and leaves the mic off afterwards. The earcons play
   locally, and the F2 VDI peer receives **no** cue audio. Design review
   passed.
-- **Result:**
+- **Result (Claude sonnet, 2026-10-12)**: implemented; verified on the emulator and with host tests; wip,
+  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
+  `app-aftercall.png`, `shade-call.png`).
+  - **Call detection** (`PlatformMonitor.java`, no permission): `AudioManager.getMode()` every 500 ms:
+    `MODE_IN_CALL` (cellular), `MODE_CALL_SCREENING`, or `MODE_IN_COMMUNICATION` (VoIP) while
+    `PlatformMonitor.appOwnsAudioMode` is false (**A8: set it while the app itself uses the communication
+    mode, e.g. for Bluetooth SCO**). Ringing (`MODE_RINGTONE`) is ignored until answered. No audio focus is
+    taken, so other apps mix as android.md section 6 says.
+  - **Engine** (`SonobusAudioProcessor::setPhoneCall`): the call turns the mic off (open mode) and releases
+    PTT; `isMicTransmitting()` is false for the whole call; playback is silenced by a 10 ms gain ramp on the
+    main output (the receive streams keep running); when the call ends playback returns and **nothing
+    turns the mic on**. `micOffByCall` is true from call start until `setMicOn(true)`, a PTT hold or a mode
+    change. `mic.setOn {on:true}` during a call answers `busy`. State: `platform.phoneCall`,
+    `platform.micOffByCall`. Notification title "Mic off during your phone call", no Mic action.
+  - **console-ui:** mic button "Mic off" · "During your phone call" (disabled), live band quiet
+    "Mic off during your phone call." during, "Mic off since your phone call. Tap the mic button to talk
+    again." after (open mode, mic off), cleared on mic on or mode change. Tests in
+    `console-ui/test/platform.test.mjs` for the `android-call` / `android-aftercall` scenarios.
+  - **Earcons** (`sonobus/Source/Earcon.h`): 660 -> 880 Hz (mic on) / 880 -> 660 (off), 70 ms tones, 20 ms
+    gap, -18 dBFS, 5 ms fades. `processBlock` adds it to the main output **after** the
+    `oursource->process()` calls that consumed `sendWorkBuffer`, next to the API test tone, and nowhere
+    else (not the recording mix, not a send buffer). Played for the notification action and when a call
+    ends (open mode); `AndroidServiceController::toggleMicWithEarcon()` is the function A12 calls for the
+    headset button. Not for the in-app mic button.
+  - **Verified:** `emu gsm call 5551234` + `gsm accept 5551234`: `phoneCall` and `micOffByCall` true, mic
+    off, notification title and UI text as above; `gsm cancel`: `phoneCall` false, **mic still off**,
+    after-call text shown; `mic.setOn true` clears `micOffByCall`. Earcon generator: host test
+    `tests/android/a14-earcon.cpp` (frequencies, level, gap, fades, block-size independence) passes.
+  - **"Not sent" is shown by code inspection plus that unit test, not by the F2 peer:** the cue is mixed into
+    the output buffer only after every send path has run. I did not run the F2 harness with a desktop
+    peer measuring the received audio, and nobody listened to the earcon on the emulator (no audio check).
+  - **Not verified:** a VoIP call (only the cellular emulation was run); the earcon's audibility.
 
 #### A12 — Mic toggle from the headset button · S · any + design review · lane P · optional
 - **Depends on:** A14, A7 · **Touches:** `sonobus/Source/android/java/`

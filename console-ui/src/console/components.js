@@ -6,6 +6,7 @@ import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
 import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
+import { callBandText, callMicButton, problemRows } from '../lib/platform.js';
 
 const STATION_VAR = i => `var(--s${(i % 4) + 1})`;
 const ordered = st => st.stationOrder.map(id => st.stations[id]).filter(Boolean);
@@ -55,6 +56,9 @@ export function liveBand() {
     update(st) {
       const c = st.connection.state;
       if (c === 'connecting' || c === 'failed') { el.hidden = true; return; }
+      // A14 (android.md section 6): a phone call, or the mic staying off after one, replaces the other quiet texts.
+      const callText = callBandText(st);
+      if (callText) { el.hidden = false; el.classList.add('quiet'); setText(text, callText); return; }
       // Count every known station (spec §3.2): lost/offline ones are named as
       // not hearing you, so "All n" only appears when truly everyone hears.
       const all = ordered(st);
@@ -432,7 +436,13 @@ export function youBar(ctx) {
                      : [ICONS.micOff, 'Mic off', tapCopy('Tap to open mic', 'Click to open mic')])
         : (tx ? [ICONS.mic, 'Talking…', 'Release to stop']
               : [ICONS.micOff, 'Hold to talk', tapCopy('Press and hold', 'or hold Space')]);
-      setHTML(mic, `${icon}<span>${label}<span class="sub">${sub}</span></span>`);
+      const call = callMicButton(st);     // A14: disabled during a phone call
+      if (call) {
+        mic.dataset.state = 'idle';
+        setAttr(mic, 'aria-pressed', false);
+        setHTML(mic, `${ICONS.micOff}<span>${call.label}<span class="sub">${call.sub}</span></span>`);
+      } else setHTML(mic, `${icon}<span>${label}<span class="sub">${sub}</span></span>`);
+      mic.disabled = !!call;
       meter.classList.toggle('hot', tx && tg.length > 0);
       setAttr(modeOpen, 'aria-pressed', st.mic.mode === 'open');
       setAttr(modePtt, 'aria-pressed', st.mic.mode === 'ptt');
@@ -472,8 +482,10 @@ export function settingsSheet(ctx) {
 
   const closeBtn = h('button.iconbtn', { 'aria-label': 'Close settings', onclick: () => ctx.closeSettings() }, '✕');
   const scrim = h('div.scrim', { onclick: () => ctx.closeSettings() });
+  const problems = h('div.problems');   // android.md section 7: only when something needs fixing
   const sheet = h('aside.sheet', { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'true' },
     h('div.head', h('b', 'Settings'), h('span.spacer'), closeBtn),
+    problems,
     h('span.label', 'Connection'), form,
     h('span.label', 'Audio'),
     field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), pttField,
@@ -508,6 +520,16 @@ export function settingsSheet(ctx) {
       wasOpen = ui.settingsOpen;
       if (!ui.settingsOpen) return;
       const c = st.connection, s = st.settings;
+      const rows = problemRows(st);
+      const key = JSON.stringify(rows.map(r => r.id));
+      if (problems._key !== key) {
+        problems._key = key;
+        problems.replaceChildren(...rows.map(r => h('div.problem', { role: 'group', 'aria-label': 'Problem' },
+          h('span.warncircle', { 'aria-hidden': 'true' }, '!'),
+          h('div', h('p', r.text),
+            h('button.btn', { type: 'button', onclick: () => ctx.client.fire(r.command, r.args) }, r.action)))));
+      }
+      problems.hidden = !rows.length;
       const connected = c.state === 'connected';
       for (const f of [server, group, password, name]) f.disabled = connected;
       setVal(server, c.server ?? ''); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');

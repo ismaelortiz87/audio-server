@@ -159,3 +159,14 @@ main { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: co
   .master { width: 100%; min-width: 0; }
   .you .spacer { display: none; }
 }
+
+/* A10 (android.md section 7): settings problem rows, calm until something needs fixing. */
+.problems { display: flex; flex-direction: column; gap: 10px; }
+.problems[hidden] { display: none; }
+.problem { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line);
+  border-left: 3px solid var(--warning); border-radius: var(--radius-panel); padding: 12px; color: var(--ink2); font-size: 14px; }
+.problem p { margin: 0 0 10px; line-height: 1.4; }
+.problem .btn { min-height: var(--size-touchMin, 44px); padding: 8px 14px; font-size: 14px; }
+.warncircle { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--warning); color: #1a1300;
+  display: grid; place-items: center; font-weight: 800; font-size: 13px; margin-top: 1px; }
+.mic:disabled { opacity: .7; cursor: default; }

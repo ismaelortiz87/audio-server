@@ -253,12 +253,15 @@ Check with `aapt dump badging <apk> | head -1`.
 | A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()`; confirmed live (the WebView shows the Console) |
 | A7 Android web shell | renders on the emulator; open: duplicated top inset/empty band, clipped station list |
 | A9 mic permission | not started (UI states + `platform.micPermission`) |
-| A10 background service | not started |
+| A14 phone calls + earcons | call state, mic stays off, local earcons; verified on the emulator (wip, design review) |
+| A10 background service | foreground service + Connection notification, swipe-away quits; verified on the emulator (wip, design review) |
 | A11 release APK | done: `--release`, see "Release APK" |
 
 ### Tests
 
 ```sh
 scripts/test-android-ui.sh     # A6: the bundled UI unpacks + stamp behaviour
-cd console-ui && npm test      # 15/15, including the Android mock scenarios
+cd console-ui && npm test      # 21/21, including the Android mock scenarios
+clang++ -std=c++17 -I sonobus/Source tests/android/a10-notification.cpp && ./a.out   # A10 copy tables
+clang++ -std=c++17 -I sonobus/Source tests/android/a14-earcon.cpp && ./a.out         # A14 earcon
 ```

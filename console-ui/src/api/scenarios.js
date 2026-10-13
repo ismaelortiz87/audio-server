@@ -91,6 +91,10 @@ export const CONSOLE_SCENARIOS = {
   'android-aftercall': () => androidState([
     station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
   ], { micOffByCall: true }, androidMicOff),
+  // android.md §7 (A10): notifications blocked and the app restricted in the background: two settings problem rows.
+  'android-problems': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ], { notifications: 'denied', backgroundRestricted: true }),
   // android.md §6: speaker output, station audio reaching the mic.
   'android-echo': () => androidState([
     station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.6 }),
