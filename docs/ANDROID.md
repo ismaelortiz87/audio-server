@@ -1,0 +1,181 @@
+# Building Crosspoint for Android
+
+The phone app runs the whole engine: the audio engine (AOO P2P, Opus) runs in
+the app, the control API listens on `127.0.0.1:7070`, and a web view shows the
+Console UI from it. Audio stays native and goes straight to the VDIs.
+
+Task cards: [TASKS.md](TASKS.md) P9.2 (A1–A14). Design:
+[design/android.md](design/android.md).
+
+## What is installed where
+
+Everything below is installed by `scripts/setup-android.sh`. Re-running it is
+safe; `--check` only reports.
+
+| Thing | Version | Where |
+|---|---|---|
+| JDK | Temurin 17 | `/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home` |
+| Android SDK | — | `$ANDROID_HOME`, default `~/Library/Android/sdk` |
+| cmdline-tools | latest | `$ANDROID_HOME/cmdline-tools/latest` |
+| platform | android-33 | `$ANDROID_HOME/platforms/android-33` |
+| build-tools | 33.0.2 | `$ANDROID_HOME/build-tools/33.0.2` |
+| NDK | 25.2.9519653 | `$ANDROID_HOME/ndk/25.2.9519653` |
+| CMake | 3.22.1 | `$ANDROID_HOME/cmake/3.22.1` |
+| Emulator image | android-33 google_apis arm64-v8a | `$ANDROID_HOME/system-images/...` |
+| AVD | `crosspoint-33` (Pixel 6) | `~/.android/avd/` |
+| Projucer | built from `juce/` (7.0.8) | `build/projucer/.../Projucer.app` |
+
+The versions are not free choices: `app/build.gradle` pins the NDK and CMake,
+and AGP 7.3.0 needs JDK 11–17. The Projucer **must** be the one built from the
+vendored `juce/` (7.0.8), not a downloaded release, or the projects it generates
+drift from the engine.
+
+## Shell setup
+
+`scripts/setup-android.sh` prints these; add them to `~/.zshrc`:
+
+```sh
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export JAVA_HOME="/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+`scripts/build-android.sh` finds all of this on its own when the variables are
+unset (JDK 17 via `java_home`, SDK at the default path), so a bare shell works
+too.
+
+## Building
+
+```sh
+scripts/build-projucer.sh              # once: build the Projucer from juce/
+scripts/build-android.sh               # resave the .jucer, then assembleDebug
+scripts/build-android.sh --install     # ...and install on the attached device
+scripts/build-android.sh --emulator    # boot crosspoint-33, build, install
+scripts/build-android.sh --release     # signed release (A11; needs a keystore)
+```
+
+The debug APK lands at
+`sonobus/mobile/Builds/Android/app/build/outputs/apk/debug_/debug/app-debug_-debug.apk`.
+
+### The `.jucer` owns `Builds/Android/`
+
+`sonobus/mobile/SonoBusMobile.jucer` is the source of truth. Everything under
+`sonobus/mobile/Builds/Android/` is **generated** — including
+`app/build.gradle`, `app/CMakeLists.txt` and the manifest. Edit the `.jucer`
+and re-run `--resave`; never hand-edit a generated file, and never hand-merge
+one (resolve the `.jucer` conflict, then regenerate).
+
+This is why A3, A4, A6, A7, A10 and A11 all edit the same file: keep each
+change small and rebase before merging.
+
+### `--resave` noise
+
+Re-saving a clean checkout is idempotent, but it does touch files that do not
+belong to a task. Expect and discard:
+
+- `Builds/iOS/**` — the Projucer always rewrites the iOS project, including
+  line-ending churn in `Info-*.plist` and `Contents.json`. Android tasks do not
+  care about iOS; leave those files alone.
+- `JuceLibraryCode/JucePluginDefines.h` — `JucePlugin_ARADocumentArchiveID`
+  tracks the `.jucer` version; a real change only when the version does.
+- `JuceLibraryCode/BinaryData*.cpp`, `BinaryData.h` — generated from the
+  resources, including the console-ui zip. Untracked (git-ignored); every build
+  regenerates them.
+- `Builds/Android/gradlew.bat` — CRLF noise from git, not a content change.
+- `Builds/Android/local.properties` — regenerated from the Projucer's stored SDK
+  path. It is git-ignored (A3) and `build-android.sh` rewrites it with
+  `$ANDROID_HOME` after every resave, so the committed
+  `sdk.dir=/Users/jesse/...` can never come back.
+
+## Emulator
+
+```sh
+$ANDROID_HOME/emulator/emulator -avd crosspoint-33 &
+adb wait-for-device
+adb shell getprop sys.boot_completed      # 1 when up
+```
+
+Install and launch:
+
+```sh
+scripts/build-android.sh --install
+adb shell am start -n io.lagreca.app.crosspoint/com.sonosaurus.sonobus.SonoBusActivity
+```
+
+Screenshots for design review come from the emulator, never a desktop capture
+([design/android.md](design/android.md) §11):
+
+```sh
+adb exec-out screencap -p > shot.png
+adb shell settings put system font_scale 1.3   # 130% font review; 1.0 restores
+```
+
+### Reaching the phone's API from the Mac
+
+The API is loopback-only, so forward the port (A5):
+
+```sh
+adb forward tcp:7070 tcp:7070
+curl -s http://127.0.0.1:7070/api/v1/state
+```
+
+This is how the `console-ui` smoke test runs against the real phone engine.
+
+## Gotchas
+
+- **`__linux__` is defined on Android.** The NDK's clang defines it, so a
+  `#if defined(__linux__)` block compiles on Android too — the PipeWire code
+  would have been pulled in and failed to link (no ALSA headers). Those guards
+  are now `#if defined(__linux__) && !defined(__ANDROID__)` (A3). JUCE's own
+  `JUCE_LINUX`/`JUCE_ANDROID` macros are fine: JUCE checks `JUCE_ANDROID`
+  first, so `JUCE_LINUX` stays 0.
+- **The APK cannot need the upstream keystore.** Upstream's
+  `~/.android/sonouploadnew.jks` is not in the repo. The Projucer points every
+  build type at `signingConfigs.juceSigning`, so the `.jucer` adds a
+  `buildTypes { debug { signingConfig signingConfigs.debug } }` override (A3).
+  Release still needs a real keystore — that is A11.
+- **Two apps cannot share an applicationId.** Until A4 lands, the APK is still
+  `com.sonosaurus.sonobus`, so it will not install next to stock SonoBus;
+  uninstall stock SonoBus (or do A4 first).
+- **Android 9+ blocks cleartext HTTP.** The web shell talks to
+  `http://127.0.0.1:7070`, which needs `usesCleartextTraffic` for loopback only
+  — `res/xml/network_security_config.xml` (A7).
+- **`JUCE_WEB_BROWSER="0"`** in the `.jucer` excludes `juce_gui_extra`'s web
+  view; A7 turns it on and sets `hardwareAccelerated` (the manifest currently
+  says `false`, which a WebView cannot use).
+
+## Where the debug build stands
+
+| Task | State |
+|---|---|
+| A1 toolchain + Projucer | scripts + this doc; toolchain install is `setup-android.sh` |
+| A2 design | done (`docs/design/android.md`) |
+| A3 debug APK builds the engine | missing sources in the `.jucer`; the 25 files the engine includes are now listed, `__linux__`/PipeWire guards fixed, keystore/ndkVersion/local.properties fixed. **Needs an SDK to link.** |
+| A4 identity | not started — APK is still `com.sonosaurus.sonobus` |
+| A5 control API on the phone | Console role, loopback `7070`, no token, `self.kind: "android"` (state + peer info + `consoles[].kind`) |
+| A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()` with an MD5 stamp; verified by `scripts/test-android-ui.sh` (10/10) |
+| A7 Android web shell | `ConsoleShellView` extended to `JUCE_ANDROID`, `JUCE_WEB_BROWSER=1`, `hardwareAccelerated`, loopback cleartext, phone error page, touch copy in `console-ui` |
+| A9 mic permission | not started (UI states + `platform.micPermission`) |
+| A10 background service | not started |
+| A11 release APK | not started |
+
+Everything except the toolchain itself is in place for the first APK once the SDK
+and NDK are installed. The remaining unknowns are link-time NDK problems (first
+compile of 25 newly-listed sources), which is exactly what A3 exists to flush out.
+
+### Tests
+
+```sh
+scripts/test-android-ui.sh     # A6: the bundled UI unpacks + stamp behaviour
+cd console-ui && npm test      # 15/15, including the Android mock scenarios
+```
+
+## What is not verified yet
+
+- **The APK has never been built or run.** No JDK/SDK/NDK was present when A1–A7
+  landed, so the Android link is unproven and the emulator screens A7's design
+  review needs do not exist yet.
+- The desktop build (`scripts/build-desktop.sh --app-only`) **is** green after
+  every shared-source change (A5, A6, A7), so the non-Android paths are safe.
+

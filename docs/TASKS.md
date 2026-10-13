@@ -136,7 +136,21 @@ Ordered so that every task appears after everything it depends on.
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
-| P9.2 | Native Android Console (was P6.2–P6.4) | P5.6 | L | any | deferred | |
+| P9.2 | Native Android Console (APK): broken down into A1–A14 below, lanes in the P9.2 card | P5.6 | — | — | todo | |
+| A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | wip | Claude: scripts + Projucer done; toolchain install scripted, needs running |
+| A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
+| A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | wip | Claude: `.jucer` + Android fixes done; link unproven (no SDK) |
+| A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | todo | |
+| A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | wip | Claude: Android API defaults + `self.kind` done; needs emulator |
+| A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | wip | Claude: pack + extract done, host test 10/10 |
+| A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: shell + manifest done; needs emulator screenshots |
+| A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | todo | |
+| A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
+| A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | todo | |
+| A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | todo | |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | todo | |
+| A12 | Mic toggle from the headset button (optional) | A14, A7 | S | any + design review | todo | |
+| A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
@@ -147,7 +161,7 @@ Ordered so that every task appears after everything it depends on.
 
 **Parallel tracks:** UX1–UX4 run from day one, alongside F1/F2/P1. Once P1.4
 is done: P2 (config/agent) · P3 (removal) · P4 (API). Mobile is the PWA
-(P7.7); native Android/iOS are deferred to P9 (D9). P3 tasks all touch `SonobusPluginEditor.cpp`, so run
+(P7.7). The native Android APK is P9.2 (A1–A14, five lanes); native iOS stays deferred. P3 tasks all touch `SonobusPluginEditor.cpp`, so run
 them one at a time.
 
 ---
@@ -1394,8 +1408,8 @@ build against the spec. Implementers don't make design decisions (see
 
 ## P6 — Native shell (Mac)
 
-Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
-(P7.7). The old Android cards are kept under P9.2.
+Native iOS is deferred (ROADMAP D9); iOS uses the PWA (P7.7). The native
+Android app is now planned as P9.2, tasks A1–A14 (lanes in the P9.2 card).
 
 
 ### P5.7 — Exclusive solo · S
@@ -1791,25 +1805,412 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   state, as a compact view of the same Console UI. Needs a UX addendum first.
 - **Result:**
 
-### P9.2 — Native Android Console · L · deferred
-Phones use the PWA for now (D9). Revive this if P7.7's latency or
-background-audio results are poor. Former cards:
+### P9.2 — Native Android Console (APK) · broken down into A1–A14
+The phone runs the whole engine, as stock SonoBus does on Android and as the
+Mac shell (P6.1) does: the audio engine (AOO P2P, Opus) runs in the app, the
+control API listens on `127.0.0.1:7070`, and a web view shows the bundled
+Console UI from it. Audio stays native and goes straight to the VDIs, with no
+container hop. This replaces the old P6.2–P6.4 cards.
 
-#### (was P6.3) — Android build pipeline · L
-- **Depends on:** F1 · **Touches:** `sonobus/mobile/`
-- **Do:** get the Android build working from the hoisted layout
-  (`sonobus/mobile/Builds/Android`), scripted (`scripts/build-android.sh`),
-  producing a debug APK. Stock UI is fine for this task.
-- **Done when:** APK installs and joins a group.
+**State on 2026-10-11 (why the cards look like this):**
+- `sonobus/mobile/SonoBusMobile.jucer` (Projucer, JUCE 7.0.8) still describes
+  stock SonoBus. It is missing every source added since the fork: `ApiServer`,
+  `ApiSha1`, `ApiCommands`, `EngineState`, `AgentConnect`, `AppIdentity`,
+  `GlobalHotkey*`, `ConsoleShell.h`. But `SonoStandaloneFilterApp.cpp` includes
+  them unconditionally, so **the Android build does not link today**.
+- It sets `JUCE_WEB_BROWSER="0"`, `android:hardwareAccelerated="false"` (a
+  WebView needs it on), `applicationId com.sonosaurus.sonobus`, and a release
+  keystore at `~/.android/sonouploadnew.jks` (upstream's).
+- `Builds/Android/local.properties` is committed with `sdk.dir=/Users/jesse/...`.
+- `ConsoleShell.h` only builds when `JUCE_MAC && JUCE_WEB_BROWSER`. The UI path
+  (`apiConfig.uiDir`) only has a Mac bundle fallback. `CROSSPOINT_HAS_CONFIG` is
+  0 on Android, so there is no YAML on the phone (by design: the Console's
+  onboarding flow connects it).
+- Stock SonoBus already has `RECORD_AUDIO`, `FOREGROUND_SERVICE` and a
+  `SonoBusService` (`sonobus/Source/android/java`), targetSdk 33.
+- This Mac has no JDK, Android SDK, NDK or Projucer installed.
+- `console-ui` only uses WebRTC when the server offers `rtc/config` (the web
+  container). Against an engine's own API it uses no browser audio, so the
+  same UI works in the Android web view as in the Mac shell.
+
+**Lanes.** Each lane is a chain one agent can own. Lanes run in parallel once
+their entry dependency is `done`.
+
+| Lane | Tasks, in order | Starts after |
+|---|---|---|
+| **D** design (Claude only) | A2 (**done**), then the design reviews of A7, A9, A10, A12, A14 | now |
+| **B** build & packaging | A1 → A3 → A4 → A11 | now |
+| **E** engine on the phone | A5 → A8 | A3 |
+| **S** shell & UI | A6 → A7 | A3 (A7 also needs A5, A2) |
+| **P** Android platform (Java, manifest) | A10 → A14 → A9 → A12 | A4 + A2 (A14 also needs A5; A9 and A12 also need A7) |
+| **H** human on a real phone | A13 | everything else |
+
+Critical path: A1 → A3 → A5 → A7 → A9 → A13. A3 is the funnel: nothing except A2
+can start until the current engine builds for Android.
+
+**First APK, as soon as possible (D9, maelo 2026-10-12):** A1 → A3 → (A5 and
+A6 in parallel) → A7 gives a debug APK with the Console UI driving the
+phone's own engine, installable by `adb install`. Stock SonoBus already asks
+for the mic at launch and has a foreground service, so listening and talking
+should work with the screen on before A9 and A10 land. Do **A4** right after
+A3 if stock SonoBus is installed on the phone: until then both apps share
+`com.sonosaurus.sonobus`, and the install fails. A8–A14 harden it after that.
+Agents should take these first.
+
+**Rules for this phase:**
+- **The `.jucer` is a hotspot.** A3, A4, A6, A7, A10 and A11 all edit it. Keep
+  each task's `.jucer` change small and rebase before merging. **Never
+  hand-merge files under `Builds/Android/`.** Resolve the `.jucer`, then
+  regenerate them with `scripts/build-android.sh --resave` (A1).
+- **No secrets in the repo** (it's public). Keystores and passwords come from
+  the environment or `~/.gradle/gradle.properties`.
+- **Verify on the emulator** (arm64 system image) with `adb`. Real-phone
+  checks are A13. To capture the UI for design review, use
+  `adb exec-out screencap -p`, never a desktop capture.
+- `SonoStandaloneFilterApp.cpp` is touched by A5 (API startup) and A6 (UI
+  path). They are different blocks; rebase rather than run them in one PR.
+
+#### A1 — Android toolchain + Projucer · M · any · lane B
+- **Depends on:** — · **Touches:** `scripts/` (new `setup-android.sh`,
+  `build-projucer.sh`), `docs/ANDROID.md` (new), `.gitignore`
+- **Do:** script the prerequisites so any agent can reproduce them. On macOS:
+  JDK 17 (AGP 7.3.0 needs 11–17), Android cmdline-tools, platform 33, build
+  tools, NDK `25.2.9519653` (what `app/build.gradle` pins), and an arm64
+  emulator image. Build the Projucer **from `juce/extras/Projucer`** (7.0.8, it
+  must match the vendored JUCE), and use it headless with `--resave`. Add a
+  `scripts/build-android.sh --resave` entry point. Write `docs/ANDROID.md`
+  (what's installed, where, how to start the emulator).
+- **Done when:** `--resave` of the current `.jucer` changes nothing under
+  `Builds/Android/` except expected noise (record which), `./gradlew --version`
+  runs, and the emulator boots.
+- **Result (Claude, 2026-10-12)**: scripts written and the Projucer built; the
+toolchain install itself has not been run (no JDK/SDK/NDK on this Mac).
+- `scripts/setup-android.sh` — installs Temurin 17 (brew), cmdline-tools,
+  platform-tools, platform 33, build-tools 33.0.2, NDK 25.2.9519653, CMake
+  3.22.1, the android-33 arm64 system image and an AVD `crosspoint-33`.
+  `--check` reports without changing anything; it currently reports everything
+  missing, as expected.
+- `scripts/build-projucer.sh` — builds the Projucer from `juce/`. **Verified**:
+  `JUCE_BUILD_EXTRAS=ON` on JUCE's own CMake project (extras/Projucer alone has
+  no `juce_add_gui_app`), linked at
+  `build/projucer/.../Projucer.app/Contents/MacOS/Projucer`, reports 1.7.2.
+- `scripts/build-android.sh` — `--resave` / `--install` / `--emulator` /
+  `--release` / `--clean`. **`--resave` verified idempotent**: two passes
+  produce byte-identical trees.
+- `docs/ANDROID.md` — what is installed where, the resave-noise list, emulator
+  and `adb` recipes, and the gotchas.
+- Recorded resave noise (discard it, per the doc): `Builds/iOS/**` (line-ending
+  churn in the `.plist`/`.json` files plus a rewritten `project.pbxproj`),
+  `JucePluginDefines.h` (ARA archive id tracks the `.jucer` version),
+  `gradlew.bat` (CRLF). The ARA id moved 1.7.1 → 1.7.2, which the checked-in
+  file had simply never caught up with.
+- `local.properties` is now git-ignored and rewritten from `$ANDROID_HOME` on
+  every resave (that is A3's "stop tracking" item, done here because the two
+  files cannot be separated).
+**Not done:** `./gradlew --version` and the emulator boot, which need the SDK.
+
+#### A2 — UX addendum: Android-only states · S · design · lane D
+- **Depends on:** UX4 · **Touches:** `docs/design/`
+- **Do:** spec what the phone app needs that the PWA and Mac don't: the mic
+  permission ask and the "denied" state, the foreground-service notification
+  (text, actions such as mute mic and disconnect), push-to-talk from a headset
+  button or the notification (A12), the engine-failed error page on a phone,
+  launch/splash, and system bars and safe areas around the phone layout (P5.5).
+- **Done when:** spec merged; A7, A9, A10 and A12 can build to it without
+  inventing anything.
+- **Result:** done (Claude, 2026-10-11). Spec: `docs/design/android.md`.
+  Prototype: `design/prototypes/android/` (`?screen=board` shows them all).
+  Notification icon: `design/icon/crosspoint-notification.svg`. Decisions:
+  - swipe-away from Recents quits; Back and Home never disconnect
+  - the mic permission is asked on the first connect, with no pre-prompt
+  - the notification title mirrors the live band, with Mic on/off and
+    Disconnect actions
+  - the headset button toggles the mic in open-mic mode only; nothing in PTT
+  - a phone call turns the mic off, and **it stays off after the call**
+  - earcons for mic changes made without looking
+  - problem rows at the top of Settings
+  - touch copy ("Tap…", no "Space") for any coarse pointer, the PWA included
+
+  It found work no card covered, now **A14** (phone calls + earcons). API
+  additions are in android.md §10 and control-api §5.5; each implementing task
+  adds its fields to `console-ui/src/api/mock.js` too (control-api §6), so its
+  design review can be screenshotted.
+
+#### A3 — Debug APK builds the current engine · L · any · lane B
+- **Depends on:** A1 · **Touches:** `sonobus/mobile/SonoBusMobile.jucer`,
+  `sonobus/mobile/Builds/Android/`, `scripts/build-android.sh`, small
+  `#if JUCE_ANDROID` fixes in `sonobus/Source/`
+- **Do:** add the missing sources (listed above) to the `.jucer`. Make them
+  compile with the NDK; `GlobalHotkey` should become a no-op on Android, and
+  PipeWire code is already Linux-only. Keep `Config`/rapidyaml out
+  (`CROSSPOINT_HAS_CONFIG` stays 0). Stop tracking `local.properties` and
+  generate it from `$ANDROID_HOME`. Reconcile the two `ndkVersion` values in
+  `app/build.gradle`. Debug builds must not need the upstream keystore.
+  `scripts/build-android.sh` = resave + `gradlew assembleDebug`, printing the
+  APK path. The UI stays the stock JUCE editor in this task.
+- **Done when:** one command produces a debug APK that installs on the
+  emulator, launches, and joins a group on `aoo.sonobus.net` with the stock
+  UI. Desktop build (F1) and F2 are unchanged.
+- **Result (Claude, 2026-10-12)**: the `.jucer` and the Android compile fixes are
+in; the link is unproven because there is no NDK on this machine.
+- Added the 18 files the engine includes but the mobile `.jucer` never listed:
+  `AgentConnect`, `ApiCommands`, `ApiServer`, `ApiSha1.h`, `AppIdentity.h`,
+  `Config`, `ConsoleShell.h`, `EngineState`, `GlobalHotkey`,
+  `GlobalHotkeyCarbon`, plus `ReverbView.h`. Found by walking the include
+  closure of the files the `.jucer` already listed, not by eyeballing: 118
+  source entries now, and the closure is complete.
+- **Found and fixed a real Android blocker:** the NDK defines `__linux__`, so
+  the P2.11 PipeWire branches (`#if defined(__linux__)`) would have compiled on
+  Android and failed to link (no ALSA headers). Those guards are now
+  `&& !defined(__ANDROID__)` in `PipeWireDevices.{h,cpp}`, `EngineState.cpp`
+  and `ApiCommands.cpp` (6 sites). JUCE's own `JUCE_LINUX` is safe — JUCE
+  checks `JUCE_ANDROID` first (TargetPlatform.h:62), so `JUCE_LINUX` stays 0.
+- `Config`/rapidyaml stay out (`CROSSPOINT_HAS_CONFIG` is 0 on Android), the
+  PipeWire files are not listed, and the iOS-only `.mm` files that the Projucer
+  already emitted for Android are untouched.
+- Rejected a `release`-only keystore: the Projucer points **every** build type
+  at `signingConfigs.juceSigning` (jucer_ProjectExport_Android.h:848), so the
+  `.jucer` now adds an `androidCustomAppBuildGradleContent` override that
+  re-points **debug** at Gradle's own debug key. Release still needs a real
+  keystore, which is A11.
+- `ndkVersion` reconciled: the Projucer emits its own pinned
+  `25.2.9519653`, and the stale `ndkVersion "22.0.7026061"` line the `.jucer`
+  appended is gone.
+- `local.properties` untracked (it held `/Users/jesse/...`) and regenerated.
+- Desktop unbroken: `scripts/build-desktop.sh --app-only` is green.
+**Not done:** `gradlew assembleDebug` and the on-emulator install/join check.
+
+#### A4 — Crosspoint identity on Android · S · any · lane B
+- **Depends on:** A3 · **Touches:** `.jucer`, `sonobus/Source/android/java/`,
+  `Builds/Android/app/src/main/res/`
+- **Do:** apply P3.9/P3.10 to Android: applicationId
+  `io.lagreca.app.crosspoint`, label "Crosspoint", launcher and adaptive icons
+  from the P3.10 icon, and a `crosspoint://` intent filter. Rename the Java
+  package `com.sonosaurus.sonobus` (`SonoBusActivity`, `SonoBusService`) and the
+  `JUCE_ANDROID_ACTIVITY_OVERRIDE_*` defines to match.
+- **Done when:** Crosspoint installs **next to** stock SonoBus on the same
+  emulator, and both run.
 - **Result:**
 
-#### (was P6.2) — Android shell · M
-- **Depends on:** P6.3, P5.6
+#### A5 — Control API on the phone · M · any · lane E
+- **Depends on:** A3 · **Touches:** `sonobus/Source/SonoStandaloneFilterApp.cpp`
+  (API startup block), `EngineState.cpp`/`ApiCommands.cpp` only for Android fixes
+- **Do:** start the API on Android with no CLI: Console role, loopback
+  `127.0.0.1:7070`, no token. Keep it running while the activity is paused
+  (JUCE `suspended()`), since the service in A10 keeps audio alive. Check
+  everything `EngineState` reports on Android: audio device names (Oboe or
+  OpenSL), sample rate and buffer, and where settings persist. Server, group
+  and name set through the Console's connect flow must survive an app restart.
+  Report `self.kind: "android"` in state and peer info, so agents show
+  "Console · Android" (`docs/design/android.md` §10).
+- **Done when:** with `adb forward tcp:7070 tcp:7070`, the `console-ui` smoke
+  test against the real API passes from the Mac, and the connect command joins
+  a group from the emulator.
+- **Result (Claude, 2026-10-12)**: the Android API defaults and `self.kind` are in;
+the emulator check is pending.
+- `applyApiOptions()` sets Console role, loopback `127.0.0.1`, port 7070 and no
+  token on Android. Android has no command line, so there is nothing to parse;
+  it is a compile-time branch, not a runtime one.
+- `self.kind: "android"` (`SonobusPluginProcessor::consoleKindString`) — this
+  is what makes agents show "Console · Android". Adding it to the *filter*
+  matters too: `EngineState` mapped anything but `mac`/`web` to `"other"`, so
+  without that change the field would have been reported and then dropped.
+  `consoles[].kind` now passes `android` through (control-api §5.5).
+- The API already outlives `paused()`: `suspended()`/`resumed()` only touch the
+  audio device and the foreground service, never the server.
+- Not verified: `adb forward` + smoke test against a real phone engine.
+
+#### A6 — Console UI bundled in the APK · S · any · lane S
+- **Depends on:** A3 · **Touches:** `.jucer` (resource), `scripts/build-android.sh`,
+  `SonoStandaloneFilterApp.cpp` (the `uiDir` fallback block)
+- **Do:** APK assets are not files the `ApiServer` can serve. At build time, zip
+  `console-ui/` (raw, as the Mac bundle copies it) into JUCE BinaryData. On
+  launch, extract it to `userApplicationDataDirectory/console-ui` when its
+  build stamp differs, and use that as `apiConfig.uiDir`. Write it so iOS (P9.3)
+  can reuse it.
+- **Done when:** a fresh install and an upgrade both serve the current
+  `index.html` from `http://127.0.0.1:7070/` (via `adb forward`), and a stale
+  UI is never served after an upgrade (check the service-worker cache too).
+- **Result (Claude, 2026-10-12)**: implemented and **verified on the host** by
+`scripts/test-android-ui.sh` (10/10).
+- `scripts/pack-console-ui.sh` zips `console-ui/` (HTML, `src/`, `icons/`, the
+  manifests and `sw.js`; not the README, tests or build scripts) to
+  `sonobus/Resources/crosspoint-ui.zip`, with `console-ui/` as the top level so
+  the unpacked directory is a ready web root. Deterministic (`-X -D`).
+- The zip is a **build artifact** (git-ignored) and must exist before a resave:
+  the Projucer refuses to save a project whose listed resource is missing
+  (tested). `build-android.sh` therefore packs before resaving.
+- `.jucer` lists it as `resource="1"`; the Projucer mangles the name to
+  `BinaryData::crosspointui_zip` (rule: spaces/dots → `_`, other punctuation
+  dropped, in `makeBinaryDataIdentifierName`). The extractor uses that symbol
+  and the test would catch a rename.
+- `extractBundledConsoleUi()` unpacks to
+  `userApplicationDataDirectory/console-ui`, guarded by an
+  MD5+size stamp file so a relaunch is a no-op and an **upgrade** replaces a
+  stale UI (`console-ui.stamp`, sibling of the extracted folder).
+- iOS-ready by construction: the block is `#if JUCE_ANDROID || JUCE_IOS` and
+  takes no Android API, which is what P9.3 needs.
+- The host test caught a real bug while being written: `uncompressTo` needs its
+  target's **parent** to exist, so the code extracts into the app-data dir
+  rather than into a not-yet-created subdirectory.
+- Smoke-tested against the real API? No: A6's "serve the current index.html"
+  check needs the phone (or at least a running Android API).
+
+#### A7 — Android web shell · M · any + design review · lane S
+- **Depends on:** A5, A6, A2 · **Touches:** `sonobus/Source/ConsoleShell.h`,
+  `SonoStandaloneFilterWindow.h`, `.jucer` (`JUCE_WEB_BROWSER=1`, manifest XML),
+  `res/xml/network_security_config.xml` (new)
+- **Do:** extend `ConsoleShellView` to `JUCE_ANDROID` (JUCE's Android
+  `WebBrowserComponent`) so the window shows the Console instead of the JUCE
+  editor, as on the Mac. Turn on `hardwareAccelerated` (application and
+  activity). Android 9+ blocks cleartext HTTP, so allow it for `127.0.0.1`
+  **only**. Build to `docs/design/android.md` §2: splash with no white frame,
+  system bars, portrait on phones, Back, keyboard resize, font scale,
+  haptics, and the touch copy (it's in `console-ui`, so the PWA gets it
+  too). Also §8: the native error page on a phone.
+- **Done when:** the emulator shows the phone layout (P5.5) driving the real
+  engine (connect, stations, talk, meters, no page errors), and Claude has
+  approved `adb` screenshots against UX4 + A2.
+- **Result (Claude, 2026-10-12)**: the shell is extended to Android; screenshots
+for design review are still missing (no emulator yet).
+- `ConsoleShell.h` now builds for `(JUCE_MAC || JUCE_ANDROID) && JUCE_WEB_BROWSER`.
+  JUCE 7.0.8 does ship `juce_WebBrowserComponent_android.cpp`, and every API
+  the file uses (`Options`, `withBackend`, `goToURL`, `pageAboutToLoad`,
+  `pageFinishedLoading`, `pageLoadHadNetworkError`,
+  `newWindowAttemptingToLoad`) exists on Android — checked in the JUCE source,
+  not assumed. Its `JuceWebView` Java classes are embedded as bytecode, so no
+  extra `java.srcDirs` entry is needed.
+- `.jucer`: `JUCE_WEB_BROWSER` 0 → 1, and the manifest's
+  `hardwareAccelerated` false → true (application and activity).
+- Android 9+ blocks cleartext, so `network_security_config.xml` permits it for
+  `127.0.0.1`/`localhost` only, wired via `android:networkSecurityConfig`.
+  `res/xml/` survives a resave (tested), and the file is force-added because
+  `sonobus/.gitignore` ignores the whole generated `mobile/Builds` tree.
+- `showWebShell()` gets an Android branch: the window is already fullscreen, so
+  no geometry restore and no resize limits (the Mac path is untouched).
+- Error page built to android.md §8: safe-area-aware, 24 px sides, content from
+  ¼ height, one full-width 48 px accent button, and the phone copy ("Crosspoint
+  couldn't start" / "The Console didn't load"). The Mac keeps its reviewed P6.1
+  strings, colours and layout exactly.
+- Touch copy (android.md §2) in `console-ui`, so the PWA gets it too, via
+  `(pointer: coarse)`: "Tap to turn off" / "Tap to open mic" / "Press and hold"
+  and the PTT live-band line without "or Space".
+- Android mock scenarios for the design review (control-api §6 asks each
+  implementing task to add its fields): `android`, `android-blocked`,
+  `android-call`, `android-aftercall`, `android-echo`, with
+  `self.kind: "android"` and the `platform` block. `console-ui` tests 15/15.
+- Back gesture (§2): JUCE's Android activity already sends Back to the
+  activity, and nothing in this change makes it disconnect — but that needs the
+  emulator to confirm, so it is **not** claimed here.
+**Not done:** the emulator screenshots (100% and 130% font scale, cold-start
+video) that this task's *Done when* requires, and A9/A10/A14's states.
+
+#### A8 — Phone audio path: echo, routing, Bluetooth · M · any · lane E
+- **Depends on:** A5 · **Touches:** `sonobus/Source/` (Android audio setup),
+  `sonobus/Source/android/java/` if needed
+- **Do:** a phone on speaker sends the VDI audio back into its own mic, and
+  SonoBus has no echo canceller. Find out whether JUCE 7.0.8's Oboe path can
+  open the input with the `VoiceCommunication` preset (platform AEC), and at
+  what latency cost. Decide the default output (speaker, earpiece or wired).
+  Check Bluetooth: an A2DP headset with the phone mic, versus SCO (headset mic,
+  narrowband). Record the measurements and implement the default that works.
+  Build to `docs/design/android.md` §6:
+  - plain device names
+  - default output, Phone speaker unless measurements say otherwise
+  - mix with other apps' audio
+  - `platform.outputRoute` and `platform.echoRisk`
+  - the echo notice, **only if** speaker + mic echoes
+  (Phone calls are A14.)
+- **Done when:** findings recorded here and the chosen default is
+  implemented. On the emulator, nothing regresses; the by-ear check is A13.
 - **Result:**
 
-#### (was P6.4) — Android mic permission + background audio · M · human
-- **Depends on:** P6.2
-- **Done when:** audio keeps flowing with the screen off on my phone.
+#### A9 — Mic permission flow · S · any + design review · lane P
+- **Depends on:** A7, A2 · **Touches:** `sonobus/Source/` (permission request,
+  API state), `console-ui/` (only the state A2 specifies)
+- **Do:** `docs/design/android.md` §3 and the mic row in §7: ask on the
+  first connect (then notifications), no pre-prompt. Add
+  `platform.micPermission` and `platform.requestMic`, the mic button and
+  live band states, and the Settings row. A blocked mic must still allow
+  listening.
+- **Done when:** grant, deny and "deny then grant in Settings" all behave per
+  A2 on the emulator; design review passed.
+- **Result:**
+
+#### A10 — Background audio (foreground service) · M · any + design review · lane P
+- **Depends on:** A4, A2 · **Touches:** `sonobus/Source/android/java/`
+  (`SonoBusService`, renamed in A4), `.jucer` manifest XML
+- **Do:** keep audio and the API alive with the screen off or the app in the
+  background. Start the service when connected, with A2's notification and
+  actions. Declare `foregroundServiceType="microphone|mediaPlayback"` plus the
+  matching `FOREGROUND_SERVICE_*` permissions, and request `POST_NOTIFICATIONS`
+  (Android 13+), so a later targetSdk bump to 34+ just works. Hold a
+  low-latency Wi-Fi lock and a partial wake lock only while connected. Build to
+  `docs/design/android.md` §1 and §4:
+  - lifecycle: swipe-away from Recents disconnects and quits; Back and Home
+    don't
+  - channel, small icon, tint, title and text tables, Mic on/off and
+    Disconnect actions
+  - the notification and background rows in §7, `platform.notifications`,
+    `platform.backgroundRestricted`, `platform.openSettings` and
+    `platform.allowBackground`
+- **Done when:** on the emulator, the app backgrounded with the screen off for
+  10 minutes keeps meters moving and the API answering; the notification
+  matches A2. The real-phone check is A13.
+- **Result:**
+
+#### A11 — Release APK + install docs · S · any · lane B
+- **Depends on:** A4 · **Touches:** `scripts/build-android.sh`, `.jucer`
+  (keystore fields), `docs/ANDROID.md`
+- **Do:** `scripts/build-android.sh --release` signs with a keystore given by
+  env vars or `~/.gradle/gradle.properties`. Remove the upstream keystore
+  reference; never commit the keystore or passwords. Derive versionName and
+  versionCode from the app version. Document `adb install` and sideloading
+  ("install unknown apps"). Don't publish the APK anywhere unasked.
+- **Done when:** a signed release APK installs over a previous release build
+  without uninstalling, and the docs work from a clean checkout.
+- **Result:**
+
+#### A14 — Phone calls + earcons · M · any + design review · lane P
+- **Depends on:** A10, A5 · **Touches:** `sonobus/Source/android/java/`,
+  `sonobus/Source/` (call state, local cue mixing), `console-ui/` (live band
+  and mic button text)
+- **Do:** build to `docs/design/android.md`:
+  - **§6 phone calls:** a call turns the mic off and silences playback;
+    after the call, playback returns and the mic stays off. Add
+    `platform.phoneCall` and `platform.micOffByCall`, plus the mic button,
+    live band and notification texts.
+  - **§5 earcons:** rising and falling two-tone cues, local only, for mic
+    changes from the notification action, the headset button (A12) and a
+    call ending.
+- **Done when:** on the emulator, a simulated call (`adb emu gsm call …`)
+  shows the §6 states and leaves the mic off afterwards. The earcons play
+  locally, and the F2 VDI peer receives **no** cue audio. Design review
+  passed.
+- **Result:**
+
+#### A12 — Mic toggle from the headset button · S · any + design review · lane P · optional
+- **Depends on:** A14, A7 · **Touches:** `sonobus/Source/android/java/`
+  (MediaSession), API command wiring
+- **Do:** the phone counterpart of the Mac hotkey (P6.5), per
+  `docs/design/android.md` §5. One press of a wired or Bluetooth headset's
+  play/pause button toggles the mic **in open-mic mode only**, with the
+  earcon (A14). It does nothing in PTT mode, and only takes the button while
+  connected. Add the Settings "Headset button" row and
+  `settings.headsetButton`. Not needed for the first APK.
+- **Done when:** with the phone locked, a headset press toggles the mic and
+  plays the cue, and the notification title follows.
+- **Result:**
+
+#### A13 — On-phone acceptance · S · human · lane H
+- **Depends on:** A7, A8, A9, A10, A11, A14 (A12 if done)
+- **Do:** on maelo's phone, **on the VPN** (peers use VPN IPs, P8.4): install
+  the release APK, connect through onboarding, hear a VDI, talk back, mute
+  and solo. Then screen off for 15 minutes, switch apps, go from Wi-Fi to
+  cellular and back, and use a wired and a Bluetooth headset. If P7.7 has
+  been measured, compare latency and background behaviour with the PWA.
+- **Done when:** results recorded here; anything that fails becomes a bug
+  in `BUGS.md` or a new A-task.
 - **Result:**
 
 ### P9.3 — Native iOS Console · L · deferred

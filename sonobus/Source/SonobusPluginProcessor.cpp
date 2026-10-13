@@ -163,15 +163,18 @@ static int agentSilentSecondsOverride()
 
 // P1.7 / control-api section 7: what kind of Console this is, advertised in its
 // peer info next to "role" so a VDI agent can show "Console - Mac". Values:
-// "mac" (default on macOS), "web" (the headless Console serving the web UI; set
-// CROSSPOINT_CONSOLE_KIND=web), "other" (default elsewhere). Anything else
-// given in the env is ignored. Only a Console advertises it.
+// "mac" (default on macOS), "android" (the native phone app, A5), "web" (the
+// headless Console serving the web UI; set CROSSPOINT_CONSOLE_KIND=web),
+// "other" (default elsewhere). Anything else given in the env is ignored. Only a
+// Console advertises it.
 static String consoleKindString()
 {
     static String v = [] {
         auto e = SystemStats::getEnvironmentVariable("CROSSPOINT_CONSOLE_KIND", "").trim().toLowerCase();
-        if (e == "mac" || e == "web" || e == "other") return e;
-#if JUCE_MAC
+        if (e == "mac" || e == "android" || e == "web" || e == "other") return e;
+#if JUCE_ANDROID
+        return String("android");   // A5: agents show "Console - Android"
+#elif JUCE_MAC
         return String("mac");
 #else
         return String("other");

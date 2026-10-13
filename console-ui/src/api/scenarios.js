@@ -33,6 +33,8 @@ function consoleState(stations, extra = {}) {
     otherConsoles: [],
     mic: { mode: 'open', on: true, pttHeld: false, transmitting: true, device: 'MacBook Pro Microphone' },
     output: { device: 'AirPods Pro', level: 0 },
+    // control-api §5.5: null everywhere but Android (A5).
+    platform: null,
     settings: { soloDimDb: -18, pttHotkey: '⌥Space', codec: 'opus', bitrateKbps: 96, networkBuffer: { mode: 'auto', currentMs: 24 } },
     devices: {
       inputs: [{ id: 'builtin-mic', name: 'MacBook Pro Microphone' }, { id: 'airpods-mic', name: 'AirPods Pro' }],
@@ -42,7 +44,57 @@ function consoleState(stations, extra = {}) {
   };
 }
 
+// android.md sections 3, 4, 6 and 10: the phone Console's extra state. `over`
+// overrides the platform block for the scenarios below (a refused mic, a phone
+// call, speaker echo). On Android settings carries headsetButton instead of
+// pttHotkey, and the device names are the plain phone ones.
+function androidState(stations, over = {}, extra = {}) {
+  const st = consoleState(stations, extra);
+  st.self = { name: 'Pixel 8', role: 'console', kind: 'android' };
+  st.mic.device = 'Phone mic';
+  st.output.device = 'Phone speaker';
+  st.platform = {
+    micPermission: 'granted',
+    notifications: 'granted',
+    backgroundRestricted: false,
+    phoneCall: false,
+    micOffByCall: false,
+    outputRoute: 'speaker',
+    echoRisk: false,
+    ...over,
+  };
+  st.devices = {
+    inputs: [{ id: 'phone-mic', name: 'Phone mic' }],
+    outputs: [{ id: 'speaker', name: 'Phone speaker' }, { id: 'earpiece', name: 'Earpiece' }],
+  };
+  st.settings = { soloDimDb: -18, headsetButton: 'mic', codec: 'opus', bitrateKbps: 96, networkBuffer: { mode: 'auto', currentMs: 24 } };
+  return st;
+}
+
+const androidMicOff = { mic: { mode: 'open', on: false, pttHeld: false, transmitting: false, device: 'Phone mic' } };
+
 export const CONSOLE_SCENARIOS = {
+  // A7 design review: the phone layout on a real Android Console.
+  android: () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+    station('VDI-DEV-02', 1, { level: -6, latencyMs: 41, _activity: 0.15 }),
+  ]),
+  // android.md §3: the mic was refused, so the mic button and live band say so.
+  'android-blocked': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ], { micPermission: 'prompt' }, androidMicOff),
+  // android.md §6: a call owns the audio, so the mic is off because of it.
+  'android-call': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ], { phoneCall: true, micOffByCall: true }, androidMicOff),
+  // android.md §6: the call ended and the mic stayed off, which is the point.
+  'android-aftercall': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ], { micOffByCall: true }, androidMicOff),
+  // android.md §6: speaker output, station audio reaching the mic.
+  'android-echo': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.6 }),
+  ], { echoRisk: true }),
   everyday: () => consoleState([
     station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
     station('VDI-DEV-02', 1, { level: -6, latencyMs: 41, _activity: 0.15 }),

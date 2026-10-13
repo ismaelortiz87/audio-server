@@ -1,6 +1,6 @@
 // P2.11 -- see PipeWireDevices.h.
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 
 #include "PipeWireDevices.h"
 #include "JuceHeader.h"

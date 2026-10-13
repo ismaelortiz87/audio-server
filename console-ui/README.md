@@ -23,7 +23,9 @@ open "http://localhost:5173/agent.html?mock=listening"
 ```
 
 Console scenarios: `everyday`, `twocalls`, `problem`, `four`, `connecting`,
-`empty`, `failed`. Agent scenarios: `listening`, `talking`, `waiting`, `paused`,
+`empty`, `failed`, plus the Android ones (`kind: "android"`, A7):
+`android`, `android-blocked`, `android-call`, `android-aftercall`,
+`android-echo`. Agent scenarios: `listening`, `talking`, `waiting`, `paused`,
 `reconnecting`, `password`, `nodevice`. Without `?mock=` the page connects to
 the engine at `/api/v1/ws` on its own origin.
 

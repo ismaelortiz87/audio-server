@@ -1,7 +1,7 @@
 // Engine side of the control API state (P4.2). See EngineState.h.
 
 #include "EngineState.h"
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
  #include "PipeWireDevices.h"   // P2.11
 #endif
 
@@ -411,7 +411,7 @@ String EngineState::deviceName (bool input) const
 
 String EngineState::agentNode (bool input) const
 {
-   #if defined(__linux__)
+   #if defined(__linux__) && !defined(__ANDROID__)
     return String (pipewire::nodeForJuceName (deviceName (input).toStdString(), input));
    #else
     return deviceName (input);
@@ -420,7 +420,7 @@ String EngineState::agentNode (bool input) const
 
 void EngineState::refreshPipeWireNodes (double nowMs)
 {
-   #if defined(__linux__)
+   #if defined(__linux__) && !defined(__ANDROID__)
     if (nowMs - pwListedAtMs < 5000.0) return;   // pw-dump is a process spawn: every 5 s at most
     pwListedAtMs = nowMs;
     std::vector<pipewire::Node> nodes;
@@ -746,7 +746,7 @@ var EngineState::buildAgentState (double now)
             }
         }
         auto it = consoleLatency.find (info.userName);
-        const String kind = (info.kind == "mac" || info.kind == "web") ? info.kind : String ("other");
+        const String kind = (info.kind == "mac" || info.kind == "android" || info.kind == "web") ? info.kind : String ("other");
         // TODO(P4.x): "talking" needs a per-peer receive-activity signal; false until the engine has one.
         consoles.add (obj ({ { "name", info.userName }, { "kind", kind },
                              { "latencyMs", it != consoleLatency.end() ? var (it->second) : var() },

@@ -108,7 +108,16 @@ android {
         implementation 'androidx.appcompat:appcompat:1.0.2'
     }
 
-ndkVersion "22.0.7026061"
+// A3: the upstream release keystore is not in the repo and debug builds must not
+// need it. The Projucer points every build type at signingConfigs.juceSigning, so
+// debug is re-pointed at Gradle's own debug key. Release keeps juceSigning, and
+// A11 supplies its keystore from the environment.
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+
 
 }
 

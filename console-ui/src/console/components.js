@@ -14,6 +14,14 @@ const anySolo = st => Object.values(st.stations).some(s => s.solo);
 const isDimmed = (st, s) => anySolo(st) && !s.solo && !s.mute;
 const soloHeld = (st, s) => anySolo(st) && !s.solo;
 
+// android.md section 2: touch-first devices get "Tap…" copy and no keyboard
+// reference. `matchMedia` is absent under the test harness, so default to the
+// desktop copy there. `(pointer: coarse)` also covers a phone PWA (P7.7), which
+// is the point: this is not Android-specific behaviour.
+export const coarsePointer = () =>
+  typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(pointer: coarse)').matches;
+const tapCopy = (touch, desktop) => (coarsePointer() ? touch : desktop);
+
 // --------------------------------------------------------------- 3.1 top bar
 export function topBar(ctx) {
   const conn = h('span.conn');
@@ -55,7 +63,8 @@ export function liveBand() {
       let quiet = !(tx && targets.length), msg;
       if (!tx) {
         msg = st.mic.mode === 'ptt'
-          ? 'Push to talk: hold the mic button or Space. Nobody hears you now.'
+          ? tapCopy('Push to talk: hold the mic button. Nobody hears you now.',
+                    'Push to talk: hold the mic button or Space. Nobody hears you now.')
           : 'Mic off. No station hears you.';
       } else if (!targets.length) msg = 'Mic open, but no station is set to hear you.';
       else if (targets.length === all.length) msg = `All ${targets.length} stations hear you`;
@@ -404,8 +413,10 @@ export function youBar(ctx) {
       mic.dataset.state = tx && tg.length ? 'hot' : tx ? 'open-idle' : 'idle';
       setAttr(mic, 'aria-pressed', tx);
       const [icon, label, sub] = st.mic.mode === 'open'
-        ? (st.mic.on ? [ICONS.mic, 'Mic live', 'Click to turn off'] : [ICONS.micOff, 'Mic off', 'Click to open mic'])
-        : (tx ? [ICONS.mic, 'Talking…', 'Release to stop'] : [ICONS.micOff, 'Hold to talk', 'or hold Space']);
+        ? (st.mic.on ? [ICONS.mic, 'Mic live', tapCopy('Tap to turn off', 'Click to turn off')]
+                     : [ICONS.micOff, 'Mic off', tapCopy('Tap to open mic', 'Click to open mic')])
+        : (tx ? [ICONS.mic, 'Talking…', 'Release to stop']
+              : [ICONS.micOff, 'Hold to talk', tapCopy('Press and hold', 'or hold Space')]);
       setHTML(mic, `${icon}<span>${label}<span class="sub">${sub}</span></span>`);
       meter.classList.toggle('hot', tx && tg.length > 0);
       setAttr(modeOpen, 'aria-pressed', st.mic.mode === 'open');

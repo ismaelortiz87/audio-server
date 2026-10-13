@@ -1,7 +1,7 @@
 // Control API meters (P4.3) and commands (P4.4). See ApiCommands.h.
 
 #include "ApiCommands.h"
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
  #include "PipeWireDevices.h"   // P2.11
 #endif
 
@@ -127,7 +127,7 @@ void ApiCommands::sendMeters()
             if (deviceManager != nullptr)
             {
                 auto name = deviceManager->getAudioDeviceSetup().inputDeviceName;
-               #if defined(__linux__)
+               #if defined(__linux__) && !defined(__ANDROID__)
                 name = String (pipewire::nodeForJuceName (name.toStdString(), true));   // keyed like devices.inputs[].node
                #endif
                 if (name.isNotEmpty()) devs->setProperty (name, input);
@@ -637,7 +637,7 @@ var ApiCommands::agentCommand (const String& cmd, const var& a)
         // node would first have to switch to it.
         String current = deviceManager != nullptr ? deviceManager->getAudioDeviceSetup().outputDeviceName : String();
         auto* type = deviceManager != nullptr ? deviceManager->getCurrentDeviceTypeObject() : nullptr;
-       #if defined(__linux__)
+       #if defined(__linux__) && !defined(__ANDROID__)
         const String juceCurrent = current;
         current = String (pipewire::nodeForJuceName (current.toStdString(), false));   // as state.output.node
         if (node == juceCurrent) { processor.armApiTestTone (1.5); return {}; }

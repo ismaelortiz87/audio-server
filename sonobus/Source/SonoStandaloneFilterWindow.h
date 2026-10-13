@@ -930,9 +930,12 @@ public:
     }
 
    #if CROSSPOINT_HAS_WEB_SHELL
-    /** P6.1: swaps the SonoBus editor for the web-view shell (the editor stays alive but
-        hidden: it still carries the command-line connection and the saved state).
-        Title "Crosspoint", minimum 360 x 560, last size and position restored. */
+    /** P6.1 / A7: swaps the SonoBus editor for the web-view shell (the editor stays
+        alive but hidden: it still carries the command-line connection and the saved
+        state).
+        Mac: title "Crosspoint", minimum 360 x 560, last size and position restored.
+        Android: the window is already fullscreen (android.md section 2), so there is
+        no geometry to set and no title bar to hide. */
     void showWebShell (const String& url, const String& fatalError)
     {
         auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent());
@@ -940,6 +943,10 @@ public:
 
         shellMode = true;
         optionsButton.setVisible (false);
+
+       #if JUCE_ANDROID
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), getWidth(), getHeight());
+       #else
         setResizeLimits (360, 560, 10000, 10000);
         mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), 440, 760);
 
@@ -954,6 +961,7 @@ public:
         h = jmax (h, 560);
         if (x != -100 && y != -100) setBoundsConstrained ({ x, y, w, h });
         else                        centreWithSize (w, h);
+       #endif
     }
    #endif
 
