@@ -130,7 +130,7 @@ namespace juce {
 
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
     METHOD (updateConnectionNotification,   "updateConnectionNotification", "(ZLjava/lang/String;Ljava/lang/String;ZI)V") \
-    METHOD (updatePlayerStations,           "updatePlayerStations", "(Ljava/lang/String;Ljava/lang/String;)V") \
+    METHOD (updatePlayerState,              "updatePlayerState", "(Ljava/lang/String;)V") \
     METHOD (requestNotificationPermission,  "requestNotificationPermission", "()V") \
     METHOD (micPermissionState,             "micPermissionState", "()I") \
     METHOD (deviceName,                     "deviceName", "()Ljava/lang/String;") \
@@ -153,17 +153,16 @@ inline void androidUpdateConnectionNotification (bool active, const String& titl
                          (jboolean) active, jTitle.get(), jText.get(), (jboolean) live, (jint) micAction);
 }
 
-/** A17: push the player's station list and selected station to Java (section 12.4).
-    `stationsJson` is an array of up to 4 station objects; `selected` is the short
-    name shown as the player title. Called only when either changes. */
-inline void androidUpdatePlayerStations (const String& stationsJson, const String& selected)
+/** A17/A18: push the player's state to Java as one JSON object (section 12.4): the
+    selected station's short name, up to 4 stations, the connection, listening.
+    Called only when it changes. */
+inline void androidUpdatePlayerState (const String& json)
 {
     LocalRef<jobject> activity (getMainActivity());
     if (activity == nullptr) return;
     auto* env = getEnv();
-    LocalRef<jstring> jStations (javaString (stationsJson)), jSelected (javaString (selected));
-    env->CallVoidMethod (activity.get(), SonoBusActivity.updatePlayerStations,
-                         jStations.get(), jSelected.get());
+    LocalRef<jstring> jJson (javaString (json));
+    env->CallVoidMethod (activity.get(), SonoBusActivity.updatePlayerState, jJson.get());
 }
 
 /** android.md section 3: notifications are asked right after the mic answer (Android 13+). */

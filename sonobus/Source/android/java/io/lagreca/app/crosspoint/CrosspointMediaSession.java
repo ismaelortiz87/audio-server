@@ -11,60 +11,87 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.drawable.Icon;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.KeyEvent;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A18 (docs/design/android.md section 12): Crosspoint as an Android media
  * session, so the phone shows it in its lock-screen player (Samsung's Now Bar)
  * with buttons that work without unlocking.
  *
- * Deliberately built on the *platform* android.media.session APIs, not
- * androidx.media: everything needed (MediaSession, PlaybackState custom
- * actions, Notification.MediaStyle) is in android.jar at minSdk 24, so the app
- * gains no new dependency and no Gradle resolution risk.
+ * Built on the *platform* android.media.session APIs, not androidx.media:
+ * everything needed (MediaSession, PlaybackState custom actions,
+ * Notification.MediaStyle) is in android.jar at minSdk 24, so the app gains no
+ * new dependency.
  *
- * The session owns no engine state. Native pushes metadata and a small action
- * state through SonoBusService; button presses become nativeNotificationAction
- * calls, the same route the notification actions already use.
+ * LAYOUT (section 12.2). The spike (docs/TASKS.md A18, Result) found that the
+ * Android 13/14 system player always draws the standard play/pause in the centre
+ * slot and never lets a custom action take it, so this is **Layout B**:
+ *
+ *   [Listening play/pause] [Next station] [Mic] [Mute] [Solo]
+ *
+ * The session owns no engine state. Native pushes one JSON document
+ * (SonoBusService.applyPlayerState) and the "who hears you" / connection text;
+ * button presses become nativePlayerButton calls.
  */
 final class CrosspointMediaSession {
 
-    /** Custom action ids. Also the values passed to native. */
-    static final String ACTION_MIC = "io.lagreca.app.crosspoint.MIC";
-    static final String ACTION_PREV = "io.lagreca.app.crosspoint.PREV";
-    static final String ACTION_NEXT = "io.lagreca.app.crosspoint.NEXT";
-    static final String ACTION_MUTE = "io.lagreca.app.crosspoint.MUTE";
-    static final String ACTION_SOLO = "io.lagreca.app.crosspoint.SOLO";
-
-    // Native action codes (SonoBusActivity.nativeNotificationAction). 1/2 already
-    // existed for the old notification's Mic and Disconnect buttons. The values
-    // must match crosspoint::android::PlayerButton in AndroidPlatform.h.
+    // Native button codes. Must match crosspoint::android::PlayerButton in AndroidPlatform.h.
     static final int NATIVE_MIC = 1;
     static final int NATIVE_PREV = 2;
     static final int NATIVE_NEXT = 3;
     static final int NATIVE_MUTE = 4;
     static final int NATIVE_SOLO = 5;
+    static final int NATIVE_LISTEN = 7;      // Layout B centre: Listening pause / resume
+    // Not a native code: "Allow mic" opens the app instead.
+
+    static final String ACTION_MIC = "io.lagreca.app.crosspoint.MIC";
+    static final String ACTION_NEXT = "io.lagreca.app.crosspoint.NEXT";
+    static final String ACTION_MUTE = "io.lagreca.app.crosspoint.MUTE";
+    static final String ACTION_SOLO = "io.lagreca.app.crosspoint.SOLO";
+
+    /** Mic button states, pushed by native (AndroidServiceController::playerMicState). */
+    static final int MIC_HIDDEN = 0, MIC_ON = 1, MIC_OFF = 2, MIC_ALLOW = 3;
+
+    /** Section 12.4: station identity colours (console-ui tokens --s1..--s4). */
+    private static final int[] STATION_COLORS = { 0xFF9085E9, 0xFF199E70, 0xFFC98500, 0xFFBED590 };
+    private static final int PANEL = 0xFF12161A, INK4 = 0xFF4A4E4B, LIVE = 0xFFFF4F7B;
 
     private final Context ctx;
     private MediaSession session;
 
-    // Pushed from native, main thread only.
-    private String title = "Crosspoint";
-    private String subtitle = "Mic off \u00B7 nobody hears you";
-    private String album = "";
-    private boolean micLive = false;
-    private int artColor = 0xFF12161A;
-    private boolean micAvailable = true;
-    /** The selected station's short name, and the station list (section 12.3/12.4). */
+    // ---- pushed from native (main thread only)
+    private String subtitle = "Mic off · nobody hears you";   // section 4 title copy: who hears you
+    private String connText = "";                                    // section 4 text: connection
+    private boolean live = false;
+    private int micState = MIC_HIDDEN;
+    private boolean connected = false;
+    private boolean listening = true;                                // Layout B centre
+    private int soloDimDb = -18;
+    private final List<Station> stations = new ArrayList<>();
     private String selected = "";
-    private int selectedColor = 0xFF12161A;
-    private boolean selectedMuted = false, selectedSoloed = false;
-    private int stationCount = 0;
+
+    // ---- what was last given to the system, so nothing is re-posted when it did not change
+    private String lastMetaKey = "";
+    private String lastStateKey = "";
+
+    /** One station as the player draws it (section 12.4). */
+    static final class Station {
+        String name = "";
+        int colorIndex = 0;
+        String presence = "online", health = "clear";
+        double latencyMs = -1, lossPct = 0;
+        boolean mute, solo;
+    }
 
     CrosspointMediaSession(Context ctx) {
         this.ctx = ctx.getApplicationContext();
@@ -76,22 +103,41 @@ final class CrosspointMediaSession {
         if (session != null) return;
         session = new MediaSession(ctx, "Crosspoint");
         session.setCallback(new MediaSession.Callback() {
-            @Override public void onPlay() { nativeAction(NATIVE_MIC); }
-            @Override public void onPause() { nativeAction(NATIVE_MIC); }
-            @Override public void onSkipToNext() { nativeAction(NATIVE_NEXT); }
-            @Override public void onSkipToPrevious() { nativeAction(NATIVE_PREV); }
+            // The on-screen play/pause is Listening (Layout B); the headset button
+            // is the Mic (section 12.2), and arrives through onMediaButtonEvent.
+            @Override public void onPlay() { nativeAction(NATIVE_LISTEN); }
+            @Override public void onPause() { nativeAction(NATIVE_LISTEN); }
+            @Override public boolean onMediaButtonEvent(Intent intent) {
+                KeyEvent ev = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                if (ev == null) return false;
+                switch (ev.getKeyCode()) {
+                    case KeyEvent.KEYCODE_HEADSETHOOK:
+                    case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    case KeyEvent.KEYCODE_MEDIA_PLAY:
+                    case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                        if (ev.getAction() == KeyEvent.ACTION_DOWN && ev.getRepeatCount() == 0) nativeAction(NATIVE_MIC);
+                        return true;
+                    case KeyEvent.KEYCODE_MEDIA_NEXT:
+                        if (ev.getAction() == KeyEvent.ACTION_DOWN) nativeAction(NATIVE_NEXT);
+                        return true;
+                    case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                        if (ev.getAction() == KeyEvent.ACTION_DOWN) nativeAction(NATIVE_PREV);
+                        return true;
+                    default:
+                        return super.onMediaButtonEvent(intent);
+                }
+            }
             @Override public void onCustomAction(String action, Bundle extras) {
                 if (ACTION_MUTE.equals(action)) nativeAction(NATIVE_MUTE);
                 else if (ACTION_SOLO.equals(action)) nativeAction(NATIVE_SOLO);
-                else if (ACTION_MIC.equals(action)) nativeAction(NATIVE_MIC);
+                else if (ACTION_NEXT.equals(action)) nativeAction(NATIVE_NEXT);
+                else if (ACTION_MIC.equals(action)) micPressed();
             }
             @Override public void onStop() { /* the service lifetime owns this */ }
         });
+        session.setSessionActivity(openAppIntent());
         session.setActive(true);
-        // Section 12.1: "playing" from connect until Disconnect, whatever the mic
-        // does, so the phone never times the player out of the Now Bar.
-        session.setPlaybackState(playbackState());
-        pushMetadata();
+        refresh();
     }
 
     void stop() {
@@ -99,130 +145,226 @@ final class CrosspointMediaSession {
         session.setActive(false);
         session.release();
         session = null;
+        lastMetaKey = "";
+        lastStateKey = "";
     }
 
     boolean isRunning() { return session != null; }
 
-    /**
-     * A17 (section 12.3/12.4): the station list and the selected station, as JSON
-     * from native. Picks the selected station's colour and flags for the title,
-     * artwork and the Mute / Solo button labels.
-     */
-    void updateStations(String stationsJson, String selectedName) {
-        this.selected = selectedName != null ? selectedName : "";
-        this.stationCount = 0;
-        this.selectedMuted = false;
-        this.selectedSoloed = false;
+    // ------------------------------------------------------------ pushed state
+
+    /** Who hears you (section 4 title), connection text (section 4 text), the live flag and the Mic button state. */
+    void updateText(String subtitle, String connText, boolean live, int micState) {
+        this.subtitle = subtitle != null ? subtitle : "";
+        this.connText = connText != null ? connText : "";
+        this.live = live;
+        this.micState = micState;
+        refresh();
+    }
+
+    /** The station list and selection, as JSON from native (AndroidServiceController::updatePlayerStations). */
+    void updateState(String json) {
+        stations.clear();
         try {
-            org.json.JSONArray arr = new org.json.JSONArray(stationsJson != null ? stationsJson : "[]");
-            stationCount = arr.length();
-            for (int i = 0; i < arr.length(); i++) {
+            org.json.JSONObject o = new org.json.JSONObject(json != null && !json.isEmpty() ? json : "{}");
+            selected = o.optString("selected", "");
+            connected = o.optBoolean("connected", false);
+            listening = o.optBoolean("listening", true);
+            soloDimDb = o.optInt("soloDimDb", -18);
+            org.json.JSONArray arr = o.optJSONArray("stations");
+            for (int i = 0; arr != null && i < arr.length(); i++) {
                 org.json.JSONObject s = arr.optJSONObject(i);
                 if (s == null) continue;
-                if (s.optString("name", "").equals(this.selected)) {
-                    selectedMuted = s.optBoolean("mute", false);
-                    selectedSoloed = s.optBoolean("solo", false);
-                    selectedColor = STATION_COLORS[Math.abs(s.optInt("colorIndex", 0)) % STATION_COLORS.length];
-                }
+                Station st = new Station();
+                st.name = s.optString("name", "");
+                st.colorIndex = Math.abs(s.optInt("colorIndex", 0));
+                st.presence = s.optString("presence", "online");
+                st.health = s.optString("health", "clear");
+                st.latencyMs = s.isNull("latencyMs") ? -1 : s.optDouble("latencyMs", -1);
+                st.lossPct = s.isNull("lossPct") ? 0 : s.optDouble("lossPct", 0);
+                st.mute = s.optBoolean("mute", false);
+                st.solo = s.optBoolean("solo", false);
+                stations.add(st);
             }
         } catch (org.json.JSONException e) {
-            stationCount = 0;
+            stations.clear();
         }
-        if (session != null) {
-            session.setPlaybackState(playbackState());
-            pushMetadata();
-        }
+        refresh();
     }
 
-    /** Section 12.4: the station identity colours (console-ui --s1..--s4). */
-    private static final int[] STATION_COLORS = { 0xFF9085E9, 0xFF199E70, 0xFFC98500, 0xFFB0526F };
+    private Station selectedStation() {
+        for (Station s : stations) if (s.name.equals(selected)) return s;
+        return null;
+    }
 
-    // ------------------------------------------------------------ content
+    // ------------------------------------------------------------ text (section 12.4)
 
-    /**
-     * Main thread. Native calls this whenever the pushed content changes.
-     * `micLive` tints the whole player (Android 13+ derives the player colour
-     * from the artwork).
-     */
-    void update(String title, String subtitle, String album, int artColor, boolean micLive, boolean micAvailable) {
-        this.title = title != null ? title : "";
-        this.subtitle = subtitle != null ? subtitle : "";
-        this.album = album != null ? album : "";
-        this.artColor = artColor;
-        this.micLive = micLive;
-        this.micAvailable = micAvailable;
+    private String titleText() {
+        Station s = selectedStation();
+        return s != null ? s.name : "Crosspoint";
+    }
+
+    /** Second line: the selected station's state, " · " joined; not connected: the section 4 connection text. */
+    private String albumText() {
+        Station s = selectedStation();
+        if (!connected || s == null) return connText;
+        List<String> p = new ArrayList<>();
+        // The system's centre button keeps showing "pause" (the session stays PLAYING, section 12.1),
+        // so the paused state is told here.
+        if (!listening) p.add("Listening paused");
+        boolean anySolo = false;
+        for (Station o : stations) anySolo |= o.solo;
+        if (s.mute) p.add("Muted");
+        if (s.solo) p.add("Soloed");
+        else if (anySolo && !s.mute) p.add("Dimmed −" + Math.abs(soloDimDb));
+        if ("lost".equals(s.presence)) p.add("Lost · reconnecting");
+        else if ("offline".equals(s.presence)) p.add("Offline");
+        else if ("unstable".equals(s.health)) p.add(s.lossPct >= 0.5 ? "Unstable · " + Math.round(s.lossPct) + "% loss" : "Unstable");
+        else p.add(s.latencyMs >= 0 ? "Clear · " + Math.round(s.latencyMs) + " ms" : "Clear");
+        StringBuilder sb = new StringBuilder();
+        for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------ session content
+
+    /** Push state and metadata, only for what actually changed (section 4: no flicker, no sound). */
+    private void refresh() {
         if (session == null) return;
-        session.setPlaybackState(playbackState());
-        pushMetadata();
+        final Station sel = selectedStation();
+        final String stateKey = micState + "|" + listening + "|" + stations.size()
+            + "|" + (sel != null ? sel.name + sel.mute + sel.solo : "");
+        if (!stateKey.equals(lastStateKey)) {
+            lastStateKey = stateKey;
+            session.setPlaybackState(playbackState());
+        }
+        final String title = titleText(), album = albumText();
+        final int art = artworkKey(sel);
+        final String metaKey = title + "\n" + subtitle + "\n" + album + "\n" + art + "\n" + live;
+        if (!metaKey.equals(lastMetaKey)) {
+            lastMetaKey = metaKey;
+            session.setMetadata(new MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, subtitle)
+                .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
+                .putBitmap(MediaMetadata.METADATA_KEY_ART, artwork(sel, live))
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, -1L)
+                .build());
+        }
     }
 
-    /** The actions the player offers right now, reflected in PlaybackState. */
-    private long actions() {
-        long a = PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY;
-        // Section 12.2: with no stations only Mic shows.
-        if (stationCount > 0)
-            a |= PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS;
-        return a;
-    }
-
+    /** The actions the player offers right now (Layout B). */
     private PlaybackState playbackState() {
+        final Station sel = selectedStation();
+        final boolean hasStation = sel != null;
+        // Section 12.1: "playing" from connect until Disconnect, whatever the mic
+        // does, so the system never drops the player. (Pausing Listening also stays
+        // PLAYING for the same reason: see the A18 spike in docs/TASKS.md.)
         PlaybackState.Builder b = new PlaybackState.Builder()
-            .setActions(actions())
-            // Always "playing" (section 12.1). The mic state is in the text.
-            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f, android.os.SystemClock.elapsedRealtime());
-        // Section 12.2: Mute and Solo act on the selected station, so they only
-        // exist when there is one. A CustomAction must carry a real icon resource
-        // id: passing 0 throws IllegalArgumentException (found on API 34).
-        if (stationCount > 0) {
-            b.addCustomAction(new PlaybackState.CustomAction.Builder(
-                    ACTION_MUTE, selectedMuted ? "Unmute" : "Mute",
-                    R.drawable.ic_stat_crosspoint).build());
-            b.addCustomAction(new PlaybackState.CustomAction.Builder(
-                    ACTION_SOLO, selectedSoloed ? "Unsolo" : "Solo",
-                    R.drawable.ic_stat_crosspoint).build());
+            .setState(PlaybackState.STATE_PLAYING, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f,
+                      android.os.SystemClock.elapsedRealtime());
+        long actions = 0;
+        // The centre slot is the system's play/pause: Listening. With no stations
+        // there is nothing to listen to, so only Mic shows.
+        if (hasStation) actions |= PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE;
+        b.setActions(actions);
+
+        // Custom actions fill, in order: the previous slot, the next slot, custom 1, custom 2.
+        if (hasStation) {
+            b.addCustomAction(custom(ACTION_NEXT, "Next station", R.drawable.ic_player_next_station));
+        }
+        switch (micState) {
+            case MIC_ON:
+                b.addCustomAction(custom(ACTION_MIC, "Mic on. Turn your mic off", R.drawable.ic_player_mic));
+                break;
+            case MIC_OFF:
+                b.addCustomAction(custom(ACTION_MIC, "Mic off. Turn your mic on", R.drawable.ic_player_mic_off));
+                break;
+            case MIC_ALLOW:
+                b.addCustomAction(custom(ACTION_MIC, "Allow mic", R.drawable.ic_player_mic_off));
+                break;
+            default: break;
+        }
+        if (hasStation) {
+            b.addCustomAction(custom(ACTION_MUTE, sel.mute ? "Unmute " + sel.name : "Mute " + sel.name,
+                                     sel.mute ? R.drawable.ic_player_speaker_off : R.drawable.ic_player_speaker));
+            b.addCustomAction(custom(ACTION_SOLO,
+                sel.solo ? "Release solo " + sel.name
+                         : "Solo " + sel.name + ": only " + sel.name + " hears you, others dimmed",
+                sel.solo ? R.drawable.ic_player_solo_on : R.drawable.ic_player_solo));
         }
         return b.build();
     }
 
-    private void pushMetadata() {
-        if (session == null) return;
-        // Section 12.4: the title is the selected station's short name, or
-        // "Crosspoint" with no stations; the subtitle is who hears you.
-        final String t = stationCount > 0 && !selected.isEmpty() ? selected : "Crosspoint";
-        MediaMetadata.Builder m = new MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, t)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, subtitle)
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
-            .putBitmap(MediaMetadata.METADATA_KEY_ART,
-                       artwork(stationCount > 0 ? selectedColor : 0xFF12161A, micLive, selectedMuted))
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, -1L);
-        session.setMetadata(m.build());
+    private static PlaybackState.CustomAction custom(String id, String name, int icon) {
+        return new PlaybackState.CustomAction.Builder(id, name, icon).build();
+    }
+
+    /** Mic button: "Allow mic" opens the app (unlock required); otherwise toggles the mic. */
+    private void micPressed() {
+        if (micState == MIC_ALLOW) {
+            try {
+                openAppIntent().send();
+            } catch (PendingIntent.CanceledException e) {
+                android.util.Log.w("Crosspoint", "could not open the app", e);
+            }
+            return;
+        }
+        nativeAction(NATIVE_MIC);
+    }
+
+    // ------------------------------------------------------------ artwork (section 12.4)
+
+    /** A key that changes exactly when the artwork would. */
+    private int artworkKey(Station s) {
+        return tileColor(s, live);
     }
 
     /**
-     * A 512x512 tile in the station colour (section 12.4). Drawn in code: the app
-     * has no per-station art assets, and Android 13+ tints the player from this
-     * bitmap, so a solid colour is what carries the state.
+     * Section 12.4 tile colour. Muted: the colour at 35% over panel. Lost: ink4. No
+     * station: panel. Your voice reaches a station: the whole tile blends toward
+     * live (55% station, 45% live), because Android 13+ scales the artwork to the
+     * whole player background, where an inset border shows only as edge strips.
      */
-    private Bitmap artwork(int color, boolean live, boolean muted) {
+    private static int tileColor(Station s, boolean voice) {
+        int c;
+        if (s == null) c = PANEL;
+        else if ("lost".equals(s.presence) || "offline".equals(s.presence)) c = INK4;
+        else {
+            c = STATION_COLORS[s.colorIndex % STATION_COLORS.length];
+            if (s.mute) c = blend(PANEL, c, 0.35f);
+        }
+        return voice ? blend(LIVE, c, 0.55f) : c;
+    }
+
+    /**
+     * 512x512 rounded tile with a small white Crosspoint mark top-left, about 18% of the
+     * tile (design/icon/crosspoint-notification.svg: the route in from the left and out of
+     * the bottom, and the lit node). Small and off-centre because Android 13+ scales and
+     * crops the artwork into the whole player background.
+     */
+    private Bitmap artwork(Station s, boolean voice) {
         final int size = 512;
         Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bmp);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        // Section 12.4: muted is the colour at 35% over the panel colour.
-        int base = muted ? blend(0xFF12161A, color, 0.35f) : color;
-        p.setColor(base);
+        p.setColor(tileColor(s, voice));
         c.drawRoundRect(0, 0, size, size, 96, 96, p);
-        if (live) {
-            p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(48);
-            p.setColor(0xFFFF4F7B);                          // --live
-            c.drawRoundRect(24, 24, size - 24, size - 24, 72, 72, p);
-            p.setStyle(Paint.Style.FILL);
-        }
-        // The Crosspoint mark: a white route with a lit node.
+
+        // The mark on the 24-unit grid, scaled to 92 px, in the top-left quadrant.
+        final float k = 92f / 24f, ox = 40f, oy = 40f;
         p.setColor(Color.WHITE);
-        c.drawCircle(size / 2f, size / 2f, 54, p);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(2.4f * k);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        c.drawLine(ox + 3 * k, oy + 12 * k, ox + 6.4f * k, oy + 12 * k, p);
+        c.drawLine(ox + 12 * k, oy + 17.6f * k, ox + 12 * k, oy + 21 * k, p);
+        p.setStyle(Paint.Style.FILL);
+        Path ring = new Path();
+        ring.setFillType(Path.FillType.EVEN_ODD);
+        ring.addCircle(ox + 12 * k, oy + 12 * k, 4.4f * k, Path.Direction.CW);
+        ring.addCircle(ox + 12 * k, oy + 12 * k, 1.7f * k, Path.Direction.CW);
+        c.drawPath(ring, p);
         return bmp;
     }
 
@@ -236,52 +378,56 @@ final class CrosspointMediaSession {
 
     // ------------------------------------------------------------ notification
 
-    /** The MediaStyle notification that replaces the section 4 one (section 12.1). */
+    /**
+     * The MediaStyle notification that replaces the section 4 one (section 12.1).
+     * Android 13+ draws the player from the session; Android 12 and older draw
+     * these actions, so they mirror the session's.
+     */
     Notification buildNotification(String channelId, PendingIntent contentIntent) {
         Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             ? new Notification.Builder(ctx, channelId)
             : new Notification.Builder(ctx);
 
-        // Build the action list first: the compact-view indices below have to
-        // name real positions, and the list varies (the Mic slot disappears while
-        // the mic can't be toggled, and Mute / Solo need a selected station).
-        java.util.List<Integer> compact = new java.util.ArrayList<>();
-        if (micAvailable) {
-            compact.add(compact.size());
-            b.addAction(new Notification.Action.Builder(
-                    Icon.createWithResource(ctx, R.drawable.ic_stat_crosspoint), "Mic",
-                    serviceIntent(NATIVE_MIC)).build());
+        final Station sel = selectedStation();
+        final List<Integer> compact = new ArrayList<>();
+        int n = 0;
+        if (sel != null) {
+            b.addAction(action(listening ? R.drawable.ic_player_pause : R.drawable.ic_player_play,
+                               listening ? "Pause listening" : "Resume listening", NATIVE_LISTEN));
+            n++;
+            b.addAction(action(R.drawable.ic_player_next_station, "Next station", NATIVE_NEXT));
+            compact.add(n++);
         }
-        if (stationCount > 0) {
-            compact.add(compact.size());
-            b.addAction(new Notification.Action.Builder(
-                    Icon.createWithResource(ctx, R.drawable.ic_stat_crosspoint), "Previous",
-                    serviceIntent(NATIVE_PREV)).build());
-            compact.add(compact.size());
-            b.addAction(new Notification.Action.Builder(
-                    Icon.createWithResource(ctx, R.drawable.ic_stat_crosspoint), "Next",
-                    serviceIntent(NATIVE_NEXT)).build());
-            compact.add(compact.size());
-            b.addAction(new Notification.Action.Builder(
-                    Icon.createWithResource(ctx, R.drawable.ic_stat_crosspoint), selectedMuted ? "Unmute" : "Mute",
-                    serviceIntent(NATIVE_MUTE)).build());
-            b.addAction(new Notification.Action.Builder(
-                    Icon.createWithResource(ctx, R.drawable.ic_stat_crosspoint), selectedSoloed ? "Unsolo" : "Solo",
-                    serviceIntent(NATIVE_SOLO)).build());
+        if (micState != MIC_HIDDEN) {
+            final boolean on = micState == MIC_ON;
+            b.addAction(micState == MIC_ALLOW
+                ? new Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_player_mic_off), "Allow mic", openAppIntent()).build()
+                : action(on ? R.drawable.ic_player_mic : R.drawable.ic_player_mic_off,
+                         on ? "Mic on. Turn your mic off" : "Mic off. Turn your mic on", NATIVE_MIC));
+            compact.add(0, n++);
+        }
+        if (sel != null) {
+            b.addAction(action(sel.mute ? R.drawable.ic_player_speaker_off : R.drawable.ic_player_speaker,
+                               sel.mute ? "Unmute " + sel.name : "Mute " + sel.name, NATIVE_MUTE));
+            compact.add(n++);
+            b.addAction(action(sel.solo ? R.drawable.ic_player_solo_on : R.drawable.ic_player_solo,
+                               sel.solo ? "Release solo " + sel.name
+                                        : "Solo " + sel.name + ": only " + sel.name + " hears you, others dimmed", NATIVE_SOLO));
+            n++;
         }
 
         Notification.MediaStyle style = new Notification.MediaStyle();
         if (session != null) style.setMediaSession(session.getSessionToken());
-        // At most 3 in the collapsed view; show what exists (section 12.2).
         int[] show = new int[Math.min(3, compact.size())];
         for (int i = 0; i < show.length; i++) show[i] = compact.get(i);
         if (show.length > 0) style.setShowActionsInCompactView(show);
 
         b.setStyle(style)
          .setSmallIcon(R.drawable.ic_stat_crosspoint)
-         .setContentTitle(title)
+         .setContentTitle(titleText())
          .setContentText(subtitle)
-         .setColor(micLive ? 0xFFFF4F7B : 0xFF2E6B66)
+         .setSubText(albumText())
+         .setColor(live ? LIVE : 0xFF2E6B66)
          .setOngoing(true)
          .setOnlyAlertOnce(true)
          .setShowWhen(false)
@@ -290,19 +436,33 @@ final class CrosspointMediaSession {
         return b.build();
     }
 
-    /** A button press: back to native. Player buttons take their own channel
-        (pendingPlayerButton), because the legacy 1/2 action slot is only for the
-        old notification's Mic and Disconnect. */
+    private Notification.Action action(int icon, String title, int code) {
+        return new Notification.Action.Builder(Icon.createWithResource(ctx, icon), title, serviceIntent(code)).build();
+    }
+
     private void nativeAction(int code) {
         SonoBusActivity.nativePlayerButton(code);
     }
 
+    private PendingIntent openAppIntent() {
+        Intent open = new Intent(ctx, SonoBusActivity.class);
+        open.setAction(Intent.ACTION_MAIN);
+        open.addCategory(Intent.CATEGORY_LAUNCHER);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(ctx, 0, open, flags);
+    }
+
+    /** A notification button: a service start. getForegroundService exists from API 26; minSdk is 24. */
     private PendingIntent serviceIntent(int code) {
         Intent i = new Intent(ctx, SonoBusService.class);
         i.setAction(SonoBusService.ACTION_MEDIA);
         i.putExtra("code", code);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-        return PendingIntent.getForegroundService(ctx, 9000 + code, i, flags);
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? PendingIntent.getForegroundService(ctx, 9000 + code, i, flags)
+            : PendingIntent.getService(ctx, 9000 + code, i, flags);
     }
 }

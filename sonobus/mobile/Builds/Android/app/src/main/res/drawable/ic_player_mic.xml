@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A18: lock-screen player button, ported from design/prototypes/android-nowbar/index.html. Monochrome: the system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,3 a3,3 0 0 1 3,3 v5 a3,3 0 0 1 -6,0 v-5 a3,3 0 0 1 3,-3 z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+    <path
+        android:pathData="M5,11 a7,7 0 0 0 14,0 M12,18 v3"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

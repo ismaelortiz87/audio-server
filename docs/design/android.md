@@ -347,6 +347,13 @@ not set the paused state; keep "playing" and silence output instead. Record
 the result in A18's *Result*. The final check is maelo's Samsung Now Bar
 (A13).
 
+**Spike result (2026-10-13):** on API 33 and 34 the system player always puts
+its own play/pause in the centre and never lets a custom action take it
+(without PLAY/PAUSE declared the centre is empty; the slot-reservation extras
+only leave gaps), so **Layout B** ships. A paused session also drops off the
+lock screen after 10 minutes, so Listening's pause keeps the session PLAYING
+and the second line says "Listening paused".
+
 **Rules for all buttons:**
 - **Solo is exclusive** (P5.7): it dims the other stations, and only the
   soloed station hears you. **It never turns the mic on**; only the Mic button
