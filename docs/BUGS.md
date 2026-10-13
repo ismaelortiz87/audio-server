@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -487,6 +487,23 @@ query, `.seg button`, the placement-field buttons (Spread, All centre; they are
 `min-height: var(--size-touchMin)`. Checked in headless renders at 390 px
 (`everyday`, `twocalls`): the You bar wraps "Talk to all" onto its own row,
 nothing clips. Desktop is unchanged (container query only).
+
+## B16 — Reconnecting with the same name fails after a drop
+
+**Found** by the A18 agent, 2026-10-13, on the Android emulator with a local
+aooserver and headless peers. **Not yet reproduced** by anyone else.
+**Owner:** any.
+
+**Facts.** After an emulator or peer drops, the first `connection.connect`
+with the **same user name** often ends `failed` / "Not connected to a server",
+until a different name is used. The likely cause is the server still holding
+the old session for that name until it times out. Unconfirmed.
+
+**Left.** Reproduce it with the F2 harness (drop a peer without leaving the
+group, reconnect at once with the same name), check the aooserver's
+stale-client timeout, and decide between retry with backoff and "replace a
+stale session with the same name". This matters on phones, which drop often
+(network switches).
 
 ## B14 — A VDI that is also on the VPN stays offline for the Mac
 
