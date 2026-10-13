@@ -129,6 +129,21 @@ public:
     const String getApplicationVersion() override           { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override              { return true; }
 
+   #if JUCE_ANDROID
+    // A7 (android.md section 2): Back never quits and never disconnects. JUCE's
+    // default (return false) makes the peer finish() the activity, which would end
+    // the session. Process::hide() is Activity.moveTaskToBack(true) (with a HOME
+    // intent fallback), i.e. the same as pressing Home; the foreground service
+    // keeps the audio running. The web page does not see Back (JUCE 7.0.8's
+    // WebBrowserComponent has no evaluateJavascript), so closing the settings
+    // sheet with Back is not possible from here: see docs/TASKS.md A7.
+    bool backButtonPressed() override
+    {
+        Process::hide();
+        return true;
+    }
+   #endif
+
     SonoLookAndFeel  sonoLNF;
 
     AooServerConnectionInfo cmdlineConnInfo;
