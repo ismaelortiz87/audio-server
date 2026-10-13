@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -373,7 +374,7 @@ final class CrosspointMediaSession {
             session.setPlaybackState(playbackState());
         }
         final String title = titleText(), album = albumText();
-        final int art = artworkKey(sel);
+        final String art = artworkKey(sel);
         final String metaKey = title + "\n" + subtitle + "\n" + album + "\n" + art + "\n" + live;
         if (!metaKey.equals(lastMetaKey)) {
             lastMetaKey = metaKey;
@@ -447,19 +448,34 @@ final class CrosspointMediaSession {
         nativeAction(NATIVE_MIC);
     }
 
-    // ------------------------------------------------------------ artwork (section 12.4)
+    // ------------------------------------------------------------ artwork (section 12.4b)
 
-    /** A key that changes exactly when the artwork would. */
-    private int artworkKey(Station s) {
-        return tileColor(s, live);
+    private static final int BG = 0xFF0B0D0F, ON_LIVE = 0xFF1A0008, ACCENT_INK = 0xFF8FC3BA;
+    private static final int ART = 1024;
+
+    /** Last few rendered artworks, keyed by artworkKey (one per station and state). */
+    private final java.util.LinkedHashMap<String, Bitmap> artCache =
+        new java.util.LinkedHashMap<String, Bitmap>(8, 0.75f, true) {
+            @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Bitmap> e) { return size() > 8; }
+        };
+
+    /** The state pill (section 12.4b): LIVE wins over SOLO; MUTED and LOST stand alone. */
+    private static String pillFor(Station s, boolean voice) {
+        if (s == null) return "";
+        if ("lost".equals(s.presence) || "offline".equals(s.presence)) return "LOST";
+        if (s.mute) return "MUTED";
+        if (voice) return "LIVE";
+        if (s.solo) return "SOLO";
+        return "";
     }
 
-    /**
-     * Section 12.4 tile colour. Muted: the colour at 35% over panel. Lost: ink4. No
-     * station: panel. Your voice reaches a station: the whole tile blends toward
-     * live (55% station, 45% live), because Android 13+ scales the artwork to the
-     * whole player background, where an inset border shows only as edge strips.
-     */
+    /** A key that changes exactly when the artwork would. */
+    private String artworkKey(Station s) {
+        if (s == null) return "none";
+        return s.name + "|" + (s.colorIndex % STATION_COLORS.length) + "|" + pillFor(s, live);
+    }
+
+    /** Station tile colour for the Auto browse icons (section 13.1, same rule as 12.4). */
     private static int tileColor(Station s, boolean voice) {
         if (s == null) return voice ? blend(LIVE, PANEL, 0.55f) : PANEL;
         return tileColorFor(s.colorIndex, s.presence, s.mute, voice || s.hearsYou);
@@ -480,23 +496,103 @@ final class CrosspointMediaSession {
         return voice ? blend(LIVE, c, 0.55f) : c;
     }
 
-    /**
-     * 512x512 rounded tile with a small white Crosspoint mark top-left, about 18% of the
-     * tile (design/icon/crosspoint-notification.svg: the route in from the left and out of
-     * the bottom, and the lit node). Small and off-centre because Android 13+ scales and
-     * crops the artwork into the whole player background.
-     */
     private Bitmap artwork(Station s, boolean voice) {
-        final int size = 512;
-        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        final String key = artworkKey(s);
+        Bitmap b = artCache.get(key);
+        if (b == null) { b = drawArtwork(s, voice); artCache.put(key, b); }
+        return b;
+    }
+
+    /**
+     * Section 12.4b, artwork v2. 1024x1024, full-bleed, square and opaque: the
+     * phone applies its own corner mask (One UI's is larger than any radius we
+     * could pick, which is what showed black wedges in v1). A diagonal gradient
+     * with the app icon's faint matrix, the station's short name fitted in the
+     * centre, a state pill, and the small mark top-left of the 70% safe square.
+     */
+    private static Bitmap drawArtwork(Station s, boolean voice) {
+        final int S = ART;
+        Bitmap bmp = Bitmap.createBitmap(S, S, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bmp);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(tileColor(s, voice));
-        c.drawRoundRect(0, 0, size, size, 96, 96, p);
 
-        // The mark on the 24-unit grid, scaled to 92 px, in the top-left quadrant.
-        final float k = 92f / 24f, ox = 40f, oy = 40f;
+        // Gradient stops.
+        final String pill = pillFor(s, voice);
+        int a, z;
+        if (s == null) { a = PANEL; z = BG; }
+        else if ("LOST".equals(pill)) { a = INK4; z = BG; }
+        else {
+            final int col = STATION_COLORS[s.colorIndex % STATION_COLORS.length];
+            if ("MUTED".equals(pill)) { a = blend(PANEL, col, 0.35f); z = blend(PANEL, col, 0.20f); }
+            else { a = col; z = voice ? LIVE : blend(col, BG, 0.55f); }
+        }
+        p.setShader(new android.graphics.LinearGradient(0, 0, S, S, a, z, android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, S, S, p);
+        p.setShader(null);
+
+        // The faint matrix: lines at 1/3 and 2/3, 2% thick, white at 5%.
+        p.setColor(Color.argb(13, 255, 255, 255));
+        final float w = S * 0.02f;
+        for (float f : new float[] { 1f / 3f, 2f / 3f }) {
+            c.drawRect(0, S * f - w / 2, S, S * f + w / 2, p);
+            c.drawRect(S * f - w / 2, 0, S * f + w / 2, S, p);
+        }
+
+        final float safe = S * 0.15f;   // the 70% safe square starts at 15%
+        final Typeface bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
+
+        if (s == null) {
+            final float m = S * 0.22f;
+            drawMark(c, S / 2f - m / 2f, S * 0.36f, m, 230);
+            p.setColor(Color.WHITE);
+            p.setTypeface(bold);
+            p.setTextAlign(Paint.Align.CENTER);
+            p.setTextSize(S * 0.075f);
+            c.drawText("Crosspoint", S / 2f, S * 0.66f - (p.descent() + p.ascent()) / 2f, p);
+            return bmp;
+        }
+
+        drawMark(c, safe, safe, S * 0.09f, 217);
+
+        // The name: fitted to 78% of the width, capped at 15% of the height, never truncated.
         p.setColor(Color.WHITE);
+        p.setTypeface(bold);
+        p.setTextAlign(Paint.Align.CENTER);
+        float fs = S * 0.15f;
+        p.setTextSize(fs);
+        while (p.measureText(s.name) > S * 0.78f && fs > 8) { fs -= 4; p.setTextSize(fs); }
+
+        final float ph = S * 0.11f, gap = 32f;
+        final float block = fs + (pill.isEmpty() ? 0 : gap + ph);
+        final float top = S / 2f - block / 2f;
+        c.drawText(s.name, S / 2f, top + fs / 2f - (p.descent() + p.ascent()) / 2f, p);
+
+        if (!pill.isEmpty()) {
+            int fill, fg;
+            switch (pill) {
+                case "LIVE": fill = LIVE; fg = ON_LIVE; break;
+                case "SOLO": fill = ACCENT_INK; fg = BG; break;
+                default:     fill = Color.argb(46, 255, 255, 255); fg = Color.WHITE; break;
+            }
+            Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
+            t.setTypeface(bold);
+            t.setTextAlign(Paint.Align.CENTER);
+            t.setTextSize(ph * 0.5f);
+            t.setLetterSpacing(0.08f);
+            t.setColor(fg);
+            final float pw = t.measureText(pill) + ph * 1.1f, py = top + fs + gap;
+            p.setColor(fill);
+            c.drawRoundRect(new android.graphics.RectF(S / 2f - pw / 2f, py, S / 2f + pw / 2f, py + ph), ph / 2f, ph / 2f, p);
+            c.drawText(pill, S / 2f, py + ph / 2f - (t.descent() + t.ascent()) / 2f, t);
+        }
+        return bmp;
+    }
+
+    /** The Crosspoint mark (design/icon/crosspoint-notification.svg, 24-unit grid), white. */
+    private static void drawMark(Canvas c, float ox, float oy, float size, int alpha) {
+        final float k = size / 24f;
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(Color.argb(alpha, 255, 255, 255));
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(2.4f * k);
         p.setStrokeCap(Paint.Cap.ROUND);
@@ -508,7 +604,6 @@ final class CrosspointMediaSession {
         ring.addCircle(ox + 12 * k, oy + 12 * k, 4.4f * k, Path.Direction.CW);
         ring.addCircle(ox + 12 * k, oy + 12 * k, 1.7f * k, Path.Direction.CW);
         c.drawPath(ring, p);
-        return bmp;
     }
 
     /** `over` at `alpha` over `under`. */

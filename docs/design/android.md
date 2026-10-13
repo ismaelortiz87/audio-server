@@ -406,7 +406,7 @@ circles (Now Bar thumbnail) or wide strips.
 **Background:** a diagonal gradient from the top-left in the station colour
 (`s1`–`s4`) to the bottom-right in that colour mixed 55% with `bg` `#0b0d0f`.
 Over it, the faint crosspoint matrix from the app icon: two horizontal and two
-vertical lines at ⅓ and ⅔, 2% of the width thick, white at 7%. It gives
+vertical lines at ⅓ and ⅔, 2% of the width thick, white at 5%. It gives
 texture without competing.
 
 **Content**, centred in the safe square, top to bottom:

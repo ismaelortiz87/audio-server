@@ -44,7 +44,7 @@ function art(cv, { name, color, state }) {
   const g = x.createLinearGradient(0, 0, S, S); g.addColorStop(0, a); g.addColorStop(1, b);
   x.fillStyle = g; x.fillRect(0, 0, S, S);
   // faint matrix (the app icon's buses) at 1/3 and 2/3
-  x.fillStyle = 'rgba(255,255,255,.07)'; const w = S * .02;
+  x.fillStyle = 'rgba(255,255,255,.05)'; const w = S * .02;
   for (const f of [1 / 3, 2 / 3]) { x.fillRect(0, S * f - w / 2, S, w); x.fillRect(S * f - w / 2, 0, w, S); }
   const safe = S * .15; // 70% safe square starts at 15%
   // mark: route + lit node, 9% of canvas, top-left of the safe square
