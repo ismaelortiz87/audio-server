@@ -106,7 +106,7 @@ A full-width strip under the top bar: the single loudest element.
 
 | Condition (engine state) | Style | Text |
 |---|---|---|
-| transmitting, every known station hears me | live | `LIVE` pill + "All {n} stations hear you" |
+| transmitting, every known station hears me | live | `LIVE` pill + "All {n} stations hear you"; with only one known station, "{A} hears you" |
 | transmitting, some hear me (the rest includes lost/offline stations) | live | `LIVE` + "{A and B} hear(s) you · {C} doesn't / {C and D} don't" |
 | transmitting, solo narrowing | live | `LIVE` + "Solo: only {A} hears you" |
 | transmitting, nobody hears me | quiet | "Mic open, but no station is set to hear you." |

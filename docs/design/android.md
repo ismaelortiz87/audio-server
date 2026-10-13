@@ -84,10 +84,13 @@ The foreground service runs from connect until Disconnect or swipe-away,
 whatever the connection state (connecting, reconnecting and failed included,
 so the notification can say so).
 
-**Channel:** "Connection" (id `connection`), importance **low** (no sound, no
-pop-up; it sits in the shade with a status-bar icon), ongoing (can't be
-dismissed), lock-screen visibility **public**, because mic state must be
-readable on the lock screen.
+**Channel:** "Connection" (id `connection`), importance **default** with **no
+sound and no vibration** (`setSound(null, null)`, vibration off), and
+`setOnlyAlertOnce(true)`. Ongoing (can't be dismissed), lock-screen visibility
+**public**. Not "low": Android 12+ hides silent notifications from the lock
+screen by default, and mic state must be readable there (A10 review,
+2026-10-12). Default importance shows on the lock screen and in the status bar
+without a pop-up.
 
 **Small icon:** [design/icon/crosspoint-notification.svg](../../design/icon/crosspoint-notification.svg)
 (the route and lit node, monochrome, as a 24 dp vector). **Icon tint**
@@ -99,7 +102,7 @@ copy), **text = connection**:
 
 | Mic situation | Title |
 |---|---|
-| transmitting, all hear | "Live: all {n} stations hear you" |
+| transmitting, all hear | "Live: all {n} stations hear you" (one known station: "Live: {A} hears you") |
 | transmitting, some hear | "Live: {A and B} hear(s) you" |
 | transmitting, solo | "Live: solo, only {A} hears you" |
 | transmitting, nobody | "Mic open, but no station is set to hear you" |
