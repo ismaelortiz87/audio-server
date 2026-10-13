@@ -71,7 +71,8 @@ inline Content build (const Input& in)
     else if (in.transmitting)
     {
         if (n == 0)                                     c.title = "Mic open, but no station is set to hear you";
-        else if (all && n > 1)                          c.title = "Live: all " + std::to_string (n) + " stations hear you";
+        else if (all && n == 1)                         c.title = "Live: " + in.hearing[0] + " hears you";      // one known station: name it
+        else if (all)                                   c.title = "Live: all " + std::to_string (n) + " stations hear you";
         else if (in.anySolo)                            c.title = "Live: solo, only " + listNames (in.hearing) + (n == 1 ? " hears you" : " hear you");
         else                                            c.title = "Live: " + listNames (in.hearing) + (n == 1 ? " hears you" : " hear you");
     }

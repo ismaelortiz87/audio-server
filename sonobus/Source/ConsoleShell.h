@@ -40,6 +40,48 @@ struct ConsoleShellFatal
                                        // true result loads the Console page (false: stay)
 };
 
+#if JUCE_ANDROID
+/** The phone's error copy (android.md section 8). JUCE's Label can neither set a line height nor be
+    relied on to pick a bold face on Android, so this draws the text itself: the title as glyph
+    outlines (filled, plus a thin stroke = weight 700), the body as an AttributedString with
+    line spacing (~1.45). */
+class PhoneCopyLabel : public Label
+{
+public:
+    bool bold = false;
+    float lineSpacing = 0.0f;       // extra pixels between lines
+
+    void paint (Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat();
+        const auto colour = findColour (textColourId);
+        if (bold)
+        {
+            const auto f = getFont();
+            GlyphArrangement ga;
+            ga.addLineOfText (f, getText(), r.getX(), r.getCentreY() + (f.getAscent() - f.getDescent()) * 0.5f);
+            Path p;
+            ga.createPath (p);
+            g.setColour (colour);
+            g.fillPath (p);
+            g.strokePath (p, PathStrokeType (f.getHeight() * 0.045f, PathStrokeType::curved, PathStrokeType::rounded));
+        }
+        else
+        {
+            AttributedString a;
+            a.setJustification (Justification::topLeft);
+            a.setWordWrap (AttributedString::byWord);
+            a.setLineSpacing (lineSpacing);
+            a.append (getText(), getFont(), colour);
+            a.draw (g, r);
+        }
+    }
+};
+using ShellCopyLabel = PhoneCopyLabel;
+#else
+using ShellCopyLabel = Label;
+#endif
+
 class ConsoleShellView : public Component
 {
 public:
@@ -55,7 +97,9 @@ public:
         // android.md section 8: title 20/700 ink, body 15/1.45 ink2, one 48 px
         // full-width accent button. The Mac keeps its reviewed P6.1 look.
         title.setFont (Font (20.0f, Font::bold));
+        title.bold = true;
         message.setFont (Font (15.0f));
+        message.lineSpacing = 15.0f * 1.45f - message.getFont().getHeight();       // line height 1.45
         title.setColour (Label::textColourId, Colour (0xffe8e4da));                 // --ink
         message.setColour (Label::textColourId, Colour (0xffa8a69d));               // --ink2
         retryButton.setColour (TextButton::buttonColourId, Colour (0xff2e6b66));    // --accent
@@ -294,7 +338,7 @@ private:
 
     String baseUrl;
     std::unique_ptr<Page> page;
-    Label title, message;
+    ShellCopyLabel title, message;
     TextButton retryButton;
     std::function<bool()> fatalRetry;
 

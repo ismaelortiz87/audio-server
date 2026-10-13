@@ -71,7 +71,11 @@ public:
     /** Stations whose last published presence is "online" (P4.3 meters). */
     StringArray getOnlineStations() const;
     /** connection.disconnect: shows reason "Disconnected" instead of "lost" until the next connect. */
-    void setUserDisconnected (bool disconnected)    { userDisconnected = disconnected; }
+    void setUserDisconnected (bool disconnected)
+    {
+        userDisconnected = disconnected;
+        if (disconnected) userDisconnectedAtMs = Time::getMillisecondCounterHiRes();
+    }
     /** agent.reloadConfig result: shown as state.configError and connection.error. */
     void setConfigError (const String& err)         { configError = err; }
 
@@ -171,7 +175,7 @@ private:
     void refreshAndroidRoute (double nowMs);
     const char* androidOutputRoute() const;
     var androidDevicesVar();
-    var androidPlatformVar();
+    var androidPlatformVar (bool anyHearsYou);
     int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
     double androidRouteAtMs = -1e12;
     bool aecChecked = false, aecWorking = false;
@@ -199,6 +203,7 @@ private:
     double consoleLatencyAtMs = -1e12;
     bool everConnectedToServer = false;
     bool userDisconnected = false;       // P4.4
+    double userDisconnectedAtMs = 0;     // the socket may still look connected for a moment after an explicit Disconnect
     String configError;                  // P4.4: starts as options.configError
 
     var previous;                        // last published snapshot (message thread)

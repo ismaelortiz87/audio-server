@@ -3,10 +3,10 @@
 // directly: they send commands (api §5) and re-render from the patches.
 
 import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
-import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE } from '../lib/format.js';
+import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE, allHearYouText } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
-import { callBandText, callMicButton, problemRows } from '../lib/platform.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, problemRows } from '../lib/platform.js';
 
 const STATION_VAR = i => `var(--s${(i % 4) + 1})`;
 const ordered = st => st.stationOrder.map(id => st.stations[id]).filter(Boolean);
@@ -75,7 +75,7 @@ export function liveBand() {
                     'Push to talk: hold the mic button or Space. Nobody hears you now.')
           : 'Mic off. No station hears you.';
       } else if (!targets.length) msg = 'Mic open, but no station is set to hear you.';
-      else if (targets.length === all.length) msg = `All ${targets.length} stations hear you`;
+      else if (targets.length === all.length) msg = allHearYouText(targets, all);
       else if (anySolo(st)) msg = `Solo: only ${listNames(targets.map(s => shortName(s.name)))} ${hears(targets.length)} you`;
       else {
         const rest = all.filter(s => !s.hearsYou);
@@ -407,14 +407,18 @@ export function youBar(ctx) {
   out.addEventListener('pointerup', () => { out._active = false; });
 
   let st = null;
-  mic.addEventListener('click', () => { if (st?.mic.mode === 'open') ctx.client.fire('mic.setOn', { on: !st.mic.on }); });
-  mic.addEventListener('pointerdown', () => { if (st?.mic.mode === 'ptt') ctx.ptt(true); });
+  mic.addEventListener('click', () => {
+    if (!st) return;
+    if (micBlocked(st)) { ctx.client.fire('platform.requestMic'); return; }   // android.md section 3, in both modes
+    if (st.mic.mode === 'open') ctx.client.fire('mic.setOn', { on: !st.mic.on });
+  });
+  mic.addEventListener('pointerdown', () => { if (st?.mic.mode === 'ptt' && !micBlocked(st)) ctx.ptt(true); });
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) mic.addEventListener(ev, () => ctx.ptt(false));
   mic.addEventListener('contextmenu', e => e.preventDefault());
 
   ctx.client.onMeters(m => {
     if (!m.mic) return;
-    const v = m.mic[0] === null ? 0 : Math.max(0, Math.min(1, (m.mic[0] + 60) / 60));
+    const v = m.mic[0] === null || (st && micBlocked(st)) ? 0 : Math.max(0, Math.min(1, (m.mic[0] + 60) / 60));
     meterFill.style.width = `${v * 100}%`;
   });
 
@@ -441,7 +445,12 @@ export function youBar(ctx) {
         : (tx ? [ICONS.mic, 'Talking…', 'Release to stop']
               : [ICONS.micOff, 'Hold to talk', tapCopy(st, 'Press and hold', 'or hold Space')]);
       const call = callMicButton(st);     // A14: disabled during a phone call
-      if (call) {
+      const blocked = blockedMicButton(st);   // A9: the mic is not granted
+      if (blocked) {
+        mic.dataset.state = 'idle';
+        setAttr(mic, 'aria-pressed', false);
+        setHTML(mic, `${ICONS.micOff}<span>${blocked.label}<span class="sub">${blocked.sub}</span></span>`);
+      } else if (call) {
         mic.dataset.state = 'idle';
         setAttr(mic, 'aria-pressed', false);
         setHTML(mic, `${ICONS.micOff}<span>${call.label}<span class="sub">${call.sub}</span></span>`);

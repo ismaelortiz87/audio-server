@@ -490,7 +490,7 @@ var EngineState::androidDevicesVar()
     return obj ({ { "inputs", var (ins) }, { "outputs", var (outs) } });
 }
 
-var EngineState::androidPlatformVar()
+var EngineState::androidPlatformVar (bool anyHearsYou)
 {
     // control-api 5.5 / android.md section 10. Other A-tasks add their own fields
     // (micPermission, phoneCall...) next to these two.
@@ -499,7 +499,8 @@ var EngineState::androidPlatformVar()
     fillMicFields (mic);
     auto& sig = crosspoint::android::Signals::get();     // A10 / A14 fields
     return obj ({ { "outputRoute", route },
-                  { "echoRisk", androidaudio::echoRisk (route, aecWorking, mic.transmitting) },
+                  { "echoRisk", androidaudio::echoRisk (route, aecWorking, mic.transmitting, anyHearsYou) },
+                  { "micPermission", sig.micPermissionName() },
                   { "notifications", sig.notificationsEnabled.load() ? "granted" : "denied" },
                   { "backgroundRestricted", sig.backgroundRestricted.load() },
                   { "phoneCall", processor.isPhoneCall() },
@@ -588,7 +589,13 @@ var EngineState::connectionVar (double now, bool agent)
     const bool connected = processor.isConnectedToServer();
     const String group = processor.getCurrentJoinedGroup();
     const String server = serverString (processor);
-    if (connected) { everConnectedToServer = true; userDisconnected = false; }
+    if (connected)
+    {
+        everConnectedToServer = true;
+        // Right after an explicit Disconnect the socket can still report connected for a moment:
+        // that must not clear the flag, or the reason reads "Connection to the server was lost".
+        if (now - userDisconnectedAtMs > 3000.0) userDisconnected = false;
+    }
 
     String state, reason;
     var retry, attemptV, errorV;
@@ -806,7 +813,9 @@ var EngineState::buildConsoleState (double now)
 
    #if JUCE_ANDROID
     refreshAndroidRoute (now);
-    const var platform = androidPlatformVar();
+    bool anyHearsYou = false;
+    for (auto& kv : mix) anyHearsYou = anyHearsYou || kv.second.hearsYou;
+    const var platform = androidPlatformVar (anyHearsYou);
    #else
     const var platform;   // null: control-api 5.5
    #endif

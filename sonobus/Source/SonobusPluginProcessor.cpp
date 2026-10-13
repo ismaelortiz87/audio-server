@@ -6095,6 +6095,7 @@ void SonobusAudioProcessor::setMicMode(MicMode mode)
 bool SonobusAudioProcessor::isMicTransmitting() const
 {
     if (mPhoneCall.load()) return false;    // A14: a call owns the audio
+    if (mMicBlocked.load()) return false;   // A9: the OS has not granted the microphone
     return mMicMode.load() == (int) MicMode::PushToTalk ? mPttHeld.load() : mMicOn.load();
 }
 

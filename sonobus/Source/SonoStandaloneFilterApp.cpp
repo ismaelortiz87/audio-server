@@ -357,6 +357,9 @@ public:
 #if JUCE_IOS
             //String username = SystemStats::getFullUserName(); //SystemStats::getLogonName();
             username = SystemStats::getComputerName(); //SystemStats::getLogonName();
+#elif JUCE_ANDROID
+            // android.md section 2: the device name ("Pixel 8"), not the Linux uid (u0_a123).
+            username = juce::androidDeviceName();
 #else
             username = SystemStats::getFullUserName(); //SystemStats::getLogonName();
             //if (username.length() > 0) username = username.replaceSection(0, 1, username.substring(0, 1).toUpperCase());
@@ -727,8 +730,12 @@ public:
             };
         }
        #if JUCE_ANDROID
-        // android.md section 10. A9 adds platform.requestMic here.
-        hooks.platformCommand = [](const String & cmd, const var & args, String & code, String & msg) {
+        // android.md section 10.
+        hooks.platformCommand = [this](const String & cmd, const var & args, String & code, String & msg) {
+            if (cmd == "platform.requestMic") {       // A9: system dialog (prompt) or the app's settings page (denied)
+                if (androidService == nullptr) { code = "internal"; msg = "The engine is still starting"; return false; }
+                return androidService->requestMic (code, msg);
+            }
             if (cmd == "platform.openSettings") {
                 const String page = args.getProperty ("page", var()).toString();
                 if (page != "app" && page != "notifications" && page != "battery") {
@@ -757,7 +764,9 @@ public:
        #if JUCE_ANDROID
         // A10 / A14: the foreground service, the notification, phone calls and earcons.
         androidService = std::make_unique<crosspoint::android::AndroidServiceController>(
-            *proc, *engineState, [this]() { if (apiCommands != nullptr) apiCommands->disconnect(); });
+            *proc, *engineState, [this]() { if (apiCommands != nullptr) apiCommands->disconnect(); },
+            [this]() { if (mainWindow.get() != nullptr) mainWindow->pluginHolder->enableAudioInput(); },   // A9: mic granted after launch
+            mainWindow.get() == nullptr || mainWindow->pluginHolder->audioInputEnabled);
         androidService->setShutdownHandler ([this, proc]() {
             // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
