@@ -155,7 +155,7 @@ Ordered so that every task appears after everything it depends on.
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
-| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | todo | android.md §12.4b |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | wip | Claude 2026-10-13: code done on branch `task/A25-artwork`, **not built yet** (built with the Android Auto batch); mock approved by maelo |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
