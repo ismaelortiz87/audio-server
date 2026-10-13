@@ -666,6 +666,8 @@ private:
         String rel = req.path;
         if (rel == "/")
             rel = server.config.role == "vdi" ? "/agent.html" : "/index.html";
+        else if (rel == "/favicon.ico")
+            rel = "/icons/crosspoint-32.png";   // browsers ask for it unprompted; Android's WebView reports its 404 as a page load error (A3)
 
         // Traversal: refuse outright rather than normalising. Backslashes are
         // refused too so a Windows build cannot be tricked by "..\\".

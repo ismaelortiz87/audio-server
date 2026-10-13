@@ -14,7 +14,7 @@ safe; `--check` only reports.
 
 | Thing | Version | Where |
 |---|---|---|
-| JDK | Temurin 17 | `/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home` |
+| JDK | OpenJDK 17 (Homebrew formula, no sudo) | `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` |
 | Android SDK | — | `$ANDROID_HOME`, default `~/Library/Android/sdk` |
 | cmdline-tools | latest | `$ANDROID_HOME/cmdline-tools/latest` |
 | platform | android-33 | `$ANDROID_HOME/platforms/android-33` |
@@ -37,7 +37,7 @@ drift from the engine.
 ```sh
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
-export JAVA_HOME="/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 ```
 
@@ -100,7 +100,7 @@ Install and launch:
 
 ```sh
 scripts/build-android.sh --install
-adb shell am start -n io.lagreca.app.crosspoint/com.sonosaurus.sonobus.SonoBusActivity
+adb shell am start -n com.sonosaurus.sonobus/.SonoBusActivity   # id changes with A4
 ```
 
 Screenshots for design review come from the emulator, never a desktop capture
@@ -145,24 +145,41 @@ This is how the `console-ui` smoke test runs against the real phone engine.
   view; A7 turns it on and sets `hardwareAccelerated` (the manifest currently
   says `false`, which a WebView cannot use).
 
+## Build facts (verified 2026-10-12)
+
+- Cold `assembleDebug`: about 2m15s on an Apple-silicon Mac (all four ABIs);
+  incremental about 50s. `scripts/build-android.sh` always re-runs the resave
+  and Gradle reports `40 executed` each time, so expect ~50s even for a no-op.
+- The debug APK is 194 MB (arm64-v8a, armeabi-v7a, x86, x86_64). Restrict
+  `abiFilters` in the `.jucer` for faster iteration if needed; not done.
+- Debug signing uses Gradle's own debug key; the keystore properties resolve to
+  empty strings via `findProperty`, so nothing about the upstream keystore is
+  needed. Release (A11) must pass them.
+- `brew install --cask temurin@17` needs sudo, so `setup-android.sh` installs
+  `openjdk@17` instead.
+- Mic permission: grant it from the dialog or `adb shell pm grant
+  com.sonosaurus.sonobus android.permission.RECORD_AUDIO`.
+- Drive the engine without the UI: forward 7070 and talk to the WebSocket
+  (`{"t":"cmd","id":"c1","cmd":"connection.connect","args":{...}}`), Node 22+
+  has a global `WebSocket`.
+- JUCE 7.0.8 Android WebView reports subresource HTTP errors as page errors, and
+  its `Process::hide()` aborts the app (invalid local ref). Both worked around
+  in `ConsoleShell.h` and `SonoStandaloneFilterApp.cpp`; see A3.
+
 ## Where the debug build stands
 
 | Task | State |
 |---|---|
-| A1 toolchain + Projucer | scripts + this doc; toolchain install is `setup-android.sh` |
+| A1 toolchain + Projucer | done |
 | A2 design | done (`docs/design/android.md`) |
-| A3 debug APK builds the engine | missing sources in the `.jucer`; the 25 files the engine includes are now listed, `__linux__`/PipeWire guards fixed, keystore/ndkVersion/local.properties fixed. **Needs an SDK to link.** |
-| A4 identity | not started — APK is still `com.sonosaurus.sonobus` |
-| A5 control API on the phone | Console role, loopback `7070`, no token, `self.kind: "android"` (state + peer info + `consoles[].kind`) |
-| A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()` with an MD5 stamp; verified by `scripts/test-android-ui.sh` (10/10) |
-| A7 Android web shell | `ConsoleShellView` extended to `JUCE_ANDROID`, `JUCE_WEB_BROWSER=1`, `hardwareAccelerated`, loopback cleartext, phone error page, touch copy in `console-ui` |
+| A3 debug APK builds the engine | done: builds, installs, launches on the emulator, joins a group on aoo.sonobus.net (via the control API) |
+| A4 identity | not started: APK is still `com.sonosaurus.sonobus`, icon is the Projucer's `drawable/icon` |
+| A5 control API on the phone | Console role, loopback `7070`, no token, `self.kind: "android"`; confirmed live on the emulator |
+| A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()`; confirmed live (the WebView shows the Console) |
+| A7 Android web shell | renders on the emulator; open: duplicated top inset/empty band, clipped station list |
 | A9 mic permission | not started (UI states + `platform.micPermission`) |
 | A10 background service | not started |
 | A11 release APK | not started |
-
-Everything except the toolchain itself is in place for the first APK once the SDK
-and NDK are installed. The remaining unknowns are link-time NDK problems (first
-compile of 25 newly-listed sources), which is exactly what A3 exists to flush out.
 
 ### Tests
 
@@ -170,12 +187,3 @@ compile of 25 newly-listed sources), which is exactly what A3 exists to flush ou
 scripts/test-android-ui.sh     # A6: the bundled UI unpacks + stamp behaviour
 cd console-ui && npm test      # 15/15, including the Android mock scenarios
 ```
-
-## What is not verified yet
-
-- **The APK has never been built or run.** No JDK/SDK/NDK was present when A1–A7
-  landed, so the Android link is unproven and the emulator screens A7's design
-  review needs do not exist yet.
-- The desktop build (`scripts/build-desktop.sh --app-only`) **is** green after
-  every shared-source change (A5, A6, A7), so the non-Android paths are safe.
-

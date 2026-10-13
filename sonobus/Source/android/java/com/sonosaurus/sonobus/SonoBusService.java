@@ -103,7 +103,7 @@ public class SonoBusService extends Service {
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setContentIntent(pendingIntent)
-        .setSmallIcon(R.drawable.ic_notify)
+        .setSmallIcon(R.drawable.icon) // A3 interim: ic_notify is not in the repo; A4 supplies the real one
         //.setPriority(Notification.PRIORITY_MAX)
         .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
         .setOngoing(true).build();
