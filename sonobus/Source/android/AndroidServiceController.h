@@ -58,6 +58,20 @@ public:
         if (Signals::get().shutdownRequested.load() && Signals::get().onShutdown) Signals::get().onShutdown();
     }
 
+    /** A17: how a player button reaches the engine. Set by the app to
+        ApiCommands::runLocalCommand, so the player runs the same command paths as
+        the control API (routing rules and `hearsYou` stay engine-owned). */
+    using CommandRunner = std::function<bool (const String& cmd, const var& args, String& error)>;
+    void setCommandRunner (CommandRunner r) { runCommand = std::move (r); }
+
+    /** A17: the selected station, for the player's title / Mute / Solo. Updated by
+        the timer from `stationOrder` (android.md section 12.3). */
+    String getSelectedStation() const { return selectedStation; }
+
+    /** A17: up to 4 stations in `stationOrder`, as the JSON the Java player reads
+        (section 12.4). Empty when there is nothing to show. */
+    var getPlayerStations() const { return playerStations; }
+
     /** Is the service (and so the notification) supposed to be running? Used by suspended(): never close the
         audio device while connected. */
     bool isServiceWanted() const { return serviceWanted; }
@@ -142,7 +156,7 @@ private:
         // A14: a call starts / ends.
         proc.setPhoneCall (sig.phoneCall.load());
 
-        // The notification's actions.
+        // The notification's legacy actions.
         switch (sig.pendingAction.exchange (0))
         {
             case 1: toggleMicWithEarcon(); state.refreshNow(); break;
@@ -152,6 +166,11 @@ private:
 
         const var st = state.getLastState();
         if (! st.isObject()) return;
+
+        // A17: the lock-screen player. Keeps the selection and the pushed station
+        // list current, then runs any button that was pressed while Java held it.
+        updatePlayerStations (st);
+        handlePlayerButton (static_cast<PlayerButton> (sig.pendingPlayerButton.exchange (0)));
 
         const var conn = st["connection"];
         const String connState = conn["state"].toString(), reason = conn["reason"].toString();
@@ -225,6 +244,142 @@ private:
     bool serviceWanted = false, pushedActive = false, lastNotifOk = true;
     notification::Content pushed;
     double lastPushMs = 0;
+
+    // ---- A17: the lock-screen player -----------------------------------------
+    CommandRunner runCommand;
+    String selectedStation;                 // id; empty when there are no stations
+    var playerStations;                     // array of up to kPlayerMaxStations, for Java
+    String lastStationsJson;                // change detection: only push when it differs
+
+    static constexpr int kPlayerMaxStations = 4;
+
+    String shortName (const String& id) const
+    {
+        return id.startsWithIgnoreCase ("VDI-") ? id.substring (4) : id;
+    }
+
+    /** A JSON object variable. The engine's own `obj()` helper is local to
+        EngineState.cpp, so this file needs its own. */
+    static var makeObj (std::initializer_list<std::pair<const char*, var>> props)
+    {
+        auto* o = new DynamicObject();
+        for (auto& p : props) o->setProperty (p.first, p.second);
+        return var (o);
+    }
+
+    /** Section 12.3: keep the selection valid and the pushed list current. */
+    void updatePlayerStations (const var& st)
+    {
+        const var order = st["stationOrder"], stations = st["stations"];
+
+        // Rebuild the list the player reads: only what section 12.4 draws.
+        Array<var> arr;
+        StringArray ids;
+        if (auto* o = order.getArray())
+            for (auto& idv : *o)
+            {
+                const String id = idv.toString();
+                const var s = stations.getProperty (id, var());
+                if (! s.isObject()) continue;
+                ids.add (id);
+                if (arr.size() >= kPlayerMaxStations) continue;   // section 12.3: 4 stations at most
+                arr.add (makeObj ({ { "id", id },
+                                    { "name", shortName (id) },
+                                    { "colorIndex", s["colorIndex"] },
+                                    { "presence", s["presence"] },
+                                    { "health", s["health"] },
+                                    { "latencyMs", s["latencyMs"] },
+                                    { "lossPct", s["lossPct"] },
+                                    { "mute", s["mute"] },
+                                    { "solo", s["solo"] },
+                                    { "talk", s["talk"] },
+                                    { "hearsYou", s["hearsYou"] } }));
+            }
+        playerStations = var (arr);
+
+        // Selection: the soloed station if any, else the previous one if it is
+        // still here, else the first (section 12.3). Offline stations are skipped
+        // by the buttons, not by the selection, so a lost station can stay shown.
+        String want;
+        if (auto* o = order.getArray())
+            for (auto& idv : *o)
+            {
+                const var s = stations.getProperty (idv.toString(), var());
+                if (s.isObject() && static_cast<bool> (s["solo"])) { want = idv.toString(); break; }
+            }
+        if (want.isEmpty() && ids.contains (selectedStation)) want = selectedStation;
+        if (want.isEmpty() && ! ids.isEmpty()) want = ids[0];
+        if (want != selectedStation) { selectedStation = want; lastStationsJson.clear(); }
+
+        const String json = JSON::toString (playerStations, false);
+        if (json != lastStationsJson)
+        {
+            lastStationsJson = json;
+            juce::androidUpdatePlayerStations (json, shortName (selectedStation));
+        }
+    }
+
+    /** Section 12.2/12.3: run the pressed button through the API's command paths. */
+    void handlePlayerButton (PlayerButton b)
+    {
+        if (b == PlayerButton::none || ! runCommand) return;
+        String err;
+
+        switch (b)
+        {
+            case PlayerButton::mic:
+                toggleMicWithEarcon();                       // A14 earcon, open-mic mode only
+                state.refreshNow();
+                return;
+
+            case PlayerButton::previous:
+            case PlayerButton::next:
+            {
+                // Walk the stations in stationOrder, skipping offline ones, wrapping.
+                const var st = state.getLastState();
+                const var order = st["stationOrder"], stations = st["stations"];
+                StringArray ids;
+                if (auto* o = order.getArray())
+                    for (auto& idv : *o)
+                    {
+                        const var s = stations.getProperty (idv.toString(), var());
+                        if (s.isObject() && s["presence"].toString() != "offline") ids.add (idv.toString());
+                    }
+                if (ids.isEmpty()) return;
+                int at = ids.indexOf (selectedStation);
+                if (at < 0) at = 0;
+                else at = (b == PlayerButton::next) ? (at + 1) % ids.size()
+                                                    : (at - 1 + ids.size()) % ids.size();
+                selectedStation = ids[at];
+                lastStationsJson.clear();                    // push the new title now
+                state.refreshNow();
+                return;
+            }
+
+            case PlayerButton::mute:
+            case PlayerButton::solo:
+            {
+                if (selectedStation.isEmpty()) return;
+                const var st = state.getLastState();
+                const var s = st["stations"].getProperty (selectedStation, var());
+                const bool on = s.isObject() && ! static_cast<bool> (s[b == PlayerButton::mute ? "mute" : "solo"]);
+                const var args = b == PlayerButton::mute
+                    ? makeObj ({ { "station", selectedStation }, { "on", on } })
+                    : makeObj ({ { "station", selectedStation }, { "on", on }, { "exclusive", true } });   // P5.7
+                runCommand (b == PlayerButton::mute ? "station.setMute" : "station.setSolo", args, err);
+                state.refreshNow();
+                return;
+            }
+
+            case PlayerButton::disconnect:
+                disconnect();
+                state.refreshNow();
+                return;
+
+            case PlayerButton::none:
+            default: return;
+        }
+    }
 };
 
 } // namespace crosspoint::android

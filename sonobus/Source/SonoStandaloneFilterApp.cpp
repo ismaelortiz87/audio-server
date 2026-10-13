@@ -767,8 +767,14 @@ public:
             *proc, *engineState, [this]() { if (apiCommands != nullptr) apiCommands->disconnect(); },
             [this]() { if (mainWindow.get() != nullptr) mainWindow->pluginHolder->enableAudioInput(); },   // A9: mic granted after launch
             mainWindow.get() == nullptr || mainWindow->pluginHolder->audioInputEnabled);
-        androidService->setShutdownHandler ([this, proc]() {
-            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
+        // A17: the lock-screen player's buttons run the same command paths the
+        // control API uses (station.setMute/setSolo with exclusive, and so on).
+        androidService->setCommandRunner ([this] (const String& cmd, const var& args, String& err)
+        {
+            if (apiCommands == nullptr) { err = "the engine is not ready"; return false; }
+            return apiCommands->runLocalCommand (crosspoint::android::kPlayerCommandOwner, cmd, args, err);
+        });
+        androidService->setShutdownHandler ([this, proc]() {            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
             if (mainWindow.get() != nullptr) {
                 mainWindow->pluginHolder->savePluginState();

@@ -28,6 +28,12 @@ struct Signals
     std::atomic<bool> shutdownRequested { false };      // swipe-away
     std::function<void()> onShutdown;                   // set by the app on the message thread
 
+    // A17: a lock-screen player button. Java records which button was pressed and
+    // the controller runs it on the message thread through the same command paths
+    // the control API uses. An atomic int rather than a queue: a player is driven
+    // by one person, and dropping a double-tap beats replaying a stale command.
+    std::atomic<int> pendingPlayerButton { 0 };
+
     const char* micPermissionName() const
     {
         const int m = micPermission.load();
@@ -36,6 +42,22 @@ struct Signals
 
     static Signals& get() { static Signals s; return s; }
 };
+
+/** A17: the lock-screen player's buttons (values match CrosspointMediaSession's codes). */
+enum class PlayerButton
+{
+    none = 0,
+    mic,            // play/pause: Mic on/off
+    previous,       // the previous station
+    next,           // the next station
+    mute,           // Mute the selected station
+    solo,           // Solo the selected station (exclusive)
+    disconnect      // not on the player today; keeps the numbering aligned with Java
+};
+
+/** A17: the owner id for player-issued commands. Session ids are positive and the
+    Mac global hotkey uses -1, so a player button is not mistaken for either. */
+constexpr int64 kPlayerCommandOwner = -2;
 
 } // namespace crosspoint::android
 

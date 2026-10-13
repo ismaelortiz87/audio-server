@@ -41,6 +41,8 @@ public class SonoBusService extends Service {
 
     static final String ACTION_MIC = "io.lagreca.app.crosspoint.action.MIC";
     static final String ACTION_DISCONNECT = "io.lagreca.app.crosspoint.action.DISCONNECT";
+    /** A18: a lock-screen player button; the code travels in the "code" extra. */
+    static final String ACTION_MEDIA = "io.lagreca.app.crosspoint.action.MEDIA";
 
     // android.md section 4: tint accent normally, live while the voice reaches a station.
     private static final int COLOR_ACCENT = 0xFF2E6B66;
@@ -51,6 +53,11 @@ public class SonoBusService extends Service {
     private static String sText = "";
     private static boolean sLive = false;
     private static int sMicAction = 0;           // 0 none, 1 "Mic off", 2 "Mic on"
+    /** A17: the player's stations (JSON array) and the selected station's short name. */
+    private static String sStationsJson = "[]";
+    private static String sSelectedStation = "";
+    /** A18 spike: when true the foreground notification is the MediaStyle player. */
+    private static boolean sUseMediaStyle = true;
     private static SonoBusService sInstance = null;
 
     private NotificationManager mNotificationManager;
@@ -58,6 +65,8 @@ public class SonoBusService extends Service {
     private WifiManager.WifiLock mWifiLock, mWifiLockLowLatency;
     private int mForegroundTypes = -1;
     private boolean mStarted = false;
+    /** A18 (section 12): the media session behind the lock-screen player. */
+    private CrosspointMediaSession mMediaSession;
 
     // ---------------------------------------------------------------- native -> service
 
@@ -78,6 +87,13 @@ public class SonoBusService extends Service {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent);
             else ctx.startService(intent);
         }
+    }
+
+    /** A17: the player's station list and selected station (main thread). */
+    static void applyPlayerStations(Context ctx, String stationsJson, String selected) {
+        sStationsJson = stationsJson;
+        sSelectedStation = selected;
+        if (sInstance != null && sInstance.mStarted) sInstance.refresh();
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -103,15 +119,27 @@ public class SonoBusService extends Service {
             SonoBusActivity.nativeNotificationAction(1);
         } else if (ACTION_DISCONNECT.equals(action)) {
             SonoBusActivity.nativeNotificationAction(2);
+        } else if (ACTION_MEDIA.equals(action) && intent != null) {
+            // A18: a player notification action. Separate channel from the legacy
+            // 1/2 notification actions, so the controller can tell them apart.
+            SonoBusActivity.nativePlayerButton(intent.getIntExtra("code", 0));
         }
         if (!mStarted) {
             mStarted = true;
             acquireLocks();
+            startMediaSession();
             refresh();
         }
         // The engine lives in this process: a restart by the system would only
         // bring up a notification for an engine that is gone.
         return START_NOT_STICKY;
+    }
+
+    /** A18: create the media session before the first notification, so the
+        MediaStyle notification has a session token to attach to. */
+    private void startMediaSession() {
+        if (mMediaSession == null) mMediaSession = new CrosspointMediaSession(this);
+        mMediaSession.start();
     }
 
     @Override
@@ -125,6 +153,7 @@ public class SonoBusService extends Service {
     @Override
     public void onDestroy() {
         releaseLocks();
+        if (mMediaSession != null) { mMediaSession.stop(); mMediaSession = null; }
         if (sInstance == this) sInstance = null;
         mStarted = false;
         if (BuildConfig.DEBUG) Log.d(TAG, "service stopped");
@@ -174,6 +203,16 @@ public class SonoBusService extends Service {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
         PendingIntent content = PendingIntent.getActivity(this, 0, open, flags);
+
+        // A18 (android.md section 12.1): the MediaStyle notification replaces the
+        // section 4 connection notification as the foreground notification, so the
+        // phone shows the lock-screen player and the system keeps it while the
+        // session plays.
+        if (sUseMediaStyle && mMediaSession != null && mMediaSession.isRunning()) {
+            mMediaSession.update(sTitle, sText, "", sLive ? COLOR_LIVE : COLOR_ACCENT, sLive, sMicAction != 0);
+            mMediaSession.updateStations(sStationsJson, sSelectedStation);
+            return mMediaSession.buildNotification(CHANNEL_ID, content);
+        }
 
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(sTitle)

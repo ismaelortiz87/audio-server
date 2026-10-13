@@ -152,8 +152,8 @@ Ordered so that every task appears after everything it depends on.
 | A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
 | A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
-| A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | todo | |
-| A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | todo | |
+| A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
+| A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -2719,7 +2719,45 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 - **Done when:** a host or emulator test drives every command through the
   receiver (`adb shell am broadcast` with the explicit component) and the
   engine state changes accordingly. No UI in this task.
-- **Result:**
+- **Result (2026-10-13, `android-apk`): done, verified on the API 34 emulator.**
+  Built on the A18 spike, because A15's pivot to a media session (§12) changed
+  the transport: the buttons are `PlaybackState` actions and `Notification`
+  actions, not the `RemoteViews` + `ControlReceiver` the card assumed.
+  - **One command implementation, two callers.** `ApiCommands::runLocalCommand
+    (owner, cmd, args, err)` runs the *same* `consoleCommand` the control API
+    uses. To make that possible, `consoleCommand` now takes the caller's `owner`
+    id instead of an `ApiSession&`; its only session use was
+    `session.getId()` for the PTT-holder set. Nothing else about command
+    behaviour changed, so routing rules and `hearsYou` stay engine-owned.
+  - **Player buttons get their own channel.** A new
+    `nativePlayerButton`/`pendingPlayerButton` pair. The first attempt reused
+    `nativeNotificationAction` (codes 1/2) and **silently did nothing** for
+    prev/next/mute/solo: the controller's `switch` only had cases 1 and 2, so
+    codes 3–5 fell into `default: break`. Found by tapping the button and
+    watching the engine not move; the play/pause button worked, which is what
+    pointed at the switch rather than the wiring.
+  - **State pushed to Java** (`AndroidServiceController::updatePlayerStations`)
+    is up to 4 stations in `stationOrder`, each with id, short name,
+    `colorIndex`, presence, health, latencyMs, lossPct, mute, solo, talk and
+    hearsYou — wider than the card, because §12.4's second line draws the
+    station's own state. Pushed only when the JSON changes.
+  - **Selection** (§12.3): the soloed station, else the previous one while it
+    exists, else the first. ◀ ▶ walk non-offline stations and wrap.
+  - Mic goes through A14's `toggleMicWithEarcon()` (earcon, open mode only).
+    Mute/Solo go through `station.setMute` and `station.setSolo { exclusive:
+    true }`, so P5.7 applies.
+  - **Verified on the emulator** (API 34, one headless peer on a local
+    `aooserver`): tapping the player drove the engine every time —
+    Mic `on=true→false`, Mute `false→true`, Solo `false→true`, and releasing
+    Solo `true→false`. Button labels followed state ("Mute" → "Unmute").
+  - Not done: `station.setTalk` and `connection.disconnect` are reachable
+    through `runLocalCommand` but have no button yet (§12.1 deliberately keeps
+    Disconnect off the player), so there was no UI path to exercise them.
+  - Note for A18: the card's `ControlReceiver.java` is not needed for the
+    player; `PendingIntent`s to the **service** plus `PlaybackState` actions
+    cover every button, and a receiver would be a second, redundant command
+    path. A19's tile may still want one.
+
 
 #### A16 — Service notification never stays gone · S · any · lane P
 - **Depends on:** A9 (both edit `SonoBusService.java`) · **Touches:**
@@ -2733,7 +2771,38 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 - **Done when:** on an Android 14+ emulator image, swiping the notification
   away or tapping it brings it back within a second, while connected. After
   Disconnect or swipe-away from Recents it stays gone.
-- **Result:**
+- **Result (2026-10-13, `android-apk`): root-caused and fixed by the A18
+  media session; verified on the API 34 emulator.**
+  - **Cause (confirmed by reproduction).** The §4 connection notification is an
+    ordinary ongoing foreground notification, which Android 14+ lets the user
+    dismiss. Measured before the fix: swipe → `dumpsys notification` reports no
+    `id=1555` while `dumpsys activity services` still shows
+    `isForeground=true` and the process alive. It does **not** come back on its
+    own; it only reappears when the content happens to change. That is exactly
+    the reported "doesn't come back until the app restarts".
+  - **Why the carded fix would not have held.** `deleteIntent` + re-post is a
+    race: between the dismiss and the next push there is no notification, and
+    `deleteIntent` is not delivered for every dismissal path. The media session
+    removes the problem instead of chasing it: while the playback state is
+    `PLAYING` the system marks the notification `FLAG_NO_DISMISS` (observed
+    `flags=0x206a`, i.e. `0x2000` set) and refuses the swipe.
+  - **Verified after the fix:** swipe → the notification is still there and the
+    service is still foreground; repeated with the app in the foreground and
+    backgrounded, and after 15 s idle. §12.1's "playing from connect until
+    Disconnect, whatever the mic does" is what keeps it that way.
+  - **The second symptom is NOT explained.** The card also asks why touching the
+    body made it vanish on maelo's phone. I could not reproduce that on API 34:
+    tapping the body opened the app (or did nothing in the shade) and the
+    notification stayed. `setAutoCancel` is not set and the content intent is
+    `FLAG_ACTIVITY_SINGLE_TOP`, which does not tear the task down. **No proven
+    cause**, so nothing was changed for it; if it reappears on the phone it
+    should be re-opened as its own bug with a logcat capture.
+  - The card's "re-post on every state push" is now unnecessary for the player
+    (the system will not let it be dismissed), so no re-post code was added.
+    Re-posting is still meaningful for the one case that remains: the user
+    turning notifications on after the service started, which A9/A10 already
+    handle (`lastNotifOk`).
+
 
 #### A18 — Lock-screen player (media session) · M · any + design review · lane P
 - **Depends on:** A15, A16, A17 · **Touches:** `SonoBusService.java`, new

@@ -187,7 +187,28 @@ var ApiCommands::dispatch (ApiSession& session, const String& cmd, const var& a)
         throw CmdError { "bad_request", "Unknown command " + cmd };
     }
     if (cmd.startsWith ("agent.")) throw CmdError { "bad_request", "Unknown command " + cmd };
-    return consoleCommand (session, cmd, a);
+    return consoleCommand (session.getId(), cmd, a);
+}
+
+// A17: the same command paths, reached from inside the app (a lock-screen player
+// button) instead of from a WebSocket session. Kept next to dispatch() on
+// purpose: there must be exactly one implementation of "what a command does".
+bool ApiCommands::runLocalCommand (int64 owner, const String& cmd, const var& args, String& error)
+{
+    try
+    {
+        var a = args;
+        if (a.isVoid()) a = obj ({});
+        if (a.getDynamicObject() == nullptr) { error = "args must be an object"; return false; }
+
+        if (role == "vdi" && ! cmd.startsWith ("agent.")) { error = "Unknown command " + cmd; return false; }
+        consoleCommand (owner, cmd, a);
+    }
+    catch (const CmdError& e)          { error = e.message.isNotEmpty() ? e.message : e.code; return false; }
+    catch (const std::exception& e)    { error = e.what(); return false; }
+
+    state.refreshNow();       // publish the result now, as a command frame would
+    return true;
 }
 
 namespace {
@@ -269,7 +290,7 @@ void ApiCommands::applyPtt()
     processor.setPttHeld (processor.getMicMode() == Proc::MicMode::PushToTalk && ! pttHolders.empty() && ! processor.isPhoneCall());
 }
 
-var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const var& a)
+var ApiCommands::consoleCommand (int64 owner, const String& cmd, const var& a)
 {
     // ---- connection --------------------------------------------------------
     if (cmd == "connection.connect")    { connectionConnect (a); return {}; }
@@ -378,7 +399,7 @@ var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const v
     if (cmd == "mic.ptt")
     {
         const bool down = P44_VALIDATE (needBool (a, "down"));
-        if (down) pttHolders.insert (session.getId()); else pttHolders.erase (session.getId());
+        if (down) pttHolders.insert (owner); else pttHolders.erase (owner);
         applyPtt();
         return {};
     }

@@ -59,6 +59,7 @@ private:
     CALLBACK (nativePlatformSignalsJni,  "nativePlatformSignals",  "(ZZ)V") \
     CALLBACK (nativePhoneCallJni,        "nativePhoneCall",        "(Z)V") \
     CALLBACK (nativeNotificationActionJni, "nativeNotificationAction", "(I)V") \
+    CALLBACK (nativePlayerButtonJni,     "nativePlayerButton",     "(I)V") \
     CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
@@ -103,6 +104,13 @@ private:
         crosspoint::android::Signals::get().pendingAction.store ((int) action);
     }
 
+    /** A17: a lock-screen player button. Recorded here; the controller runs it on
+        the message thread through the same command paths the control API uses. */
+    static void JNIEXPORT nativePlayerButtonJni (JNIEnv*, jclass, jint button)
+    {
+        crosspoint::android::Signals::get().pendingPlayerButton.store ((int) button);
+    }
+
     // Swipe-away: runs on the Android main thread, which is JUCE's message thread.
     static void JNIEXPORT nativeShutdownJni (JNIEnv*, jclass)
     {
@@ -122,6 +130,7 @@ namespace juce {
 
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
     METHOD (updateConnectionNotification,   "updateConnectionNotification", "(ZLjava/lang/String;Ljava/lang/String;ZI)V") \
+    METHOD (updatePlayerStations,           "updatePlayerStations", "(Ljava/lang/String;Ljava/lang/String;)V") \
     METHOD (requestNotificationPermission,  "requestNotificationPermission", "()V") \
     METHOD (micPermissionState,             "micPermissionState", "()I") \
     METHOD (deviceName,                     "deviceName", "()Ljava/lang/String;") \
@@ -142,6 +151,19 @@ inline void androidUpdateConnectionNotification (bool active, const String& titl
     LocalRef<jstring> jTitle (javaString (title)), jText (javaString (text));
     env->CallVoidMethod (activity.get(), SonoBusActivity.updateConnectionNotification,
                          (jboolean) active, jTitle.get(), jText.get(), (jboolean) live, (jint) micAction);
+}
+
+/** A17: push the player's station list and selected station to Java (section 12.4).
+    `stationsJson` is an array of up to 4 station objects; `selected` is the short
+    name shown as the player title. Called only when either changes. */
+inline void androidUpdatePlayerStations (const String& stationsJson, const String& selected)
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity == nullptr) return;
+    auto* env = getEnv();
+    LocalRef<jstring> jStations (javaString (stationsJson)), jSelected (javaString (selected));
+    env->CallVoidMethod (activity.get(), SonoBusActivity.updatePlayerStations,
+                         jStations.get(), jSelected.get());
 }
 
 /** android.md section 3: notifications are asked right after the mic answer (Android 13+). */

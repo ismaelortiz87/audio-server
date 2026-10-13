@@ -71,6 +71,14 @@ public:
     /** The same as the connection.disconnect command (A10: the notification's Disconnect action). */
     void disconnect()                            { connectionDisconnect(); }
 
+    /** A17: run a command from inside the app (a lock-screen player button) through
+        exactly the same paths the control API uses, so routing rules, `hearsYou`
+        and the state revision stay engine-owned. `owner` identifies the caller for
+        the per-holder push-to-talk logic; player buttons are not PTT holders.
+        Returns false and fills `error` when the command failed. Never throws:
+        there is no session to send an error frame to. Message thread. */
+    bool runLocalCommand (int64 owner, const String& cmd, const var& args, String& error);
+
     /** Frame builders, exposed for tests of the dB mapping. */
     static var levelPair (float peak, float rms);
 
@@ -79,7 +87,7 @@ private:
 
     void handleCommand (std::shared_ptr<ApiSession> session, const var& message);
     var dispatch (ApiSession& session, const String& cmd, const var& args);
-    var consoleCommand (ApiSession& session, const String& cmd, const var& a);
+    var consoleCommand (int64 owner, const String& cmd, const var& a);
     var agentCommand (const String& cmd, const var& a);
 
     // console helpers

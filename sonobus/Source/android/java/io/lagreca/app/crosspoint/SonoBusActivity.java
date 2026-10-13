@@ -33,6 +33,8 @@ public class SonoBusActivity   extends Activity
     static native void nativePlatformSignals(boolean notificationsEnabled, boolean backgroundRestricted);
     static native void nativePhoneCall(boolean inCall);
     static native void nativeNotificationAction(int action);   // 1 = Mic off/on, 2 = Disconnect
+    /** A17: a lock-screen player button (codes match crosspoint::android::PlayerButton). */
+    static native void nativePlayerButton(int button);
     static native void nativeShutdown();                       // swipe-away: leave the group, save state
 
     private final static String TAG = "Crosspoint";
@@ -112,6 +114,14 @@ public class SonoBusActivity   extends Activity
     {
         if (sQuitting) return;
         SonoBusService.apply(this, active, title, text, live, micAction);
+    }
+
+    /** A17: the player's station list and selected station, pushed from native
+        (android.md section 12.4). Called only when either changes. */
+    public final void updatePlayerStations(String stationsJson, String selected)
+    {
+        if (sQuitting) return;
+        SonoBusService.applyPlayerStations(this, stationsJson, selected);
     }
 
     /** android.md section 3: ask for notifications (Android 13+) right after the mic answer. Asked once. */
