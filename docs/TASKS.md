@@ -155,12 +155,12 @@ Ordered so that every task appears after everything it depends on.
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
-| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | wip, awaiting check on the Samsung | Claude 2026-10-13: merged (`cc8ddaab`), builds; APK `build/apk/crosspoint-debug-cc8ddaab.apk` |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`); maelo verified on the Samsung 2026-10-13 |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
-| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
@@ -3040,7 +3040,9 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 - **Done when:** emulator captures of each variant (maximised player and
   shade) are in `/private/tmp/claude-501/a25-review/`. No black corners at any
   mask. Design review passed. Then maelo checks it on the Samsung.
-- **Result:**
+- **Result:** merged as `cc8ddaab` (2026-10-13); maelo verified the full-bleed
+  artwork on his Samsung 2026-10-13 — no black corners, name and state pill
+  correct.
 
 ### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
 
@@ -3137,6 +3139,9 @@ is ever needed, adds 1–2 days.
   `/private/tmp/claude-501/a20-review/`. Design review passed.
 - **Result (2026-10-13, `android-apk`): built and verified against a real
   `MediaBrowser` client; the DHU itself could not be run here.**
+  - **Update 2026-10-13:** A23's in-car test (maelo) passed — the Auto UI
+    rendered and worked in a real car, which covers most of the DHU-capture
+    gap below; only the formal design review and the §13.5 captures remain.
   - **What landed.** `CrosspointBrowserService.java` (platform
     `MediaBrowserService`, returning the A18 session's token), `res/xml/automotive_app_desc.xml`
     (`<uses name="media"/>`), and the manifest's
@@ -3214,7 +3219,11 @@ is ever needed, adds 1–2 days.
   3. §13.3 fresh install: set the error message "Set up Crosspoint on your
      phone first." instead of relying on Auto's generic empty list.
   4. The DHU captures for the §13.5 review are still outstanding.
-- **Result:**
+- **Result (maelo, 2026-10-13):** tested in the car with the debug APK —
+  Crosspoint appears in Auto, the controls work, station audio plays through
+  the car, and talking through the phone's mic worked well. A22 (Bluetooth
+  car/headset mic) stays `todo`: the phone mic was good enough, so it only
+  matters if the Bluetooth-buds use case (§14) is pursued.
 
 ### P9.3 — Native iOS Console · L · deferred
 - **Depends on:** P5.6
