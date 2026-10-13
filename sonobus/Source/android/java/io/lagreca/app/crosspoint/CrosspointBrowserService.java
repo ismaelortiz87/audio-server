@@ -150,16 +150,32 @@ public class CrosspointBrowserService extends MediaBrowserService {
         final String group = o.optString("group", "");
         final boolean hasSaved = o.optBoolean("hasSaved", false);
 
-        // Section 13.3: not connected. With saved settings, one playable item to
-        // connect with; with nothing saved, no items (Auto shows the setup error).
+        // Section 13.3: not connected.
         if (!connected) {
             if (hasSaved && !group.isEmpty()) {
+                // Saved settings: one playable item to connect with; tapping it
+                // reconnects (handled in the session's onPlayFromMediaId).
                 MediaDescription.Builder d = new MediaDescription.Builder()
                         .setMediaId(CONNECT_ID)
                         .setTitle("Connect to " + group)
                         .setSubtitle(carSubtitleFromState(o));
+                if (o.has("connecting") || o.optString("connText", "").startsWith("Connecting")) {
+                    // Section 13.3 connecting/reconnecting: the car is told so.
+                    d.setTitle("Connecting to " + group + "…");
+                }
                 items.add(new MediaBrowser.MediaItem(d.build(),
                         MediaBrowser.MediaItem.FLAG_PLAYABLE));
+            } else {
+                // Section 13.3 fresh install: nothing saved at all. Auto shows an
+                // error state with no action; the message is ours, not Auto's
+                // generic empty list. It stays until the phone is set up and a
+                // saved connection starts being pushed.
+                MediaDescription.Builder d = new MediaDescription.Builder()
+                        .setMediaId(CONNECT_ID)
+                        .setTitle("Set up Crosspoint on your phone first.")
+                        .setSubtitle("");
+                items.add(new MediaBrowser.MediaItem(d.build(),
+                        0 /* not playable: an error item, no action */));
             }
             result.sendResult(items);
             return;
@@ -175,7 +191,10 @@ public class CrosspointBrowserService extends MediaBrowserService {
             MediaDescription.Builder d = new MediaDescription.Builder()
                     .setMediaId(STATION_PREFIX + name)
                     .setTitle(name)
-                    .setSubtitle(stationStateFromJson(s))
+                    .setSubtitle(CrosspointMediaSession.stationStateFor(
+                            s.optBoolean("hearsYou", false), s.optBoolean("solo", false),
+                            s.optBoolean("mute", false), anySolo(o),
+                            s.optString("presence", "online"), s.optString("health", "clear")))
                     .setIconBitmap(stationBitmap(s));
             // Tapping a station opens the player; it does not start audio by itself.
             items.add(new MediaBrowser.MediaItem(d.build(),
@@ -184,18 +203,13 @@ public class CrosspointBrowserService extends MediaBrowserService {
         result.sendResult(items);
     }
 
-    /** Section 13.1: the browse item's subtitle, from the pushed JSON. */
-    private static String stationStateFromJson(org.json.JSONObject s) {
-        List<String> p = new ArrayList<>();
-        if (s.optBoolean("hearsYou", false)) p.add("Hears you");
-        if (s.optBoolean("solo", false)) p.add("Soloed");
-        if (s.optBoolean("mute", false)) p.add("Muted");
-        String presence = s.optString("presence", "online");
-        if ("lost".equals(presence)) p.add("Lost");
-        else if ("offline".equals(presence)) p.add("Offline");
-        else if ("unstable".equals(s.optString("health", "clear"))) p.add("Unstable");
-        else if (p.isEmpty()) p.add("Clear");
-        return join(p);
+    /** True when any station in the pushed state is soloed (the dim rules). */
+    private static boolean anySolo(org.json.JSONObject o) {
+        org.json.JSONArray arr = o.optJSONArray("stations");
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            if (arr.optJSONObject(i) != null && arr.optJSONObject(i).optBoolean("solo", false)) return true;
+        }
+        return false;
     }
 
     /** Section 13.1: 128 px station-colour icon, blended toward live while it hears you. */
@@ -216,12 +230,6 @@ public class CrosspointBrowserService extends MediaBrowserService {
     private static String carSubtitleFromState(org.json.JSONObject o) {
         String conn = o.optString("connText", "");
         return conn.isEmpty() ? "Not connected" : conn;
-    }
-
-    private static String join(List<String> parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String part : parts) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
-        return sb.length() == 0 ? "Clear" : sb.toString();
     }
 
     /*

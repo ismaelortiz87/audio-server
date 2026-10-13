@@ -261,6 +261,12 @@ final class CrosspointMediaSession {
         return null;
     }
 
+    /** True when any station is soloed (the §12/§13 solo-dim rules). */
+    private boolean anySolo() {
+        for (Station s : stations) if (s.solo) return true;
+        return false;
+    }
+
     // ---- A20 (section 13.1): what the Android Auto browse list reads ----------
 
     /** The session token Auto attaches its player to. */
@@ -289,21 +295,27 @@ final class CrosspointMediaSession {
         return bmp;
     }
 
-    /** Section 13.1: the browse item's subtitle, e.g. "Hears you · Clear". */
-    String stationState(Station s) {
-        if (s == null) return "";
+    /**
+     * Section 13.1/13.2: the browse item's car-short state, e.g. "Hears you ·
+     * Clear". The single implementation for the station state both call sites
+     * share (the Auto browse list, and CrosspointMediaSession's §12.4 second
+     * line). `dimmed` means some *other* station is soloed, which dims this
+     * one's playback.
+     */
+    static String stationStateFor(boolean hearsYou, boolean solo, boolean mute,
+                                  boolean dimmed, String presence, String health) {
         List<String> p = new ArrayList<>();
-        if (s.hearsYou) p.add("Hears you");
-        if (s.solo) p.add("Soloed");
-        if (s.mute) p.add("Muted");
-        String presence = s.presence == null ? "online" : s.presence;
+        if (hearsYou) p.add("Hears you");
+        if (solo) p.add("Soloed");
+        if (mute) p.add("Muted");
+        else if (dimmed) p.add("Dimmed");
         if ("lost".equals(presence)) p.add("Lost");
         else if ("offline".equals(presence)) p.add("Offline");
-        else if ("unstable".equals(s.health)) p.add("Unstable");
-        else if (!s.hearsYou && !s.solo) p.add("Clear");
+        else if ("unstable".equals(health)) p.add("Unstable");
+        else if (p.isEmpty()) p.add("Clear");
         StringBuilder sb = new StringBuilder();
         for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
-        return sb.length() == 0 ? "Clear" : sb.toString();
+        return sb.toString();
     }
 
     /**
@@ -339,23 +351,35 @@ final class CrosspointMediaSession {
         return s != null ? s.name : "Crosspoint";
     }
 
-    /** Second line: the selected station's state, " · " joined; not connected: the section 4 connection text. */
+    /**
+     * Section 12.4: the selected station's second line, " · " joined; not
+     * connected: the section 4 connection text. The state words come from the
+     * shared stationStateFor; the §12.4 line then renders the last word with
+     * detail ("Lost · reconnecting", "Unstable · 2% loss", "Clear · 32 ms") and
+     * the car-short "Dimmed" with the engine's actual dim level.
+     */
     private String albumText() {
         Station s = selectedStation();
         if (!connected || s == null) return connText;
-        List<String> p = new ArrayList<>();
-        // The system's centre button keeps showing "pause" (the session stays PLAYING, section 12.1),
-        // so the paused state is told here.
-        if (!listening) p.add("Listening paused");
-        boolean anySolo = false;
-        for (Station o : stations) anySolo |= o.solo;
-        if (s.mute) p.add("Muted");
-        if (s.solo) p.add("Soloed");
-        else if (anySolo && !s.mute) p.add("Dimmed −" + Math.abs(soloDimDb));
-        if ("lost".equals(s.presence)) p.add("Lost · reconnecting");
-        else if ("offline".equals(s.presence)) p.add("Offline");
-        else if ("unstable".equals(s.health)) p.add(s.lossPct >= 0.5 ? "Unstable · " + Math.round(s.lossPct) + "% loss" : "Unstable");
-        else p.add(s.latencyMs >= 0 ? "Clear · " + Math.round(s.latencyMs) + " ms" : "Clear");
+        String presence = s.presence == null ? "online" : s.presence;
+        final boolean dimmed = anySolo() && !s.solo;
+        final String state = stationStateFor(s.hearsYou, s.solo, s.mute, dimmed, presence, s.health);
+        List<String> parts = new ArrayList<>(java.util.Arrays.asList(state.split(" · ")));
+        if (!listening) parts.add(0, "Listening paused");        // the system button still says "pause"
+        List<String> p = new ArrayList<>(parts.size());
+        for (String part : parts) {
+            if (part.equals("Dimmed")) {
+                p.add("Dimmed −" + Math.abs(soloDimDb));        // the §12.4 dim level
+            } else if (part.equals("Lost")) {
+                p.add("Lost · reconnecting");
+            } else if (part.equals("Unstable")) {
+                p.add(s.lossPct >= 0.5 ? "Unstable · " + Math.round(s.lossPct) + "% loss" : "Unstable");
+            } else if (part.equals("Clear")) {
+                p.add(s.latencyMs >= 0 ? "Clear · " + Math.round(s.latencyMs) + " ms" : "Clear");
+            } else {
+                p.add(part);
+            }
+        }
         StringBuilder sb = new StringBuilder();
         for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
         return sb.toString();
