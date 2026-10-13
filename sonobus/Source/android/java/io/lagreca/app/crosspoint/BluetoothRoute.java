@@ -29,7 +29,12 @@ import android.util.Log;
  * reads the desired setting (from the engine via nativeBtMicSetting), checks the
  * connected Bluetooth device, and engages or releases the route. A change is
  * pushed to native (nativeBtRoute), which surfaces it as
- * platform.bluetoothRoute. While it holds the communication route it sets
+ * platform.bluetoothRoute.
+ *
+ * LE Audio (android.md 14) keeps the stereo media route untouched: it can carry
+ * media and the mic together, so there is nothing to switch. Only the classic
+ * A2DP/SCO case (stereo media, but the mic only on the call channel) actually
+ * moves audio to the communication route. While we hold either, we set
  * PlatformMonitor.appOwnsAudioMode so the call detector (A14) does not mistake
  * it for a VoIP call.
  *
@@ -110,9 +115,12 @@ final class BluetoothRoute {
         if (wantRoute && !sHeld) engage(am, le, bt);
         else if (!wantRoute && sHeld) releaseRoute();
 
-        // Report the route to native only when it changed (name or stereo-ness).
-        final String name = (connected && desired == 1) ? nameOf(bt) : null;
-        if (!same(name, le)) push(name, le);
+        // Report to native only while the headset route is actually engaged.
+        // While it is on, `le` is the `stereo` flag (LE keeps stereo; the
+        // classic call route is mono). Null otherwise (phone route, or a real
+        // call owns it) — that is what drives the UI's route/stereo/note.
+        final String name = wantRoute ? nameOf(bt) : null;
+        if (!same(name, wantRoute && le)) push(name, wantRoute && le);
     }
 
     private static boolean same(String name, boolean stereo) {
@@ -134,10 +142,18 @@ final class BluetoothRoute {
     /** Move audio to the communication route on the given Bluetooth device. */
     private static void engage(AudioManager am, boolean le, AudioDeviceInfo dev) {
         PlatformMonitor.appOwnsAudioMode = true;   // A14: do not count this as a call
+        if (le) {
+            // LE Audio (android.md 14) carries the stereo media and the mic
+            // together, so there is nothing to switch: the route stays where it is.
+            sHeld = true;
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 31 && dev != null) {
-            // setCommunicationDevice covers both classic and LE (it switches the
-            // SCO channel to the device). It does not exist before API 31.
+            // Classic A2DP: the mic only exists on the call channel, so move the
+            // communication session to the Bluetooth device (API 31+; the mode
+            // must be IN_COMMUNICATION for setCommunicationDevice to take).
             try {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 if (am.setCommunicationDevice(dev)) {
                     sHeld = true;
                     return;
@@ -164,13 +180,16 @@ final class BluetoothRoute {
         if (sApp != null) {
             final AudioManager am = (AudioManager) sApp.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
-                if (Build.VERSION.SDK_INT >= 31) {
+                final int mode = am.getMode();
+                final boolean ours = mode != AudioManager.MODE_IN_CALL
+                    && (Build.VERSION.SDK_INT < 30 || mode != AudioManager.MODE_CALL_SCREENING);
+                if (Build.VERSION.SDK_INT >= 31 && ours) {
                     try { am.clearCommunicationDevice(); }
-                    catch (Throwable t) { am.setMode(AudioManager.MODE_NORMAL); }
+                    catch (Throwable t) { }
                 }
                 am.stopBluetoothSco();
                 am.setBluetoothScoOn(false);
-                am.setMode(AudioManager.MODE_NORMAL);
+                if (ours) am.setMode(AudioManager.MODE_NORMAL);
             }
         }
         PlatformMonitor.appOwnsAudioMode = false;
