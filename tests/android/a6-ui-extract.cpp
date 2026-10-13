@@ -1,18 +1,17 @@
 // A6 test: the Console UI zip that ships as BinaryData really unpacks, and the
 // stamp logic really skips a second extraction.
 //
-// This runs the *same* algorithm as
-// SonoStandaloneFilterApp::extractBundledConsoleUi (JUCE ZipFile + MD5 stamp),
-// compiled against a desktop JUCE and the real
-// sonobus/Resources/crosspoint-ui.zip, because the Android extractor itself
-// cannot run on the Mac host. If this test and that function drift apart the
-// test stops meaning anything -- change both in the same commit.
+// This runs the *same* code as the app: crosspoint::extractBundledConsoleUi in
+// sonobus/Source/BundledConsoleUi.h (JUCE ZipFile + MD5 stamp), compiled against a
+// desktop JUCE and the real sonobus/Resources/crosspoint-ui.zip, because the app
+// itself cannot run on the Mac host.
 //
 //   scripts/test-android-ui.sh
 
 #include <juce_core/juce_core.h>
 #include <juce_cryptography/juce_cryptography.h>
 #include <BinaryData.h>
+#include "../../sonobus/Source/BundledConsoleUi.h"
 
 #include <iostream>
 
@@ -23,35 +22,13 @@ static void check (bool ok, const juce::String& what)
     if (! ok) ++failures;
 }
 
-// Mirror of SonoStandaloneFilterApp::extractBundledConsoleUi (A6), with the app
-// data directory passed in so the test is hermetic.
+// The app calls the same function with the app's data directory; the test passes a
+// sandbox so it is hermetic.
 static juce::File extractBundledConsoleUi (const juce::File& appDataDir)
 {
-    auto root = appDataDir.getChildFile ("console-ui");
-    auto stampFile = root.getParentDirectory().getChildFile ("console-ui.stamp");
-
-    const juce::String stamp = juce::String::toHexString ((juce::int64) BinaryData::crosspointui_zipSize)
-                             + "-" + juce::MD5 (BinaryData::crosspointui_zip, (size_t) BinaryData::crosspointui_zipSize).toHexString();
-
-    if (root.getChildFile ("index.html").existsAsFile()
-        && stampFile.existsAsFile()
-        && stampFile.loadFileAsString().trim() == stamp)
-        return root;
-
-    juce::MemoryInputStream in (BinaryData::crosspointui_zip, (size_t) BinaryData::crosspointui_zipSize, false);
-    juce::ZipFile zip (in);
-    if (zip.getNumEntries() == 0)
-        return root;
-
-    if (root.isDirectory())
-        root.deleteRecursively();
-
-    auto r = zip.uncompressTo (root.getParentDirectory(), true);
-    if (r.failed())
-        return root;
-
-    stampFile.replaceWithText (stamp);
-    return root;
+    return crosspoint::extractBundledConsoleUi (BinaryData::crosspointui_zip,
+                                                (size_t) BinaryData::crosspointui_zipSize,
+                                                appDataDir);
 }
 
 int main (int argc, char** argv)

@@ -64,6 +64,9 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 #include "AgentConnect.h" // P2.4
 #include "ApiCommands.h" // P4.3, P4.4
 #include "GlobalHotkey.h" // P6.5
+#if JUCE_ANDROID || JUCE_IOS
+ #include "BundledConsoleUi.h" // A6
+#endif
 #include <csignal>
 
 // P2.1: --config <file.yaml>. Desktop only (rapidyaml is not part of the mobile builds).
@@ -433,57 +436,6 @@ public:
         }
     }
 
-    // A6: unpack the Console UI that ships in the APK as a BinaryData zip into
-    // the app's data directory, and return that directory. Phone platforms have
-    // no loose UI files for the ApiServer to serve, unlike the Mac bundle.
-    //
-    // The zip is written with a top-level "console-ui/" folder, so the result is
-    // <appData>/console-ui with index.html inside it. It is re-extracted whenever
-    // the embedded stamp changes, so an upgrade replaces a stale UI (the
-    // service-worker cache is keyed separately, in console-ui/sw.js version).
-    //
-    // Never extracts over a directory that already matches the stamp: this runs
-    // on every launch, and unzipping 27 files each time would be wasted work.
-    File extractBundledConsoleUi()
-    {
-       #if JUCE_ANDROID || JUCE_IOS
-        auto root = File::getSpecialLocation (File::userApplicationDataDirectory).getChildFile ("console-ui");
-        auto stampFile = root.getParentDirectory().getChildFile ("console-ui.stamp");
-
-        // The resource name mangles to crosspointui_zip (Projucer rule: spaces and
-        // dots become underscores, everything else is dropped).
-        const String stamp = String::toHexString ((int64) BinaryData::crosspointui_zipSize)
-                           + "-" + MD5 (BinaryData::crosspointui_zip, (size_t) BinaryData::crosspointui_zipSize).toHexString();
-
-        if (root.getChildFile ("index.html").existsAsFile()
-            && stampFile.existsAsFile()
-            && stampFile.loadFileAsString().trim() == stamp)
-            return root;
-
-        MemoryInputStream in (BinaryData::crosspointui_zip, (size_t) BinaryData::crosspointui_zipSize, false);
-        ZipFile zip (in);
-        if (zip.getNumEntries() == 0) {
-            std::cerr << "Warning: the bundled Console UI archive is empty" << std::endl;
-            return root;
-        }
-
-        // Replace rather than merge: a renamed or deleted file must not survive.
-        if (root.isDirectory())
-            root.deleteRecursively();
-
-        auto r = zip.uncompressTo (root.getParentDirectory(), true);
-        if (r.failed()) {
-            std::cerr << "Warning: could not unpack the bundled Console UI: " << r.getErrorMessage() << std::endl;
-            return root;
-        }
-
-        stampFile.replaceWithText (stamp);
-        return root;
-       #else
-        return {};
-       #endif
-    }
-
     // P4.1: parse the control API options, validate them, and fill apiConfig.
     // Errors set doImmediateQuit (nothing has started yet, so refusing here is clean).
     void applyApiOptions (ArgumentList & arglist)
@@ -589,7 +541,11 @@ public:
             // crosspoint-ui.zip BinaryData resource and is unpacked into the
             // app's data directory on first launch (and after an upgrade).
             // P9.3 (iOS) reuses this verbatim.
-            auto extracted = extractBundledConsoleUi();
+            // The resource name mangles to crosspointui_zip (Projucer rule: spaces and
+            // dots become underscores, everything else is dropped).
+            auto extracted = crosspoint::extractBundledConsoleUi (BinaryData::crosspointui_zip,
+                                                                  (size_t) BinaryData::crosspointui_zipSize,
+                                                                  File::getSpecialLocation (File::userApplicationDataDirectory));
             if (extracted.getChildFile ("index.html").existsAsFile())
                 apiConfig.uiDir = extracted;
            #endif
