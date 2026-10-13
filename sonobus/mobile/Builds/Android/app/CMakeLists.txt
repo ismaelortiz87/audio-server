@@ -14,7 +14,7 @@ add_subdirectory (${OBOE_DIR} ./oboe)
 add_library("cpufeatures" STATIC "${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c")
 set_source_files_properties("${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c" PROPERTIES COMPILE_FLAGS "-Wno-sign-conversion -Wno-gnu-statement-expression")
 
-add_definitions([[-DJUCE_ANDROID=1]] [[-DJUCE_ANDROID_API_VERSION=24]] [[-DJUCE_PUSH_NOTIFICATIONS=1]] [[-DJUCE_PUSH_NOTIFICATIONS_ACTIVITY="com/sonosaurus/sonobus/SonoBusActivity"]] [[-DJUCE_CONTENT_SHARING=1]] [[-DJUCE_ANDROID_GL_ES_VERSION_3_0=1]] [[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="com_sonosaurus_sonobus_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="com/sonosaurus/sonobus/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]])
+add_definitions([[-DJUCE_ANDROID=1]] [[-DJUCE_ANDROID_API_VERSION=24]] [[-DJUCE_PUSH_NOTIFICATIONS=1]] [[-DJUCE_PUSH_NOTIFICATIONS_ACTIVITY="io/lagreca/app/crosspoint/SonoBusActivity"]] [[-DJUCE_CONTENT_SHARING=1]] [[-DJUCE_ANDROID_GL_ES_VERSION_3_0=1]] [[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DJUCE_ANDROID_OBOE_INPUT_PRESET=7]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="io_lagreca_app_crosspoint_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="io/lagreca/app/crosspoint/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]])
 
 include_directories( AFTER
     "../../../JuceLibraryCode"
@@ -30,7 +30,7 @@ if(JUCE_BUILD_CONFIGURATION MATCHES "DEBUG")
         "../../../../deps/android/${ANDROID_ABI}"
     )
 
-    add_definitions([[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DLOGLEVEL=2]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="com_sonosaurus_sonobus_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="com/sonosaurus/sonobus/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]] [[-DDEBUG=1]] [[-D_DEBUG=1]])
+    add_definitions([[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DLOGLEVEL=2]] [[-DJUCE_ANDROID_OBOE_INPUT_PRESET=7]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="io_lagreca_app_crosspoint_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="io/lagreca/app/crosspoint/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]] [[-DDEBUG=1]] [[-D_DEBUG=1]])
     include_directories( AFTER
         "../../../../../aoo/lib"
         "../../../../../aoo/deps"
@@ -47,7 +47,7 @@ elseif(JUCE_BUILD_CONFIGURATION MATCHES "RELEASE")
         "../../../../deps/android/${ANDROID_ABI}"
     )
 
-    add_definitions([[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="com_sonosaurus_sonobus_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="com/sonosaurus/sonobus/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]] [[-DNDEBUG=1]])
+    add_definitions([[-DJUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1]] [[-DJUCE_ANDROID_OBOE_INPUT_PRESET=7]] [[-DUSE_CODEC_OPUS=1]] [[-DAOO_TIMEFILTER_CHECK=0]] [[-DAOO_STATIC]] [[-DJUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME="io_lagreca_app_crosspoint_SonoBusActivity"]] [[-DJUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH="io/lagreca/app/crosspoint/SonoBusActivity"]] [[-DJUCER_ANDROIDSTUDIO_7F0E4A25=1]] [[-DJUCE_APP_VERSION=1.7.2]] [[-DJUCE_APP_VERSION_HEX=0x10702]] [[-DNDEBUG=1]])
     include_directories( AFTER
         "../../../../../aoo/lib"
         "../../../../../aoo/deps"
@@ -199,6 +199,8 @@ add_library( ${BINARY_NAME}
     "../../../../images/skipforward_icon.svg"
     "../../../../images/sonobus_icon_ios_256.png"
     "../../../../images/sonobus_icon_ios_1024.png"
+    "../../../../../design/icon/crosspoint-256.png"
+    "../../../../../design/icon/crosspoint-1024.png"
     "../../../../images/sonobus_logo_96.png"
     "../../../../images/sonobus_title_small.png"
     "../../../../images/soundboard.svg"
@@ -2439,6 +2441,8 @@ set_source_files_properties(
     "../../../../images/skipforward_icon.svg"
     "../../../../images/sonobus_icon_ios_256.png"
     "../../../../images/sonobus_icon_ios_1024.png"
+    "../../../../../design/icon/crosspoint-256.png"
+    "../../../../../design/icon/crosspoint-1024.png"
     "../../../../images/sonobus_logo_96.png"
     "../../../../images/sonobus_title_small.png"
     "../../../../images/soundboard.svg"

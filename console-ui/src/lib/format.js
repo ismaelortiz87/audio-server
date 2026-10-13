@@ -39,3 +39,7 @@ export const dbToUnit = db => (db === null || db === undefined ? 0 : Math.max(0,
 
 /** Meter readout: "−16 dB", or "−∞ dB" for silence. */
 export const meterDbText = db => (db === null || db === undefined || db < -89 ? MINUS + '∞ dB' : MINUS + Math.round(Math.abs(db)) + ' dB');
+
+/** android.md §6 echo notice: shown only when the engine says so (platform.echoRisk). */
+export const echoNoticeShown = st => !!st.platform?.echoRisk;
+export const ECHO_NOTICE = { lead: 'Phone speaker:', body: ' stations may hear themselves through your mic. ', hint: 'Use headphones to talk.' };

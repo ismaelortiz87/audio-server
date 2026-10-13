@@ -52,7 +52,7 @@ scripts/build-projucer.sh              # once: build the Projucer from juce/
 scripts/build-android.sh               # resave the .jucer, then assembleDebug
 scripts/build-android.sh --install     # ...and install on the attached device
 scripts/build-android.sh --emulator    # boot crosspoint-33, build, install
-scripts/build-android.sh --release     # signed release (A11; needs a keystore)
+scripts/build-android.sh --release     # signed arm64 release APK (needs a keystore, see below)
 ```
 
 The debug APK lands at
@@ -100,7 +100,7 @@ Install and launch:
 
 ```sh
 scripts/build-android.sh --install
-adb shell am start -n com.sonosaurus.sonobus/.SonoBusActivity   # id changes with A4
+adb shell am start -n io.lagreca.app.crosspoint/.SonoBusActivity
 ```
 
 Screenshots for design review come from the emulator, never a desktop capture
@@ -134,16 +134,91 @@ This is how the `console-ui` smoke test runs against the real phone engine.
   `~/.android/sonouploadnew.jks` is not in the repo. The Projucer points every
   build type at `signingConfigs.juceSigning`, so the `.jucer` adds a
   `buildTypes { debug { signingConfig signingConfigs.debug } }` override (A3).
-  Release still needs a real keystore — that is A11.
-- **Two apps cannot share an applicationId.** Until A4 lands, the APK is still
-  `com.sonosaurus.sonobus`, so it will not install next to stock SonoBus;
-  uninstall stock SonoBus (or do A4 first).
+  Release uses a keystore you supply (A11, below).
+- **Identity (A4).** The app is `io.lagreca.app.crosspoint`, label
+  "Crosspoint", so it installs next to stock SonoBus (`com.sonosaurus.sonobus`).
+  The Java classes live in `io.lagreca.app.crosspoint`. The adaptive icon and
+  `ic_stat_crosspoint` are hand-kept under `Builds/Android/app/src/main/res/`
+  (`mobile/Builds` is ignored by version control: add new files there with
+  `git add -f`). A custom `<intent-filter>` in the `.jucer` manifest replaces
+  the Projucer's MAIN/LAUNCHER one, so the `.jucer` declares it too.
 - **Android 9+ blocks cleartext HTTP.** The web shell talks to
   `http://127.0.0.1:7070`, which needs `usesCleartextTraffic` for loopback only
   — `res/xml/network_security_config.xml` (A7).
 - **`JUCE_WEB_BROWSER="0"`** in the `.jucer` excludes `juce_gui_extra`'s web
   view; A7 turns it on and sets `hardwareAccelerated` (the manifest currently
   says `false`, which a WebView cannot use).
+
+## Release APK
+
+`scripts/build-android.sh --release` builds a signed, optimised, **arm64-v8a
+only** APK (debug keeps all four ABIs). It will not run without a keystore, and
+the keystore never goes in the repo (it is public).
+
+### 1. Create the real keystore, once
+
+```sh
+mkdir -p ~/.crosspoint
+keytool -genkeypair -v -keystore ~/.crosspoint/crosspoint-release.jks \
+    -alias crosspoint -keyalg RSA -keysize 4096 -validity 36500
+```
+
+`keytool` is in the JDK (`/opt/homebrew/opt/openjdk@17/bin/keytool`). Keep the
+`.jks` and its passwords somewhere outside this repo and back them up: **if you
+lose it you can never update an installed Crosspoint, only reinstall** (Android
+refuses an update signed with a different key).
+
+### 2. Tell the build where it is
+
+Either environment variables:
+
+```sh
+export CROSSPOINT_KEYSTORE=~/.crosspoint/crosspoint-release.jks
+export CROSSPOINT_KEYSTORE_PASSWORD=...
+export CROSSPOINT_KEY_ALIAS=crosspoint
+export CROSSPOINT_KEY_PASSWORD=...        # optional, defaults to the keystore password
+```
+
+or the same values in `~/.gradle/gradle.properties` (outside the repo):
+
+```properties
+crosspointKeystore=/Users/you/.crosspoint/crosspoint-release.jks
+crosspointKeystorePassword=...
+crosspointKeyAlias=crosspoint
+crosspointKeyPassword=...
+```
+
+With nothing configured the script stops with a message listing these.
+
+### 3. Build and install
+
+```sh
+scripts/build-android.sh --release
+```
+
+The APK is at
+`sonobus/mobile/Builds/Android/app/build/outputs/apk/release_/release/app-release_-release.apk`.
+Install it on a phone with USB debugging on:
+
+```sh
+adb install -r path/to/app-release_-release.apk
+```
+
+`-r` updates in place and keeps the app's data, as long as it is signed with
+the same keystore. To **sideload without a computer**, copy the APK to the phone
+(a cable, a drive or a file share), open it from the Files app, and allow
+"Install unknown apps" for that app when Android asks (Settings, Apps, Special
+access, Install unknown apps). Nothing publishes the APK anywhere; distributing
+it is up to you.
+
+### Versions
+
+`versionName` is the `version` of the `.jucer` (`<JUCERPROJECT version="...">`)
+and `versionCode` is `androidVersionCode` on the `<ANDROIDSTUDIO>` exporter in
+`sonobus/mobile/SonoBusMobile.jucer`. To release: raise both (`versionCode` must
+go up by at least 1 for every APK that should install over the previous one),
+then run `scripts/build-android.sh --release`, which regenerates the project.
+Check with `aapt dump badging <apk> | head -1`.
 
 ## Build facts (verified 2026-10-12)
 
@@ -154,11 +229,11 @@ This is how the `console-ui` smoke test runs against the real phone engine.
   `abiFilters` in the `.jucer` for faster iteration if needed; not done.
 - Debug signing uses Gradle's own debug key; the keystore properties resolve to
   empty strings via `findProperty`, so nothing about the upstream keystore is
-  needed. Release (A11) must pass them.
+  needed. Release signs with your own keystore (see below).
 - `brew install --cask temurin@17` needs sudo, so `setup-android.sh` installs
   `openjdk@17` instead.
 - Mic permission: grant it from the dialog or `adb shell pm grant
-  com.sonosaurus.sonobus android.permission.RECORD_AUDIO`.
+  io.lagreca.app.crosspoint android.permission.RECORD_AUDIO`.
 - Drive the engine without the UI: forward 7070 and talk to the WebSocket
   (`{"t":"cmd","id":"c1","cmd":"connection.connect","args":{...}}`), Node 22+
   has a global `WebSocket`.
@@ -173,13 +248,13 @@ This is how the `console-ui` smoke test runs against the real phone engine.
 | A1 toolchain + Projucer | done |
 | A2 design | done (`docs/design/android.md`) |
 | A3 debug APK builds the engine | done: builds, installs, launches on the emulator, joins a group on aoo.sonobus.net (via the control API) |
-| A4 identity | not started: APK is still `com.sonosaurus.sonobus`, icon is the Projucer's `drawable/icon` |
+| A4 identity | done: `io.lagreca.app.crosspoint`, "Crosspoint", adaptive icon, `crosspoint://` filter |
 | A5 control API on the phone | Console role, loopback `7070`, no token, `self.kind: "android"`; confirmed live on the emulator |
 | A6 Console UI in the APK | `scripts/pack-console-ui.sh` + `extractBundledConsoleUi()`; confirmed live (the WebView shows the Console) |
 | A7 Android web shell | renders on the emulator; open: duplicated top inset/empty band, clipped station list |
 | A9 mic permission | not started (UI states + `platform.micPermission`) |
 | A10 background service | not started |
-| A11 release APK | not started |
+| A11 release APK | done: `--release`, see "Release APK" |
 
 ### Tests
 

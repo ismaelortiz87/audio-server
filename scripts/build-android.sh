@@ -3,7 +3,7 @@
 #
 #   scripts/build-android.sh                # resave the .jucer, then assembleDebug
 #   scripts/build-android.sh --resave       # only regenerate Builds/Android from the .jucer
-#   scripts/build-android.sh --release      # assembleRelease (needs a keystore, see A11)
+#   scripts/build-android.sh --release      # signed arm64 release APK (needs a keystore, docs/ANDROID.md)
 #   scripts/build-android.sh --install      # build debug, then install on the running device
 #   scripts/build-android.sh --emulator     # boot the AVD (if needed), then --install
 #   scripts/build-android.sh --clean        # gradle clean first
@@ -37,7 +37,7 @@ for arg in "$@"; do
         --install)  DO_INSTALL=1 ;;
         --emulator) DO_EMULATOR=1; DO_INSTALL=1 ;;
         --clean)    DO_CLEAN=1 ;;
-        -h|--help)  sed -n '2,20p' "$0"; exit 0 ;;
+        -h|--help)  sed -n "2,20p" "$0"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -121,6 +121,36 @@ if [ "$DO_EMULATOR" = "1" ]; then
         echo "  booted"
     else
         echo "  a device is already attached, using it"
+    fi
+fi
+
+# A11: a release build is signed with a keystore the builder supplies; it is never
+# in the repo. Fail early and clearly instead of deep inside Gradle.
+if [ "$CONFIG" = "release" ]; then
+    gp() { # env var, then the gradle property of ~/.gradle/gradle.properties
+        local v="${!1:-}"
+        [ -n "$v" ] || v="$(sed -n "s/^$2[[:space:]]*=[[:space:]]*//p" "$HOME/.gradle/gradle.properties" 2>/dev/null | tail -1)"
+        printf '%s' "$v"
+    }
+    KS="$(gp CROSSPOINT_KEYSTORE crosspointKeystore)"
+    KS="${KS/#\~/$HOME}"
+    if [ -z "$KS" ] || [ ! -f "$KS" ] \
+       || [ -z "$(gp CROSSPOINT_KEYSTORE_PASSWORD crosspointKeystorePassword)" ] \
+       || [ -z "$(gp CROSSPOINT_KEY_ALIAS crosspointKeyAlias)" ]; then
+        cat >&2 <<'EOF'
+error: no signing keystore configured for the release build.
+
+Set these (see docs/ANDROID.md, "Release APK"), in the environment or as
+crosspointKeystore / crosspointKeystorePassword / crosspointKeyAlias /
+crosspointKeyPassword in ~/.gradle/gradle.properties:
+
+  CROSSPOINT_KEYSTORE            path to the .jks / .p12 file (outside the repo)
+  CROSSPOINT_KEYSTORE_PASSWORD   keystore password
+  CROSSPOINT_KEY_ALIAS           key alias
+  CROSSPOINT_KEY_PASSWORD        key password (optional, defaults to the keystore password)
+EOF
+        [ -n "$KS" ] && [ ! -f "$KS" ] && echo "(CROSSPOINT_KEYSTORE=$KS does not exist)" >&2
+        exit 1
     fi
 fi
 

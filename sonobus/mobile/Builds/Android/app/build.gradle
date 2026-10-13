@@ -5,7 +5,7 @@ def ndkVersionString = "25.2.9519653"
 android {
     compileSdkVersion 33
     ndkVersion ndkVersionString
-    namespace "com.sonosaurus.sonobus"
+    namespace "io.lagreca.app.crosspoint"
     externalNativeBuild {
         cmake {
             path "CMakeLists.txt"
@@ -14,16 +14,16 @@ android {
     }
     signingConfigs {
         juceSigning {
-            storeFile     file("${System.properties['user.home']}${File.separator}.android${File.separator}sonouploadnew.jks")
-            storePassword "${findProperty('sonoupload_keystore_password') ?: ''}"
-            keyAlias      "${findProperty('sonoupload_key') ?: ''}"
-            keyPassword   "${findProperty('sonoupload_key_password') ?: ''}"
+            storeFile     file("${System.properties['user.home']}${File.separator}.android${File.separator}debug.keystore")
+            storePassword "android"
+            keyAlias      "androiddebugkey"
+            keyPassword   "android"
             storeType     "jks"
         }
     }
 
     defaultConfig {
-        applicationId "com.sonosaurus.sonobus"
+        applicationId "io.lagreca.app.crosspoint"
         minSdkVersion    24
         targetSdkVersion 33
         externalNativeBuild {
@@ -108,13 +108,47 @@ android {
         implementation 'androidx.appcompat:appcompat:1.0.2'
     }
 
-// A3: the upstream release keystore is not in the repo and debug builds must not
-// need it. The Projucer points every build type at signingConfigs.juceSigning, so
-// debug is re-pointed at Gradle's own debug key. Release keeps juceSigning, and
-// A11 supplies its keystore from the environment.
+// A3/A11: the upstream release keystore is not in the repo. The Projucer points every
+// build type at signingConfigs.juceSigning, so debug is re-pointed at Gradle's own
+// debug key and release at a keystore the builder supplies (never committed):
+// env CROSSPOINT_KEYSTORE / _KEYSTORE_PASSWORD / _KEY_ALIAS / _KEY_PASSWORD, or the
+// same as crosspointKeystore / crosspointKeystorePassword / crosspointKeyAlias /
+// crosspointKeyPassword in ~/.gradle/gradle.properties. Release is arm64-v8a only.
+    def cpSetting = { String env, String prop -> System.getenv(env) ?: (findProperty(prop) ?: '') }
+    def cpKeystore = cpSetting('CROSSPOINT_KEYSTORE', 'crosspointKeystore')
+    def cpStorePass = cpSetting('CROSSPOINT_KEYSTORE_PASSWORD', 'crosspointKeystorePassword')
+    def cpKeyAlias = cpSetting('CROSSPOINT_KEY_ALIAS', 'crosspointKeyAlias')
+    def cpKeyPass = cpSetting('CROSSPOINT_KEY_PASSWORD', 'crosspointKeyPassword') ?: cpStorePass
+    signingConfigs {
+        crosspointRelease {
+            if (cpKeystore) {
+                storeFile file(cpKeystore.replaceFirst('^~', System.properties['user.home']))
+                storePassword cpStorePass
+                keyAlias cpKeyAlias
+                keyPassword cpKeyPass
+            }
+        }
+    }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+        }
+        release {
+            signingConfig signingConfigs.crosspointRelease
+        }
+    }
+    productFlavors {
+        release_ {
+            ndk {
+                abiFilters "arm64-v8a"
+            }
+        }
+    }
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.allTasks.any { it.name.toLowerCase().contains('release_release') }
+                && (!cpKeystore || !file(cpKeystore.replaceFirst('^~', System.properties['user.home'])).exists()
+                    || !cpStorePass || !cpKeyAlias)) {
+            throw new GradleException('Release build needs a signing keystore: set CROSSPOINT_KEYSTORE, CROSSPOINT_KEYSTORE_PASSWORD, CROSSPOINT_KEY_ALIAS (and optionally CROSSPOINT_KEY_PASSWORD), see docs/ANDROID.md')
         }
     }
 

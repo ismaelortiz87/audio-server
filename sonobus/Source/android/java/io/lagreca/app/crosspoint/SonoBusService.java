@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPLv3-or-later
 // Copyright (C) 2020 Jesse Chappell
 
-package com.sonosaurus.sonobus;
+package io.lagreca.app.crosspoint;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -56,9 +56,6 @@ public class SonoBusService extends Service {
     
     public void doStartForeground()
     {
-        Bitmap icon = BitmapFactory.decodeResource(getResources(),
-                                                   R.drawable.icon);
-        
         //Toast.makeText(this,"Creating Notification",Toast.LENGTH_SHORT).show();
         
         // handle build version above android oreo
@@ -103,9 +100,8 @@ public class SonoBusService extends Service {
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setContentIntent(pendingIntent)
-        .setSmallIcon(R.drawable.icon) // A3 interim: ic_notify is not in the repo; A4 supplies the real one
+        .setSmallIcon(R.drawable.ic_stat_crosspoint) // A4: monochrome status-bar icon (design/icon/crosspoint-notification.svg)
         //.setPriority(Notification.PRIORITY_MAX)
-        .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
         .setOngoing(true).build();
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
