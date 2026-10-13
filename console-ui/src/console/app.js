@@ -5,8 +5,22 @@ import { boot } from '../lib/boot.js';
 import { h } from '../lib/dom.js';
 import { AUDIO } from '../lib/tokens.js';
 import { ActivityHub } from './activity.js';
-import { topBar, liveBand, placement, notices, stations, youBar, settingsSheet, audioLink, ordered } from './components.js';
+import { topBar, liveBand, placement, notices, stations, youBar, settingsSheet, audioLink, ordered, touchFirst } from './components.js';
 import { RtcLink } from '../lib/rtc.js';
+
+// A7: the Android shell (docs/design/android.md section 2) has no JS bridge in JUCE
+// 7.0.8, so the page talks to it by navigating a hidden frame to a
+// `crosspoint-shell://` URL, which ConsoleShell.h's pageAboutToLoad() swallows.
+// Anywhere else (browser, Mac, PWA) these calls are no-ops, except the haptic,
+// which falls back to the Vibration API on a touch device.
+let shellFrame = null, shellSeq = 0;
+function shellCall(path) {
+  try {
+    shellFrame ??= Object.assign(document.createElement('iframe'), { hidden: true, tabIndex: -1, ariaHidden: 'true' });
+    if (!shellFrame.isConnected) document.body.append(shellFrame);
+    shellFrame.src = `crosspoint-shell://${path}?${++shellSeq}`;
+  } catch { /* nothing to tell */ }
+}
 
 boot('console', client => {
   const ui = { selected: null, dragPan: null, settingsOpen: false, details: {} };
@@ -37,6 +51,22 @@ boot('console', client => {
     },
   };
 
+  // android.md section 2 haptics: a tick when your voice starts going out, a lighter one
+  // when it stops, nothing else. The shell does it natively, so the system's
+  // touch-feedback setting is honoured.
+  let wasTx = null;
+  function haptic(on) {
+    if (state?.self?.kind === 'android') shellCall(`haptic/${on ? 'start' : 'stop'}`);
+    else if (touchFirst(state) && navigator.vibrate) navigator.vibrate(on ? 18 : 8);
+  }
+
+  // Back (Android shell): close the settings sheet if it is open, else tell the
+  // shell to move the app to the background. Called by the shell via a javascript: URL.
+  globalThis.crosspointBack = () => {
+    if (ui.settingsOpen) { ctx.closeSettings(); return; }
+    shellCall('background');
+  };
+
   // test/debug handles (smoke-rtc.mjs)
   Object.assign(globalThis, { __rtcLink: ctx.rtc, __rtcLinkState: () => ctx.rtc.state });
 
@@ -57,6 +87,9 @@ boot('console', client => {
     const ids = st.stationOrder.filter(id => st.stations[id]);
     if (!ids.includes(ui.selected)) ui.selected = ids[0] ?? null;
     for (const p of Object.values(parts)) p.update(st, ui);
+    const tx = !!st.mic.transmitting;
+    if (wasTx !== null && tx !== wasTx) haptic(tx);
+    wasTx = tx;
   }
 
   // ?open=settings opens the sheet on load (review screenshots, deep links).

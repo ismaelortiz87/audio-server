@@ -90,6 +90,10 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
   #include "juce_audio_devices/native/juce_HighPerformanceAudioHelpers_android.h"
 #endif
 
+#if CROSSPOINT_HAS_WEB_SHELL
+ #include "ConsoleShellAndroid.h"   // A7: findWebView, haptic, moveTaskToBack
+#endif
+
 #endif
 
 namespace juce
@@ -135,27 +139,21 @@ public:
    #if JUCE_ANDROID
     // A7 (android.md section 2): Back never quits and never disconnects. JUCE's
     // default (return false) makes the peer finish() the activity, which would end
-    // the session. Process::hide() is Activity.moveTaskToBack(true) (with a HOME
-    // intent fallback), i.e. the same as pressing Home; the foreground service
-    // keeps the audio running. The web page does not see Back (JUCE 7.0.8's
-    // WebBrowserComponent has no evaluateJavascript), so closing the settings
-    // sheet with Back is not possible from here: see docs/TASKS.md A7.
+    // the session. The web page decides: it closes its settings sheet if one is open,
+    // and otherwise navigates to crosspoint-shell://background, which the shell turns
+    // into Activity.moveTaskToBack (the same as Home; the foreground service keeps the
+    // audio). Without a page (native error page, or the legacy UI) go to the back at once.
     //
-    // Not Process::hide() itself: in JUCE 7.0.8 it builds its activity LocalRef from
-    // the temporary returned by getCurrentActivity(), which is deleted by then, so ART
-    // aborts ("invalid local reference"). Calling moveTaskToBack here with the ref held
-    // for the whole call is what it should have done (A3, seen on the emulator).
+    // Not Process::hide(): in JUCE 7.0.8 it builds its activity LocalRef from the temporary
+    // returned by getCurrentActivity(), which is deleted by then, so ART aborts ("invalid
+    // local reference"); crosspoint_android::moveTaskToBack holds the ref for the call.
     bool backButtonPressed() override
     {
-        auto* env = getEnv();
-        auto activity = getCurrentActivity();
-        if (env != nullptr && activity.get() != nullptr)
-        {
-            jclass cls = env->GetObjectClass (activity.get());
-            jmethodID moveToBack = env->GetMethodID (cls, "moveTaskToBack", "(Z)Z");
-            env->CallBooleanMethod (activity.get(), moveToBack, JNI_TRUE);
-            env->DeleteLocalRef (cls);
-        }
+       #if CROSSPOINT_HAS_WEB_SHELL
+        if (mainWindow != nullptr && mainWindow->handleShellBack())
+            return true;
+       #endif
+        crosspoint_android::moveTaskToBack();
         return true;
     }
    #endif
@@ -636,6 +634,14 @@ public:
        #endif
 
         webShellShown = true;
+
+       #if JUCE_ANDROID
+        // android.md section 2: portrait on phones (smallest width < 600 dp), tablets rotate.
+        // On Android the display area is in dp already (scale = density).
+        if (auto* d = Desktop::getInstance().getDisplays().getPrimaryDisplay())
+            Desktop::getInstance().setOrientationsEnabled (jmin (d->totalArea.getWidth(), d->totalArea.getHeight()) < 600
+                                                               ? Desktop::upright : Desktop::allOrientations);
+       #endif
 
         // The window reaches the engine on loopback whatever the bind address is.
         mainWindow->showWebShell ("http://127.0.0.1:" + String (apiConfig.port) + "/", error, std::move (fatal));

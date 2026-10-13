@@ -929,6 +929,16 @@ public:
         pluginHolder = nullptr;
     }
 
+   #if CROSSPOINT_HAS_WEB_SHELL && JUCE_ANDROID
+    /** A7: the Back button, forwarded to the web shell. False when there is no shell. */
+    bool handleShellBack()
+    {
+        if (auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent()))
+            return mc->handleShellBack();
+        return false;
+    }
+   #endif
+
    #if CROSSPOINT_HAS_WEB_SHELL
     /** P6.1 / A7: swaps the SonoBus editor for the web-view shell (the editor stays
         alive but hidden: it still carries the command-line connection and the saved
@@ -945,7 +955,11 @@ public:
         optionsButton.setVisible (false);
 
        #if JUCE_ANDROID
-        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), getWidth(), getHeight());
+        // No size: the content takes the window's real (fullscreen) size from resized() below.
+        // Sizing it from getWidth()/getHeight() here left it at the size the window had
+        // before it went fullscreen (the web page filled only the top of the screen).
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), 0, 0);
+        resized();
        #else
         setResizeLimits (360, 560, 10000, 10000);
         mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), 440, 760);
@@ -1187,6 +1201,14 @@ private:
 
         AudioProcessorEditor * getEditor() const { return editor.get(); }
 
+       #if CROSSPOINT_HAS_WEB_SHELL && JUCE_ANDROID
+        bool handleShellBack()
+        {
+            if (auto* v = dynamic_cast<ConsoleShellView*> (shell.get())) { v->handleBack(); return true; }
+            return false;
+        }
+       #endif
+
        #if CROSSPOINT_HAS_WEB_SHELL
         // P6.1: show the web-view shell in place of the (kept, hidden) editor.
         void setShell (std::unique_ptr<Component> newShell, int w, int h)
@@ -1196,7 +1218,8 @@ private:
             notification.setVisible (false);
             shouldShowNotification = false;
             addAndMakeVisible (*shell);
-            setSize (w, h);
+            if (w > 0 && h > 0)
+                setSize (w, h);
             resized();
         }
        #endif
