@@ -155,6 +155,7 @@ Ordered so that every task appears after everything it depends on.
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | todo | android.md §12.4b |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
@@ -3020,6 +3021,26 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
     noise discarded, local test server/peer stopped.
   - Full sha256: `54d6a36f2c0d744315d4ce3d108038e2bae8526ac8b355fb2be098991048f765`.
 
+
+#### A25 — Lock-screen artwork v2 · S · any + design review
+- **Depends on:** A18 · **Touches:** `CrosspointMediaSession.java` (the
+  `artwork()` drawing only)
+- **Why:** on maelo's Samsung (2026-10-13), the maximised artwork shows black
+  wedges in the corners, because we drew rounded corners on a transparent
+  bitmap and One UI masks with a larger radius. It's also a flat colour with
+  no name. Screenshot: `~/Downloads/Screenshot_20261013_130934.jpg`.
+- **Do:** build `docs/design/android.md` §12.4b exactly:
+  - full-bleed opaque 1024² canvas
+  - diagonal gradient plus the faint matrix lines
+  - the short name, fitted and never truncated
+  - the LIVE / SOLO / MUTED / LOST pill
+  - the small mark
+  - the live, muted, lost and no-station variants
+  - one cached bitmap per (station, state)
+- **Done when:** emulator captures of each variant (maximised player and
+  shade) are in `/private/tmp/claude-501/a25-review/`. No black corners at any
+  mask. Design review passed. Then maelo checks it on the Samsung.
+- **Result:**
 
 ### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
 

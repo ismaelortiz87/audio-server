@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A20 (docs/design/android.md section 13): declares Crosspoint as an Android
+     Auto media app. Without this file Auto does not list the app at all. -->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

@@ -390,6 +390,52 @@ and the second line says "Listening paused".
 Text updates follow §4's rule: only when something changes, at most once a
 second. Meters never update the player.
 
+### 12.4b Artwork v2 (A25; replaces the artwork row of §12.4)
+
+maelo's Samsung (2026-10-13) shows the artwork **maximised** when a control is
+touched. Two problems with v1:
+- **Black wedges in the corners.** We drew a rounded tile on a transparent
+  bitmap, and One UI masks it with its own, larger radius.
+- **A flat colour block** with no depth and no name.
+
+**Canvas:** 1024 × 1024, **full-bleed, square, opaque**. No rounded corners
+and no transparency: the phone applies its own mask. All content sits inside
+the centred **70% safe square**, because players crop to rounded rectangles,
+circles (Now Bar thumbnail) or wide strips.
+
+**Background:** a diagonal gradient from the top-left in the station colour
+(`s1`–`s4`) to the bottom-right in that colour mixed 55% with `bg` `#0b0d0f`.
+Over it, the faint crosspoint matrix from the app icon: two horizontal and two
+vertical lines at ⅓ and ⅔, 2% of the width thick, white at 7%. It gives
+texture without competing.
+
+**Content**, centred in the safe square, top to bottom:
+1. The station's **short name** ("ACCT-07"): white, weight 650, sized to fit
+   at most 78% of the canvas width, capped at 15% of the height. One line,
+   never truncated: it shrinks instead.
+2. A **state pill**, 16 px below, only when there's a state:
+   - **LIVE:** filled `live` `#ff4f7b`, text `onLive` `#1a0008`
+   - **SOLO:** filled `accentInk` `#8fc3ba`, text `#0b0d0f`
+   - **MUTED:** filled `#ffffff2e`, text white
+   - **LOST:** filled `#ffffff2e`, text white
+
+   11% of the height, uppercase, 0.08 em tracking, fully rounded. LIVE wins
+   over SOLO; MUTED and LOST show alone.
+3. The Crosspoint **mark**, small: 9% of the canvas, white at 85%, top-left
+   at the safe square's corner.
+
+**State variants of the gradient:**
+- **Voice reaching at least one station:** the bottom-right stop becomes
+  `live` `#ff4f7b`, so the live state reads even as a tiny thumbnail.
+- **Muted:** both stops are the colour at 35% over `panel`.
+- **Lost:** `ink4` `#4a4e4b` → `bg`.
+- **No station / not connected:** `panel` → `bg`, with the mark centred at 22%
+  and "Crosspoint" under it in place of a name.
+
+**Rendering:** drawn in code (Canvas), as now. Cache one bitmap per (station,
+state) so updates stay cheap. Review it on maelo's Samsung, maximised, and in
+the Now Bar thumbnail.
+
 ### 12.5 Other media apps
 
 Crosspoint doesn't take audio focus (A8), so music keeps playing alongside it.
