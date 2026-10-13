@@ -145,10 +145,10 @@ Ordered so that every task appears after everything it depends on.
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | done | Claude: design approved 2026-10-12 (follow-ups moved to A9) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
-| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: every item verified present on `android-apk` (WIP `6421d326` + later merges); built and run by the A18 agent; console-ui 31/31. In-app screens captured in A24 |
+| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: code verified present; design review: mic-blocked Console approved (A24 02). **Recapture needed:** Settings problem rows (A24 03 was covered by an emulator System UI ANR) |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
-| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | in-app call screens reviewed with A9/A18 captures |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | **Recapture needed:** during and after a call **with the mic live before the call** (A24 04/05 were covered by an ANR, and the mic was already off) |
 | A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
