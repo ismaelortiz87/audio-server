@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { clone } from '../src/lib/patch.js';
 import { Client } from '../src/api/client.js';
 import { MockEngine } from '../src/api/mock.js';
-import { callBandText, callMicButton, blockedMicButton, micBlocked, problemRows } from '../src/lib/platform.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, problemRows } from '../src/lib/platform.js';
 import { allHearYouText } from '../src/lib/format.js';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -155,4 +155,18 @@ test('review 3: echoRisk needs a station that hears you, not just an open mic', 
   assert.equal(st().platform.echoRisk, false, 'but nobody hears it');
   await client.cmd('station.setTalk', { station: 'VDI-ACCT-07', on: true }); await settle();
   assert.equal(st().platform.echoRisk, true);
+});
+
+test('A22: btRoute reads platform.bluetoothRoute (null off Android / no device, { name, stereo } on)', async () => {
+  // Off Android there is no platform object at all.
+  const off = boot('everyday');
+  await settle();
+  assert.equal(btRoute(off.st()), null);
+  // A mock Android platform with a connected headset route.
+  const st = { platform: { bluetoothRoute: { name: 'Galaxy Buds', stereo: false } } };
+  assert.deepEqual(btRoute(st), { name: 'Galaxy Buds', stereo: false });
+  const le = { platform: { bluetoothRoute: { name: 'Buds Pro', stereo: true } } };
+  assert.equal(btRoute(le).stereo, true);
+  // Android platform present but nothing connected.
+  assert.equal(btRoute({ platform: { phoneCall: false } }), null);
 });

@@ -6247,6 +6247,12 @@ bool SonobusAudioProcessor::applyTestControlFile(const File & file)
         setSoloDimDb((float) (double) dim);
     }
 
+    // A22: which mic to use with a Bluetooth headset/car ("phone" | "headset").
+    if (root.hasProperty("bluetoothMic")) {
+        const String bm = root.getProperty("bluetoothMic", "").toString();
+        if (bm == "headset" || bm == "phone") setBluetoothMic(bm);
+    }
+
     // F2.1 TEST ONLY: {"globalSendMute": bool, "globalRecvMute": bool} drive the
     // real global mute parameters (the UI buttons' path). Only on change, since
     // this file is re-applied every tick.
@@ -6877,6 +6883,7 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
     root->setProperty("pttHeld", getPttHeld());
     root->setProperty("micTransmitting", isMicTransmitting());
     root->setProperty("soloDimDb", getSoloDimDb());
+    root->setProperty("bluetoothMic", getBluetoothMic());   // A22
 
     // P2.3: what we actually send / monitor (the VDI locks show up here).
     root->setProperty("selfSendChannels", mSendChannels.get());

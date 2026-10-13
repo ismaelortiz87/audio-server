@@ -72,6 +72,13 @@ public:
         (section 12.4). Empty when there is nothing to show. */
     var getPlayerStations() const { return playerStations; }
 
+    /** A22 (android.md 14): the current "Bluetooth mic" setting, for the Java
+        route controller. "phone" (default) keeps today's routing; "headset" asks
+        for the call/communication route while a Bluetooth headset or car is
+        connected. Sourced from the processor, so a `settings.set bluetoothMic`
+        from any client (phone, Auto, the web console) is picked up here. */
+    String getBluetoothMic() const { return proc.getBluetoothMic(); }
+
     /** A20 (section 13.1): the car's browse list selected a station. Only the
         selection moves: solo, mute and the mic are untouched. Message thread. */
     void selectStation (const String& shortOrId)
@@ -181,6 +188,11 @@ private:
 
         // A14: a call starts / ends.
         proc.setPhoneCall (sig.phoneCall.load());
+
+        // A22: mirror the "Bluetooth mic" setting into the Signals global so the
+        // Java route controller (BluetoothMicController) can read it with no engine
+        // handle; it engages/releases the communication route to match.
+        sig.btMic.store (proc.getBluetoothMic() == "headset" ? 1 : 0);
 
         // The notification's legacy actions.
         switch (sig.pendingAction.exchange (0))

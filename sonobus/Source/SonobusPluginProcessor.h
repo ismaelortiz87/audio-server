@@ -421,6 +421,18 @@ public:
     void setSoloDimDb(float db);
     float getSoloDimDb() const { return mSoloDimDb.load(); }
 
+    // A22 (android.md 14): which mic to use with a Bluetooth headset/car.
+    // "phone" (default) keeps today's routing (stereo, phone mic); "headset"
+    // asks the platform for the call/communication route (SCO) so the
+    // headset's mic is captured. Read/written on the message thread; the
+    // Android side (BluetoothMicController) reacts to it.
+    void setBluetoothMic (const String& v)
+    {
+        mBluetoothMic.store (v == "headset" ? 1 : 0);
+    }
+
+    String getBluetoothMic() const { return mBluetoothMic.load() == 1 ? "headset" : "phone"; }
+
     // Per-peer talk flag (default true): gates what we send to that peer. While
     // any peer is soloed, sending goes to soloed peers only, whatever their talk
     // flag says; the flags are kept and apply again on un-solo. Only gates when
@@ -1227,6 +1239,7 @@ private:
     std::atomic<bool>  mPttHeld { false };
     std::atomic<bool>  mPhoneCall { false };      // A14
     std::atomic<bool>  mListeningPaused { false };  // A18
+    std::atomic<int>   mBluetoothMic { 0 };       // A22: 0 = "phone" (default), 1 = "headset"
     std::atomic<bool>  mMicBlocked { false };     // A9
     std::atomic<bool>  mMicOffByCall { false };   // A14
     float              mCallPlaybackGain = 1.0f;  // audio thread: ramps to 0 during a call

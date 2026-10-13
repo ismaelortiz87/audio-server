@@ -449,6 +449,7 @@ void ApiCommands::setSettings (const var& a)
     std::optional<float> dim;
     std::optional<int> format;
     std::optional<String> hotkey;
+    std::optional<String> bluetoothMic;   // A22: "phone" | "headset"
     String unsupported;
 
     for (auto& kv : o->getProperties())
@@ -458,6 +459,14 @@ void ApiCommands::setSettings (const var& a)
         {
             if (! isNumber (kv.value)) throw CmdError { "bad_request", "soloDimDb must be a number" };
             dim = (float) (double) kv.value;
+        }
+        else if (key == "bluetoothMic")
+        {
+            // A22: only valid on the phone with Bluetooth; the value is
+            // validated here and applied (processor + the Java route).
+            if (kv.value.toString() != "phone" && kv.value.toString() != "headset")
+                throw CmdError { "bad_request", "bluetoothMic must be \"phone\" or \"headset\"" };
+            bluetoothMic = kv.value.toString();
         }
         else if (key == "pttHotkey" && hooks.setPttHotkey)
         {
@@ -517,6 +526,7 @@ void ApiCommands::setSettings (const var& a)
         if (! hooks.setPttHotkey (*hotkey, err)) throw CmdError { "bad_request", err };   // before anything else is applied
     }
     if (dim) processor.setSoloDimDb (*dim);
+    if (bluetoothMic) processor.setBluetoothMic (*bluetoothMic);   // A22: the Java route reacts to the processor value
     if (format) processor.setDefaultAudioCodecFormat (*format);   // the send format of new connections
 }
 

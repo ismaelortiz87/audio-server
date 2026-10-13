@@ -10,6 +10,9 @@ export const onPhoneCall = st => !!st.platform?.phoneCall;
 // android.md section 3: the mic is "blocked" while Android has not granted it.
 // `prompt`: the system dialog can still be shown. `denied`: only Android Settings can change it.
 export const micBlocked = st => { const m = st.platform?.micPermission; return m === 'prompt' || m === 'denied'; };
+// A22 (android.md 14): the active Bluetooth route — null off Android or when no
+// Bluetooth headset/car is connected, else { name, stereo }.
+export const btRoute = st => st.platform?.bluetoothRoute ?? null;
 const MIC_BLOCKED_BAND = 'Microphone blocked. You can listen, but no station hears you.';
 
 /**

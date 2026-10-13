@@ -490,6 +490,17 @@ var EngineState::androidDevicesVar()
     return obj ({ { "inputs", var (ins) }, { "outputs", var (outs) } });
 }
 
+var EngineState::androidBluetoothRouteVar (const crosspoint::android::Signals& sig)
+{
+    // android.md 14: null when no Bluetooth headset or car is connected;
+    // otherwise { name, stereo } — stereo true for LE Audio (stereo + mic
+    // together), false for the call/SCO route (both ears get the same mix).
+    if (! sig.btRoute.load()) return var();
+    std::lock_guard<std::mutex> lock (sig.btRouteNameLock);
+    return obj ({ { "name", String::fromUTF8 (sig.btRouteName.c_str()) },
+                  { "stereo", sig.btRouteStereo.load() } });
+}
+
 var EngineState::androidPlatformVar (bool anyHearsYou)
 {
     // control-api 5.5 / android.md section 10. Other A-tasks add their own fields
@@ -504,7 +515,8 @@ var EngineState::androidPlatformVar (bool anyHearsYou)
                   { "notifications", sig.notificationsEnabled.load() ? "granted" : "denied" },
                   { "backgroundRestricted", sig.backgroundRestricted.load() },
                   { "phoneCall", processor.isPhoneCall() },
-                  { "micOffByCall", processor.isMicOffByCall() } });
+                  { "micOffByCall", processor.isMicOffByCall() },
+                  { "bluetoothRoute", androidBluetoothRouteVar (sig) } });   // A22 (android.md 14)
 }
 #endif
 
@@ -832,6 +844,7 @@ var EngineState::buildConsoleState (double now)
         { "output", obj ({ { "device", deviceName (false) }, { "level", (double) gainToLevelDb ((float) wet) } }) },
         { "platform", platform },
         { "settings", obj ({ { "soloDimDb", soloDimDb() }, { "pttHotkey", strOrNull (options.pttHotkey ? options.pttHotkey() : String()) },
+                             { "bluetoothMic", processor.getBluetoothMic() },   // A22: "phone" | "headset"
                              { "codec", codec }, { "bitrateKbps", bitrate },
                              { "networkBuffer", obj ({ { "mode", autoBuf ? "auto" : "manual" },
                                                        { "currentMs", bufNow } }) } }) },

@@ -15,6 +15,8 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
+#include <string>
 
 namespace crosspoint::android {
 
@@ -35,10 +37,26 @@ struct Signals
     std::atomic<int> pendingPlayerButton { 0 };
 
     // A20: the Android Auto browse list. Tapping a station item selects it. A
-    // String cannot go through an atomic, and the JNI callback already runs on the
-    // Android main thread (= JUCE's message thread), so this is called directly
-    // like onShutdown, rather than polled.
+    // String cannot go through an atomic, and the JNI callback already runs on
+    // the Android main thread (= JUCE's message thread), so this is called
+    // directly like onShutdown, rather than polled.
     std::function<void (const juce::String& stationId)> onSelectStation;
+
+    // A22: the active Bluetooth route (name + whether it is stereo). Written by
+    // the Java BluetoothMicController (JNI, main thread) and read by the
+    // controller on the message thread to build platform.bluetoothRoute. The
+    // booleans are atomics (cross-thread, like phoneCall); the name changes only
+    // on connect/disconnect and is guarded by a small mutex, as Strings can't be
+    // atomic. btRoute=false means no headset or car is connected.
+    std::atomic<bool>   btRoute { false };
+    std::atomic<bool>   btRouteStereo { false };
+    mutable std::mutex  btRouteNameLock;
+    std::string         btRouteName;
+
+    // A22: the current "Bluetooth mic" setting, mirrored from the processor by the
+    // controller's tick (message thread) so the Java route controller can read it
+    // without an engine handle: 0 = "phone" (default), 1 = "headset".
+    std::atomic<int>    btMic { 0 };
 
     const char* micPermissionName() const
     {
