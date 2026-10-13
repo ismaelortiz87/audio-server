@@ -110,7 +110,7 @@ boot('vdi', client => {
     listeners.hidden = offline;
     setHTML(listeners.lastChild, st.consoles.length ? st.consoles.map(c => `
       <div class="lrow ${c.talking ? 'talking' : ''}">${c.talking ? '<span class="pill-talk">TALKING</span>' : '<span class="dot good"></span>'}
-        <span class="who">${esc(c.name)}</span><span class="kind">Console · ${c.kind === 'mac' ? 'Mac' : c.kind === 'web' ? 'web' : 'other'}</span>
+        <span class="who">${esc(c.name)}</span><span class="kind">Console · ${c.kind === 'mac' ? 'Mac' : c.kind === 'web' ? 'web' : c.kind === 'android' ? 'Android' : 'other'}</span>
         <span class="lat num">${c.latencyMs} ms</span></div>`).join('') : '<div class="empty">No Console connected right now.</div>');
 
     // Sends (input)

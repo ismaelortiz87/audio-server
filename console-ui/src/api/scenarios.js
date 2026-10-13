@@ -165,6 +165,7 @@ export const AGENT_SCENARIOS = {
     consoles: [
       { name: 'maelo-mac', kind: 'mac', latencyMs: 32, talking: true },
       { name: 'maelo-web', kind: 'web', latencyMs: 58, talking: false },
+      { name: 'maelo-phone', kind: 'android', latencyMs: 74, talking: false },
     ],
   }),
   waiting: () => agentState({ consoles: [], sending: 'idle' }),
