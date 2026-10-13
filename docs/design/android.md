@@ -294,3 +294,124 @@ Spec §9 applies, plus:
 4. The notification title matches the live band in every state in §4.
 5. Earcons play for the headset button, the notification action and a call
    ending, and never reach a station (check on the F2 VDI peer).
+
+## 12. Lock-screen player (A15; built in A18)
+
+Crosspoint publishes an Android **media session**, as music apps do. That puts
+it in Samsung's **Now Bar** and in the expanded lock-screen player (and the
+media area of the shade), and its buttons work **without unlocking**. maelo
+chose this on 2026-10-13 over a custom notification layout. Mock:
+[design/prototypes/android-nowbar/](../../design/prototypes/android-nowbar/index.html).
+The system draws the player; we supply the title, subtitle, artwork and
+buttons.
+
+### 12.1 Which notification
+
+The MediaStyle notification **replaces** the §4 connection notification as the
+foreground-service notification: same channel (§4: default importance, silent,
+public on the lock screen), same lifecycle (§1: from connect until Disconnect
+or swipe-away from Recents). There is never more than one Crosspoint
+notification. Disconnect is not on the player; it's in the app (and
+swipe-away still quits). On Android 12 and older, the notification shows the
+same title, text and buttons in its own MediaStyle layout.
+
+The playback state is **"playing" from connect until Disconnect**, whatever the
+mic does, so the player never times out of the Now Bar.
+
+### 12.2 Buttons
+
+**Layout A** (the mock; preferred):
+
+| Slot | Button | Icon (our monochrome glyph; the system tints it) | Label / accessibility |
+|---|---|---|---|
+| centre | **Mic on/off** | mic / crossed mic | "Mic on" / "Mic off" · "Turn your mic off/on" |
+| previous | **Station ◀** | skip-previous | "Previous station" |
+| next | **Station ▶** | skip-next | "Next station" |
+| custom 1 | **Mute** (selected station) | speaker / speaker-crossed | "Mute" / "Muted" · "Mute {A}" / "Unmute {A}" |
+| custom 2 | **Solo** (selected station) | target outline / target filled | "Solo" / "Soloed" · "Solo {A}: only {A} hears you, others dimmed" / "Release solo" |
+
+**Layout B** (fallback, if the centre slot can only show the system's
+play/pause icon):
+
+| Slot | Button |
+|---|---|
+| centre (system play/pause) | **Listening**: pause silences station playback, play resumes. The playback state still follows this. The mic is turned off on pause and stays off on resume (§6 rule: the mic never comes back by itself) |
+| previous slot (custom) | **Next station ↻** (one direction, wraps) |
+| next slot (custom) | **Mic on/off** |
+| custom 1 / 2 | **Mute**, **Solo** |
+
+**How A18 picks:** a short spike on Android 13+ emulator images (34 and 33).
+If a custom action can occupy the centre or primary slot with our mic icon,
+use A. Otherwise use B. If the player is hidden while "paused", B's pause must
+not set the paused state; keep "playing" and silence output instead. Record
+the result in A18's *Result*. The final check is maelo's Samsung Now Bar
+(A13).
+
+**Rules for all buttons:**
+- **Solo is exclusive** (P5.7): it dims the other stations, and only the
+  soloed station hears you. **It never turns the mic on**; only the Mic button
+  does. Releasing solo restores the talk paths.
+- **Mic** changes from the player play the §5 earcon. The Mic button is hidden
+  in **PTT mode** (a player button can't be held), during a **phone call**
+  (§6), and while the mic is **not granted**. In that last case the Mic slot
+  becomes "Allow mic", which opens the app (unlock required).
+- With **no stations** (connecting, failed, or connected and empty), only Mic
+  shows.
+- The headset play/pause button goes to the media session. It toggles the
+  mic in open-mic mode only (§5), whatever the layout.
+
+### 12.3 Selected station
+
+- **On start:** the soloed station if there is one, otherwise the first in
+  `stationOrder`.
+- **◀ ▶ walk** online and lost stations in `stationOrder`, wrapping around.
+  Offline stations are skipped.
+- **Stays selected** while the service runs. If the selected station leaves
+  (forgotten or offline), the selection moves to the next one.
+- The selection only exists in the player, so the in-app selection isn't
+  changed.
+
+### 12.4 Title, subtitle, artwork
+
+| Field | Content |
+|---|---|
+| Title | selected station's **short name** (no `VDI-` prefix), e.g. "ACCT-07". With no stations: "Crosspoint" |
+| Subtitle (artist line, shown in the Now Bar pill) | **who hears you**: exactly the §4 title copy ("Live: all 3 stations hear you", "Solo: only ACCT-07 hears you", "Mic off · nobody hears you", "Push to talk · nobody hears you", "Mic off during your phone call", "Microphone blocked · nobody hears you") |
+| Second line (album, where the player shows it) | the selected station's state: "Clear · 32 ms", "Unstable · 2% loss", "Lost · reconnecting", "Muted", "Soloed", "Dimmed −18". Joined with " · " when several apply (e.g. "Soloed · Clear · 32 ms"). Not connected: §4 connection text ("Reconnecting to ops…", "Not connected: Wrong group password") |
+| Artwork (512 × 512) | rounded tile in the selected station's identity colour (`s1`–`s4`) with the white Crosspoint mark. **Muted:** the colour at 35% over `panel`. **Lost:** `ink4`. **No station:** `panel` with the mark. **Your voice reaches at least one station:** a 24 px `live` inset border plus a small white mic glyph bottom-right. Android 13+ tints the player from the artwork, so live turns the whole player pink-tinted |
+
+Text updates follow §4's rule: only when something changes, at most once a
+second. Meters never update the player.
+
+### 12.5 Other media apps
+
+Crosspoint doesn't take audio focus (A8), so music keeps playing alongside it.
+Phones show one or more players (Samsung: the most recent, swipeable).
+Whichever app was active last gets the headset button; that's Android's rule
+and we accept it.
+
+### 12.6 Quick Settings tile (A19)
+
+**Deferred.** The player covers Mic on/off from the lock screen. Revisit only
+if A13 shows the player is hard to reach.
+
+### 12.7 Review (A18)
+
+Capture each of these on the lock screen (collapsed and expanded) and in the
+shade:
+- live to all
+- solo on the selected station, mic live
+- mic off
+- muted station
+- lost station
+- PTT mode
+- phone call
+- mic not granted
+- no stations
+- reconnecting
+
+Also confirm:
+- A or B is applied per the spike
+- every button changes the engine within a second, while locked
+- earcons on Mic changes
+- the player stays while the mic is off for 10 minutes

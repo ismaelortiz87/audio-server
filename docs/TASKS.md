@@ -151,11 +151,11 @@ Ordered so that every task appears after everything it depends on.
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | |
 | A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
-| A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | wip | Claude (mock `design/prototypes/android-nowbar/`) |
+| A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | todo | |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | todo | |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
-| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | todo | |
+| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
@@ -2685,7 +2685,21 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   - how this replaces or sits beside the A10 connection notification, and
     whether the A19 tile is still worth it
 - **Done when:** A18 can be built without inventing anything.
-- **Result:**
+- **Result:** done (Claude, 2026-10-13): `docs/design/android.md` §12. Decisions:
+  - the MediaStyle notification replaces the §4 one, and plays from connect
+    until Disconnect
+  - Layout A as in the mock (Mic centre · Station ◀ ▶ · Mute · Solo), with
+    fallback Layout B (Listening · Station ↻ · Mic · Mute · Solo); A18 picks
+    with a spike, because Android 13+ draws the play/pause icon itself
+  - Solo is exclusive and never opens the mic
+  - Mic is hidden in PTT, during a call, and when the mic isn't granted
+    ("Allow mic" instead)
+  - the selection walks online and lost stations; the title is the short
+    name; the subtitle is the §4 "who hears you" line
+  - the artwork is the station colour, with a live border when your voice is
+    out
+  - the A19 tile is deferred
+
 
 #### A17 — Native control bridge · M · any · lane P
 - **Depends on:** A10 · **Touches:** new
@@ -2726,7 +2740,7 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   `CrosspointMediaSession.java` (MediaSession + PlaybackState custom actions,
   a MediaStyle notification as the foreground notification),
   `AndroidServiceController.h`, `.jucer` (androidx.media if needed)
-- **Do:** build A15's design on A17's command bridge:
+- **Do:** first the layout spike in android.md §12.2 (A or B). Then build §12 on A17's command bridge:
   - play/pause → `mic.setOn`, with the earcon
   - skip previous/next → the selected station
   - custom actions → `station.setMute` and `station.setSolo` (exclusive), on
