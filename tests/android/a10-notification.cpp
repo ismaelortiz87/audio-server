@@ -24,6 +24,9 @@ int main()
     { auto in = base(); in.hearing = { "ACCT-07", "DEV-02" }; EXPECT_EQ (build (in).title, "Live: ACCT-07 and DEV-02 hear you"); }
     { auto in = base(); in.hearing = { "ACCT-07" }; EXPECT_EQ (build (in).title, "Live: ACCT-07 hears you"); }
     { auto in = base(); in.hearing = { "ACCT-07", "DEV-02", "QA-11" }; in.stationsKnown = 4; EXPECT_EQ (build (in).title, "Live: ACCT-07, DEV-02 and QA-11 hear you"); }
+    // review 2: one known station is named, never "all 1 stations" (spec 3.2), soloed or not
+    { auto in = base(); in.hearing = { "ACCT-07" }; in.stationsKnown = 1; in.stationsOnline = 1; EXPECT_EQ (build (in).title, "Live: ACCT-07 hears you"); }
+    { auto in = base(); in.hearing = { "ACCT-07" }; in.stationsKnown = 1; in.stationsOnline = 1; in.anySolo = true; EXPECT_EQ (build (in).title, "Live: ACCT-07 hears you"); }
     { auto in = base(); in.hearing = { "ACCT-07" }; in.anySolo = true; EXPECT_EQ (build (in).title, "Live: solo, only ACCT-07 hears you"); }
     { auto in = base(); in.hearing = { "ACCT-07", "DEV-02" }; in.anySolo = true; EXPECT_EQ (build (in).title, "Live: solo, only ACCT-07 and DEV-02 hear you"); }
     { auto in = base(); in.hearing = {}; auto c = build (in); EXPECT_EQ (c.title, "Mic open, but no station is set to hear you"); EXPECT (! c.live); }

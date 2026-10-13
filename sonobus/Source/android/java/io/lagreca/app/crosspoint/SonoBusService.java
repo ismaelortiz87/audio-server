@@ -148,7 +148,7 @@ public class SonoBusService extends Service {
         if (mNotificationManager.getNotificationChannel(OLD_CHANNEL_ID) != null)
             mNotificationManager.deleteNotificationChannel(OLD_CHANNEL_ID);
         if (mNotificationManager.getNotificationChannel(CHANNEL_ID) != null) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Connection", NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Connection", NotificationManager.IMPORTANCE_DEFAULT);   // not LOW: Android 12+ hides silent notifications on the lock screen (android.md section 4)
         channel.setDescription("Shows whether your microphone is live while Crosspoint is connected");
         channel.enableVibration(false);
         channel.setSound(null, null);
@@ -185,7 +185,7 @@ public class SonoBusService extends Service {
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)   // pre-Oreo; the channel decides from Android 8
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(content);
         // At most two actions, in this order (android.md section 4).

@@ -396,6 +396,13 @@ public:
     // mode changes. Message thread.
     void setPhoneCall(bool inCall);
     bool isPhoneCall() const { return mPhoneCall.load(); }
+
+    // A9 (android.md section 3): Android has not granted the microphone. The mic
+    // never transmits meanwhile (the audio device has no input either), but
+    // mic.on / the mode are left alone, so granting it later returns the mic to
+    // the state the user left it in.
+    void setMicBlocked(bool blocked) { mMicBlocked.store(blocked); }
+    bool isMicBlocked() const { return mMicBlocked.load(); }
     bool isMicOffByCall() const { return mMicOffByCall.load(); }
 
     // A14 (android.md section 5): the local mic on / off cue. Mixed into the
@@ -1212,6 +1219,7 @@ private:
     std::atomic<bool>  mMicOn { true };
     std::atomic<bool>  mPttHeld { false };
     std::atomic<bool>  mPhoneCall { false };      // A14
+    std::atomic<bool>  mMicBlocked { false };     // A9
     std::atomic<bool>  mMicOffByCall { false };   // A14
     float              mCallPlaybackGain = 1.0f;  // audio thread: ramps to 0 during a call
     crosspoint::Earcon mEarcon;                   // A14

@@ -82,7 +82,15 @@ export const CONSOLE_SCENARIOS = {
   // android.md §3: the mic was refused, so the mic button and live band say so.
   'android-blocked': () => androidState([
     station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
-  ], { micPermission: 'prompt' }, androidMicOff),
+  ], { micPermission: 'prompt' }),
+  // android.md section 3: refused for good, only Android Settings can change it.
+  'android-denied': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ], { micPermission: 'denied' }),
+  // android.md sections 2 and 4: one known station, so "VDI-ACCT-07 hears you" and not "All 1 stations".
+  'android-one': () => androidState([
+    station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),
+  ]),
   // android.md §6: a call owns the audio, so the mic is off because of it.
   'android-call': () => androidState([
     station('VDI-ACCT-07', 0, { pan: -0.5, _activity: 0.35 }),

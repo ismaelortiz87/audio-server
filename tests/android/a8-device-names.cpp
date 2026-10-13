@@ -70,11 +70,12 @@ int main()
     EXPECT_EQ (yn (isHidden (kBluetoothA2dp, false)), "no");
 
     // echoRisk: speaker, no working AEC, mic transmitting
-    EXPECT_EQ (yn (echoRisk ("speaker", false, true)), "yes");
-    EXPECT_EQ (yn (echoRisk ("speaker", true, true)), "no");
-    EXPECT_EQ (yn (echoRisk ("speaker", false, false)), "no");
-    EXPECT_EQ (yn (echoRisk ("wired", false, true)), "no");
-    EXPECT_EQ (yn (echoRisk ("earpiece", false, true)), "no");
+    EXPECT_EQ (yn (echoRisk ("speaker", false, true, true)), "yes");
+    EXPECT_EQ (yn (echoRisk ("speaker", true, true, true)), "no");
+    EXPECT_EQ (yn (echoRisk ("speaker", false, false, true)), "no");
+    EXPECT_EQ (yn (echoRisk ("wired", false, true, true)), "no");
+    EXPECT_EQ (yn (echoRisk ("earpiece", false, true, true)), "no");
+    EXPECT_EQ (yn (echoRisk ("speaker", false, true, false)), "no");   // mic open but no station hears you
 
     std::printf (failures ? "%d FAILED\n" : "a8 device names: all ok\n", failures);
     return failures ? 1 : 0;

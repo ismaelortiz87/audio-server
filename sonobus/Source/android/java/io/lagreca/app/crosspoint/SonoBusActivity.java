@@ -125,6 +125,41 @@ public class SonoBusActivity   extends Activity
         requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 7001);
     }
 
+    /** Default "Your name" (android.md section 2): the device name the user set, else "Samsung SM-S911B". */
+    public final String deviceName()
+    {
+        String n = null;
+        try { n = Settings.Global.getString(getContentResolver(), "device_name"); } catch (RuntimeException e) { /* fall through */ }
+        if (n == null || n.trim().isEmpty()) n = Settings.Secure.getString(getContentResolver(), "bluetooth_name");
+        if (n == null || n.trim().isEmpty()) {
+            String m = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER, model = Build.MODEL == null ? "" : Build.MODEL;
+            if (!m.isEmpty()) m = m.substring(0, 1).toUpperCase() + m.substring(1);
+            n = model.toLowerCase().startsWith(m.toLowerCase()) ? model : (m + " " + model);
+        }
+        return n.trim();
+    }
+
+    private static final String MIC_PERMISSION = "android.permission.RECORD_AUDIO";
+
+    /**
+     * android.md section 3: 0 granted, 1 prompt (never asked), 3 prompt (asked and
+     * refused once; the dialog can still be shown), 2 denied (only Android Settings can change it). "Denied" is the
+     * rationale semantics: we asked once and the system will not ask again.
+     */
+    public final int micPermissionState()
+    {
+        if (Build.VERSION.SDK_INT < 23 || checkSelfPermission(MIC_PERMISSION) == PackageManager.PERMISSION_GRANTED) return 0;
+        boolean asked = getSharedPreferences("crosspoint_platform", MODE_PRIVATE).getBoolean("asked_mic", false);
+        if (!asked) return 1;
+        return shouldShowRequestPermissionRationale(MIC_PERMISSION) ? 3 : 2;
+    }
+
+    /** The system dialog is about to be shown (asked once automatically; the user can still tap the mic button). */
+    public final void markMicAsked()
+    {
+        getSharedPreferences("crosspoint_platform", MODE_PRIVATE).edit().putBoolean("asked_mic", true).apply();
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults)
     {

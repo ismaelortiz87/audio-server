@@ -144,10 +144,11 @@ inline int preference (int type)
 }
 
 /** The echo notice's condition (android.md section 10). `aecWorking`: the
-    platform echo canceller is on the mic path. */
-inline bool echoRisk (const char* route, bool aecWorking, bool micTransmitting)
+    platform echo canceller is on the mic path. `anyHearsYou`: your voice reaches at
+    least one station (android.md section 6), not just "the mic is open". */
+inline bool echoRisk (const char* route, bool aecWorking, bool micTransmitting, bool anyHearsYou)
 {
-    return std::string (route) == "speaker" && ! aecWorking && micTransmitting;
+    return std::string (route) == "speaker" && ! aecWorking && micTransmitting && anyHearsYou;
 }
 
 }} // namespace crosspoint::androidaudio

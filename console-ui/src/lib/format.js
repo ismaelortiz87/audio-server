@@ -40,6 +40,10 @@ export const dbToUnit = db => (db === null || db === undefined ? 0 : Math.max(0,
 /** Meter readout: "−16 dB", or "−∞ dB" for silence. */
 export const meterDbText = db => (db === null || db === undefined || db < -89 ? MINUS + '∞ dB' : MINUS + Math.round(Math.abs(db)) + ' dB');
 
+/** Live band, everyone hears you. One known station is named ("All 1 stations" reads wrong; spec 3.2). */
+export const allHearYouText = (targets, all) =>
+  all.length === 1 ? `${shortName(targets[0].name)} hears you` : `All ${targets.length} stations hear you`;
+
 /** android.md §6 echo notice: shown only when the engine says so (platform.echoRisk). */
 export const echoNoticeShown = st => !!st.platform?.echoRisk;
 export const ECHO_NOTICE = { lead: 'Phone speaker:', body: ' stations may hear themselves through your mic. ', hint: 'Use headphones to talk.' };

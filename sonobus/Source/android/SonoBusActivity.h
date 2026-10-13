@@ -123,6 +123,9 @@ namespace juce {
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
     METHOD (updateConnectionNotification,   "updateConnectionNotification", "(ZLjava/lang/String;Ljava/lang/String;ZI)V") \
     METHOD (requestNotificationPermission,  "requestNotificationPermission", "()V") \
+    METHOD (micPermissionState,             "micPermissionState", "()I") \
+    METHOD (deviceName,                     "deviceName", "()Ljava/lang/String;") \
+    METHOD (markMicAsked,                   "markMicAsked", "()V") \
     METHOD (openSettingsPage,               "openSettingsPage", "(Ljava/lang/String;)Z") \
     METHOD (allowBackground,                "allowBackground", "()Z")
 
@@ -146,6 +149,30 @@ inline void androidRequestNotificationPermission()
 {
     LocalRef<jobject> activity (getMainActivity());
     if (activity != nullptr) getEnv()->CallVoidMethod (activity.get(), SonoBusActivity.requestNotificationPermission);
+}
+
+/** The phone's name for "Your name" (Settings > About phone > Device name, else manufacturer and model). */
+inline String androidDeviceName()
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity == nullptr) return {};
+    LocalRef<jstring> s ((jstring) getEnv()->CallObjectMethod (activity.get(), SonoBusActivity.deviceName));
+    return s != nullptr ? juceString (s.get()) : String();
+}
+
+/** A9: 0 granted, 1 prompt (never asked), 3 prompt (asked, refused once), 2 denied (only Android Settings can change it). */
+inline int androidMicPermissionState()
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity == nullptr) return 1;
+    return (int) getEnv()->CallIntMethod (activity.get(), SonoBusActivity.micPermissionState);
+}
+
+/** A9: remember that the system dialog was shown, so a later refusal reads as "denied" (rationale semantics). */
+inline void androidMarkMicAsked()
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity != nullptr) getEnv()->CallVoidMethod (activity.get(), SonoBusActivity.markMicAsked);
 }
 
 inline bool androidOpenSettingsPage (const String& page)

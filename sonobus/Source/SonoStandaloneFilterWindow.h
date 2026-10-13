@@ -119,24 +119,37 @@ public:
 
         auto audioInputRequired = (inChannels > 0);
 
+       #if JUCE_ANDROID
+        // A9 (android.md section 3): never ask for the microphone at launch. The audio device opens without
+        // input unless it is already granted; the AndroidServiceController asks on the first connect (or PTT
+        // press) and calls enableAudioInput() once the answer is yes.
+        defaultDeviceName = preferredDefaultDeviceName;
+        audioInputEnabled = audioInputRequired && RuntimePermissions::isGranted (RuntimePermissions::recordAudio);
+        init (audioInputEnabled, preferredDefaultDeviceName);
+       #else
         if (audioInputRequired && RuntimePermissions::isRequired (RuntimePermissions::recordAudio)
             && ! RuntimePermissions::isGranted (RuntimePermissions::recordAudio))
             RuntimePermissions::request (RuntimePermissions::recordAudio,
                                          [this, preferredDefaultDeviceName] (bool granted) {
                                              init (granted, preferredDefaultDeviceName);
-                                            #if JUCE_ANDROID
-                                             // A10 (android.md section 3): notifications are asked right after the mic answer
-                                             // (Android 13+, once). A9: when the mic flow moves to the first connect, move this with it.
-                                             juce::androidRequestNotificationPermission();
-                                            #endif
                                          });
-        else {
+        else
             init (audioInputRequired, preferredDefaultDeviceName);
-           #if JUCE_ANDROID
-            juce::androidRequestNotificationPermission();   // mic already answered: still ask for notifications, once
-           #endif
-        }
+       #endif
     }
+
+    /** Android: the microphone was granted after launch, so re-open the audio device with the input. */
+    void enableAudioInput()
+    {
+        if (audioInputEnabled) return;
+        audioInputEnabled = true;
+       #if JUCE_ANDROID
+        reloadAudioDeviceState (true, defaultDeviceName, options.get());
+       #endif
+    }
+
+    bool audioInputEnabled = true;
+    String defaultDeviceName;
 
     void init (bool enableAudioInput, const String& preferredDefaultDeviceName)
     {

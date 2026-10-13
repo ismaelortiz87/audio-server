@@ -68,12 +68,16 @@ export class MockEngine {
     const st = this.state;
     const held = [...this.conns].some(c => c.pttHeld);
     st.mic.pttHeld = st.mic.mode === 'ptt' && held;
-    st.mic.transmitting = st.mic.mode === 'open' ? st.mic.on : st.mic.pttHeld;
-    if (st.platform) st.platform.echoRisk = this.noAec && st.platform.outputRoute === 'speaker' && st.mic.transmitting;
+    // A9: a mic Android has not granted never transmits (the engine's isMicTransmitting).
+    const blocked = !!st.platform && st.platform.micPermission !== 'granted';
+    st.mic.transmitting = !blocked && (st.mic.mode === 'open' ? st.mic.on : st.mic.pttHeld);
     const anySolo = Object.values(st.stations).some(s => s.solo);
     for (const s of Object.values(st.stations)) {
       s.hearsYou = s.talk && s.presence === 'online' && st.mic.transmitting && !(anySolo && !s.solo);
     }
+    // android.md section 6: the voice must reach at least one station, not just leave the mic.
+    if (st.platform) st.platform.echoRisk = this.noAec && st.platform.outputRoute === 'speaker' && st.mic.transmitting
+      && Object.values(st.stations).some(s => s.hearsYou);
   }
 
   /** Run a mutation, then broadcast the resulting patch. */
@@ -238,6 +242,14 @@ export class MockEngine {
         this.change(st => { if (cmd === 'devices.setInput') st.mic.device = d.name; else st.output.device = d.name; });
         return;
       }
+      case 'platform.requestMic':
+        if (!this.state.platform) throw err('not_supported', 'Not an Android Console');
+        // prompt: the system dialog (the mock's user allows it). denied: Android's settings page; nothing changes here.
+        if (this.state.platform.micPermission === 'prompt') this.change(st => { st.platform.micPermission = 'granted'; });
+        return;
+      case 'platform.openSettings': case 'platform.allowBackground':
+        if (!this.state.platform) throw err('not_supported', 'Not an Android Console');
+        return;
       case 'settings.set':
         this.change(st => { for (const k of ['soloDimDb', 'pttHotkey', 'codec', 'bitrateKbps', 'networkBuffer']) if (k in a) st.settings[k] = a[k]; });
         return;

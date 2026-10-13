@@ -7,7 +7,10 @@
 //  - the service lifetime (section 1): from connect until Disconnect or
 //    swipe-away, whatever the connection state in between;
 //  - the notification's Mic off/on and Disconnect actions, with the earcon (A14);
-//  - phone calls (A14, section 6): Java reports them, this tells the processor.
+//  - phone calls (A14, section 6): Java reports them, this tells the processor;
+//  - the microphone permission (A9, sections 3 and 7): asked on the first connect in
+//    open-mic mode or on the first PTT press (never at launch), then notifications;
+//    reported as platform.micPermission; the audio input is switched on when it is granted.
 //
 // Message thread only. The JNI callbacks (SonoBusActivity.h) just set atomics in
 // Signals; this timer picks them up.
@@ -31,14 +34,19 @@ namespace crosspoint::android {
 class AndroidServiceController : private Timer
 {
 public:
-    AndroidServiceController (SonobusAudioProcessor& p, EngineState& s, std::function<void()> disconnectNow)
-        : proc (p), state (s), disconnect (std::move (disconnectNow))
+    /** `enableAudioInput`: re-open the audio device with the microphone, once it is granted after launch. */
+    AndroidServiceController (SonobusAudioProcessor& p, EngineState& s, std::function<void()> disconnectNow,
+                              std::function<void()> enableAudioInput = {}, bool audioInputAlreadyOn = true)
+        : proc (p), state (s), disconnect (std::move (disconnectNow)),
+          enableInput (std::move (enableAudioInput)), inputOn (audioInputAlreadyOn)
     {
+        pollMic();
         startTimer (250);
     }
 
     ~AndroidServiceController() override
     {
+        *alive = false;
         stopTimer();
         Signals::get().onShutdown = nullptr;
     }
@@ -65,16 +73,71 @@ public:
         return true;
     }
 
-private:
-    static bool micGranted()
+    /** `platform.requestMic` (android.md sections 3 and 10): prompt -> the system dialog, denied -> the app's
+        Android settings page. Message thread. */
+    bool requestMic (String& code, String& msg)
     {
-        return ! RuntimePermissions::isRequired (RuntimePermissions::recordAudio)
-               || RuntimePermissions::isGranted (RuntimePermissions::recordAudio);
+        pollMic();
+        if (micGranted()) return true;
+        if (Signals::get().micPermission.load() == 2)
+        {
+            if (! juce::androidOpenSettingsPage ("app")) { code = "internal"; msg = "Android could not open the app's settings"; return false; }
+            return true;
+        }
+        showMicDialog();
+        return true;
+    }
+
+private:
+    static bool micGranted() { return Signals::get().micPermission.load() == 0; }
+
+    /** 0 granted, 1/3 prompt, 2 denied (SonoBusActivity.micPermissionState); "prompt" while our dialog is up. */
+    void pollMic()
+    {
+        const int raw = juce::androidMicPermissionState();
+        micEverAsked = raw != 1;
+        const int shown = raw == 0 ? 0 : raw == 2 && ! dialogUp ? 2 : 1;
+        Signals::get().micPermission.store (shown);
+        proc.setMicBlocked (shown != 0);
+        if (shown == 0 && ! inputOn && enableInput)
+        {
+            inputOn = true;       // granted late (from the dialog or in Android Settings): open the audio input
+            enableInput();
+        }
+    }
+
+    void showMicDialog()
+    {
+        if (dialogUp) return;
+        dialogUp = true;
+        juce::androidMarkMicAsked();
+        auto flag = alive;
+        RuntimePermissions::request (RuntimePermissions::recordAudio, [this, flag] (bool)
+        {
+            if (! *flag) return;
+            dialogUp = false;
+            pollMic();
+            juce::androidRequestNotificationPermission();      // android.md section 3: right after the mic answer
+        });
+    }
+
+    /** The one moment the app asks (section 3): the first connect in open-mic mode, or the first PTT press. */
+    void askOnFirstUse (bool connectTried)
+    {
+        if (askedOnce) return;
+        const bool wouldSend = connectTried && proc.getMicMode() == SonobusAudioProcessor::MicMode::Open;
+        const bool pttPress = proc.getPttHeld();
+        if (! wouldSend && ! pttPress) return;
+        askedOnce = true;
+        if (Signals::get().micPermission.load() == 1 && ! micEverAsked) showMicDialog();
+        else juce::androidRequestNotificationPermission();      // mic already answered: notifications, once (Java guards it)
     }
 
     void timerCallback() override
     {
         auto& sig = Signals::get();
+
+        pollMic();
 
         // A14: a call starts / ends.
         proc.setPhoneCall (sig.phoneCall.load());
@@ -99,6 +162,7 @@ private:
         const bool idle = connState == "failed" && reason == "Not connected to a server";
         if (userDisconnected)                         serviceWanted = false;
         else if (! idle)                              serviceWanted = true;
+        askOnFirstUse (serviceWanted);
 
         notification::Input in;
         in.connState = connState.toStdString();
@@ -127,9 +191,7 @@ private:
         in.micOn = static_cast<bool> (mic["on"]);
         in.transmitting = static_cast<bool> (mic["transmitting"]);
         in.phoneCall = plat.isObject() && static_cast<bool> (plat["phoneCall"]);
-        // A9 reports platform.micPermission; until it does, ask the system directly.
-        const String perm = plat.isObject() ? plat["micPermission"].toString() : String();
-        in.micGranted = perm.isNotEmpty() ? perm == "granted" : micGranted();
+        in.micGranted = micGranted();
 
         const auto content = notification::build (in);
 
@@ -155,6 +217,10 @@ private:
     SonobusAudioProcessor& proc;
     EngineState& state;
     std::function<void()> disconnect;
+
+    std::function<void()> enableInput;
+    bool inputOn = true, dialogUp = false, askedOnce = false, micEverAsked = false;
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 
     bool serviceWanted = false, pushedActive = false, lastNotifOk = true;
     notification::Content pushed;
