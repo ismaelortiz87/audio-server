@@ -16,6 +16,20 @@
 #if (JUCE_MAC || JUCE_ANDROID) && JUCE_WEB_BROWSER
  #define CROSSPOINT_HAS_WEB_SHELL 1
 
+#if JUCE_ANDROID
+// Native helpers for the Android shell (android.md section 2); defined in ConsoleShellAndroid.h,
+// which only the app's one translation unit includes (JUCE's JNI helpers have no include guard).
+namespace crosspoint_android
+{
+    void setSystemBarColours (uint32 statusArgb, uint32 navigationArgb);   // both bars `rail`
+    void applyFontScale (void* webView);          // WebSettings.setTextZoom from the system font scale
+    bool paintWebViewBackground (void* webView, uint32 argb);   // the web view's background, before any page paints
+    void haptic (void* webView, bool starting);                  // performHapticFeedback (honours the system setting)
+    void moveTaskToBack();                        // same as Home; never disconnects
+}
+#endif
+
+
 /** How the "can't show the Console at all" page looks and behaves. All fields are
     optional: the defaults are the Mac's reviewed P6.1 page (default title, no button). */
 struct ConsoleShellFatal
@@ -80,13 +94,10 @@ public:
 
     void resized() override
     {
+        // The web view fills the whole shell. On Android the window itself already sits
+        // between the system bars (they are opaque, `rail`), so subtracting the safe-area
+        // insets here as well would leave an empty band (A7).
         auto r = getLocalBounds();
-       #if JUCE_ANDROID
-        // android.md section 8: inside the safe area, 24 px sides, content from
-        // 1/4 height, one full-width 48 px button.
-        if (auto* d = Desktop::getInstance().getDisplays().getPrimaryDisplay())
-            r = d->safeAreaInsets.subtractedFrom (r);
-       #endif
         if (page != nullptr) page->setBounds (r);
 
         auto box = r.reduced (24).withTrimmedTop (r.getHeight() / 4);
@@ -106,6 +117,19 @@ public:
     }
 
     bool isShowingError() const { return page == nullptr; }
+
+   #if JUCE_ANDROID
+    /** Back button (android.md section 2). The page closes its settings sheet if one is
+        open and otherwise asks us (crosspoint-shell://background) to go to the background.
+        With no page (the native error page) there is nothing to close. */
+    void handleBack()
+    {
+        if (page == nullptr)
+            crosspoint_android::moveTaskToBack();
+        else
+            page->goToURL ("javascript:void((window.crosspointBack||function(){location.href='crosspoint-shell://background'})())");
+    }
+   #endif
 
 private:
     static String defaultButtonLabel()
@@ -157,6 +181,17 @@ private:
         // Only the engine's own pages load in the window; any other link opens in the browser.
         bool pageAboutToLoad (const String& newURL) override
         {
+           #if JUCE_ANDROID
+            // The page's way to talk to the shell (console-ui app.js shellCall()): never loaded.
+            if (newURL.startsWith ("crosspoint-shell://"))
+            {
+                auto what = newURL.fromFirstOccurrenceOf ("crosspoint-shell://", false, false).upToFirstOccurrenceOf ("?", false, false);
+                if (what == "background")        crosspoint_android::moveTaskToBack();
+                else if (what == "haptic/start") crosspoint_android::haptic (nativeView(), true);
+                else if (what == "haptic/stop")  crosspoint_android::haptic (nativeView(), false);
+                return false;
+            }
+           #endif
             if (newURL.startsWith (owner.baseUrl) || newURL.startsWith ("about:") || newURL.startsWith ("blob:") || newURL.startsWith ("data:"))
                 return true;
             URL (newURL).launchInDefaultBrowser();
@@ -187,6 +222,17 @@ private:
 
         void pageFinishedLoading (const String&) override { grabKeyboardFocus(); }
 
+       #if JUCE_ANDROID
+        /** The android.webkit.WebView behind this component (JUCE's private Pimpl is its first
+            child, an AndroidViewComponent), or null. */
+        void* nativeView()
+        {
+            if (auto* c = dynamic_cast<AndroidViewComponent*> (getChildComponent (0)))
+                return c->getView();
+            return nullptr;
+        }
+       #endif
+
         ConsoleShellView& owner;
     };
 
@@ -200,9 +246,39 @@ private:
             page = std::make_unique<Page> (*this);
             addAndMakeVisible (*page);
             resized();
+           #if JUCE_ANDROID
+            paintWebViewWhenAttached (0);
+           #endif
         }
         page->goToURL (baseUrl);
     }
+
+   #if JUCE_ANDROID
+    // The web view joins the view tree when the peer attaches it; paint it `bg`
+    // (--bg of the console-ui tokens) as soon as it is there, before a page can flash white.
+    void paintWebViewWhenAttached (int attempt)
+    {
+        if (page == nullptr || attempt > 100)
+            return;
+        if (crosspoint_android::paintWebViewBackground (page->nativeView(), 0xff0b0d0f))
+        {
+            fontScaleTick();
+            return;
+        }
+        Component::SafePointer<ConsoleShellView> sp (this);
+        Timer::callAfterDelay (10, [sp, attempt] { if (sp != nullptr) sp->paintWebViewWhenAttached (attempt + 1); });
+    }
+
+    // The activity handles fontScale itself, so follow it by hand (once a second, cheap).
+    void fontScaleTick()
+    {
+        if (page == nullptr)
+            return;
+        crosspoint_android::applyFontScale (page->nativeView());
+        Component::SafePointer<ConsoleShellView> sp (this);
+        Timer::callAfterDelay (1000, [sp] { if (sp != nullptr) sp->fontScaleTick(); });
+    }
+   #endif
 
     void showError (const String& heading, const String& text, bool canRetry)
     {

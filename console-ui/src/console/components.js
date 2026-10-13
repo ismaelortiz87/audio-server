@@ -21,7 +21,11 @@ const soloHeld = (st, s) => anySolo(st) && !s.solo;
 // is the point: this is not Android-specific behaviour.
 export const coarsePointer = () =>
   typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(pointer: coarse)').matches;
-const tapCopy = (touch, desktop) => (coarsePointer() ? touch : desktop);
+// The Android shell's emulator (and some devices with a stylus or a paired mouse)
+// report a fine pointer, so a phone engine (`self.kind === 'android'`) counts as
+// touch-first too (A7).
+export const touchFirst = st => coarsePointer() || st?.self?.kind === 'android';
+const tapCopy = (st, touch, desktop) => (touchFirst(st) ? touch : desktop);
 
 // --------------------------------------------------------------- 3.1 top bar
 export function topBar(ctx) {
@@ -67,7 +71,7 @@ export function liveBand() {
       let quiet = !(tx && targets.length), msg;
       if (!tx) {
         msg = st.mic.mode === 'ptt'
-          ? tapCopy('Push to talk: hold the mic button. Nobody hears you now.',
+          ? tapCopy(st, 'Push to talk: hold the mic button. Nobody hears you now.',
                     'Push to talk: hold the mic button or Space. Nobody hears you now.')
           : 'Mic off. No station hears you.';
       } else if (!targets.length) msg = 'Mic open, but no station is set to hear you.';
@@ -432,10 +436,10 @@ export function youBar(ctx) {
       mic.dataset.state = tx && tg.length ? 'hot' : tx ? 'open-idle' : 'idle';
       setAttr(mic, 'aria-pressed', tx);
       const [icon, label, sub] = st.mic.mode === 'open'
-        ? (st.mic.on ? [ICONS.mic, 'Mic live', tapCopy('Tap to turn off', 'Click to turn off')]
-                     : [ICONS.micOff, 'Mic off', tapCopy('Tap to open mic', 'Click to open mic')])
+        ? (st.mic.on ? [ICONS.mic, 'Mic live', tapCopy(st, 'Tap to turn off', 'Click to turn off')]
+                     : [ICONS.micOff, 'Mic off', tapCopy(st, 'Tap to open mic', 'Click to open mic')])
         : (tx ? [ICONS.mic, 'Talking…', 'Release to stop']
-              : [ICONS.micOff, 'Hold to talk', tapCopy('Press and hold', 'or hold Space')]);
+              : [ICONS.micOff, 'Hold to talk', tapCopy(st, 'Press and hold', 'or hold Space')]);
       const call = callMicButton(st);     // A14: disabled during a phone call
       if (call) {
         mic.dataset.state = 'idle';

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A7 (docs/design/android.md section 2). Survives a Projucer resave, like res/xml/.
+     #0b0d0f is bg and #0d1013 is rail in the console-ui tokens. -->
+<resources>
+    <style name="CrosspointTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- never a white frame: the window, and the Android 12+ splash, are bg -->
+        <item name="android:windowBackground">#0b0d0f</item>
+        <item name="android:colorBackground">#0b0d0f</item>
+        <item name="android:windowSplashScreenBackground">#0b0d0f</item>
+        <!-- both system bars are rail with light icons; content never draws under them -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">#0d1013</item>
+        <item name="android:navigationBarColor">#0d1013</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

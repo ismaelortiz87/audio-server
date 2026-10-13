@@ -141,9 +141,9 @@ Ordered so that every task appears after everything it depends on.
 | A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
 | A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
 | A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | done | Claude (sonnet) |
-| A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | wip | Claude: Android API defaults + `self.kind` done; needs emulator |
-| A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | wip | Claude: pack + extract done, host test 10/10 |
-| A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: shell + manifest done; needs emulator screenshots |
+| A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | done | Claude: verified on the emulator through `adb forward` (2026-10-12) |
+| A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
+| A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: built and verified on the emulator; awaiting design review (screens in /private/tmp/claude-501/a7-review/) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
 | A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | wip, awaiting design review | |
@@ -2119,6 +2119,23 @@ the emulator check is pending.
 - The API already outlives `paused()`: `suspended()`/`resumed()` only touch the
   audio device and the foreground service, never the server.
 - Not verified: `adb forward` + smoke test against a real phone engine.
+- **Verified on the emulator (Claude, 2026-10-12)**, `adb -s emulator-5562 forward
+  tcp:7071 tcp:7070`, `node console-ui/scripts/smoke-android.mjs` (new; the old
+  `smoke.mjs` only drives the in-page mock, so it cannot target a phone):
+  hello role `console`, `self.kind: "android"`, `connection.connect` to
+  `aoo.sonobus.net:10998` / a throwaway group joined. **Force-stop and relaunch**:
+  server, group and name (`Phone A5`) were back, and the engine rejoined by itself
+  ("Console: rejoining the most recent server and group"); settings live in
+  `<app data>/.SonoBus/SonoBus.settings`.
+  - Engine facts on Android (Oboe/AAudio on the 33 arm64 image): devices are one input
+    "Phone mic" (`System Default (Input)`) and one output "Phone speaker"
+    (`System Default (Output)`), **48000 Hz**, buffer 960 frames (the burst; Oboe
+    buffer-size 1056 first, then 960), `networkBuffer {mode: auto}`. `EngineState`
+    has no sample-rate or buffer field; those came from logcat.
+  - After an explicit Disconnect the reason reads "Connection to the server was lost"
+    (the mock says "Disconnected"); cosmetic, left for the engine owner.
+  - The default "Your name" is the Linux uid (`u0_a176`), not the device name
+    (design android.md section 2): A4/identity.
 
 #### A6 — Console UI bundled in the APK · S · any · lane S
 - **Depends on:** A3 · **Touches:** `.jucer` (resource), `scripts/build-android.sh`,
@@ -2157,6 +2174,14 @@ the emulator check is pending.
   rather than into a not-yet-created subdirectory.
 - Smoke-tested against the real API? No: A6's "serve the current index.html"
   check needs the phone (or at least a running Android API).
+- **Verified on the emulator (Claude, 2026-10-12)**: a fresh install (uninstall,
+  `adb install`) served `index.html`, `sw.js`, `src/console/app.js` and
+  `components.js` byte-identical to `console-ui/` (checked by `smoke-android.mjs`).
+  **Upgrade**: a marker comment appended to `index.html`, `adb install -r`, relaunch:
+  `GET /index.html` returned the marker, `console-ui.stamp` changed, and the service
+  worker's cache (`crosspoint-shell-v2`) held the new `index.html` too. The worker is
+  network-first for the shell, so it cannot serve a stale UI while the engine is up.
+  The marker was removed again.
 
 #### A7 — Android web shell · M · any + design review · lane S
 - **Depends on:** A5, A6, A2 · **Touches:** `sonobus/Source/ConsoleShell.h`,
@@ -2234,6 +2259,62 @@ for design review are still missing (no emulator yet).
   `talking` scenario has one).
 **Not done:** the emulator screenshots (100% and 130% font scale, cold-start
 video) that this task's *Done when* requires, and A9/A10/A14's states.
+- **Emulator pass (Claude, 2026-10-12), awaiting design review.** Merged with
+  `android-apk` (A4 package, A8, A11, B15). Fixes, each checked on `crosspoint-33-s`:
+  - **Layout.** Two causes, neither the one first suspected. (1) `setShell()` sized the
+    content from the window's pre-fullscreen size: it now takes the real size from
+    `resized()`. (2) Android's WebView lays `html` out **0 px tall** (`height: 100%` on
+    `html, body, .app` resolved to 0, so the page shrank to its content and the You bar
+    sat under the top bar): `.app` is now `position: fixed; inset: 0` (same on
+    desktop). The shell no longer subtracts the safe-area insets (the window already
+    sits between the bars). Measured through the WebView's devtools: `innerHeight`
+    842 and `.app` fills it. Keyboard up: `innerHeight` 529 and the focused field stays in view
+    (`adjustResize` in the activity). Rotation was not exercised (phone: locked).
+  - **System bars.** Theme `CrosspointTheme` (`res/values/styles.xml`, window background and
+    Android 12 splash `#0b0d0f`, bars `#0d1013`, light icons). `SonoBusActivity.onCreate`
+    sets the navigation bar black afterwards, so `ConsoleShellAndroid.h` sets both bar colours
+    again from JNI once the shell is up. Pixel check: status and navigation bar are
+    (13,16,19) = `#0d1013`.
+  - **No white frame.** The window and splash are `#0b0d0f`, and the WebView's own
+    background is set through JNI as soon as it exists. A 25 s `screenrecord` of a cold
+    start (`cold-start.mp4`, contact sheet `cold-start-contact.png`) shows home screen,
+    dark splash with the icon, the page. No white frame.
+  - **Portrait on phones**: `Desktop::setOrientationsEnabled(upright)` when the smallest
+    width < 600 dp, all orientations otherwise. Set at runtime; not yet rotated on a tablet image.
+  - **Font scale.** At 100%/130% the page follows it. Found on the way: changing the
+    font size while the app ran **killed the process** (the activity was recreated:
+    `fontScale` was not in `configChanges`). It now is, with `density|uiMode|
+    screenLayout|smallestScreenSize`, and a one-second JNI poll sets the WebView's
+    `textZoom` from the configuration (a running WebView does not follow it). The
+    process survives 1.0 -> 1.3 -> 1.0 (same pid). **The native error page does not scale**
+    with the font (JUCE labels use pixels); the 130% capture shows it.
+  - **Touch copy.** `touchFirst(st)` = `(pointer: coarse)` OR `self.kind === 'android'`;
+    the emulator now says "Tap to turn off". Test added, `npm test` 18/18.
+  - **Haptics.** Native, not `navigator.vibrate`: the page navigates a hidden frame to
+    `crosspoint-shell://haptic/start|stop`, `pageAboutToLoad` swallows it and calls
+    `View.performHapticFeedback` (KEYBOARD_TAP when your voice starts, CLOCK_TICK when it
+    stops). That honours the system touch-feedback setting and needs no `VIBRATE`
+    permission. On the emulator the vibrator service logged a TOUCH click for mic on,
+    a texture tick for mic off, and `ignored_for_settings` with
+    `haptic_feedback_enabled 0`. Outside the shell the page falls back to `navigator.vibrate`.
+  - **Back.** `javascript:` through JUCE's `goToURL()` works in 7.0.8 (it is `loadUrl`).
+    `backButtonPressed()` calls `window.crosspointBack()`: with the settings sheet open
+    it closes it; otherwise the page goes to `crosspoint-shell://background` and the shell
+    calls `moveTaskToBack` (same pid after, never disconnects). The native error page
+    goes to the back directly. Verified with `adb shell input keyevent KEYCODE_BACK` in
+    both cases and on the error page.
+  - **Error page** (port 7070 held by `nc -l -p 7070` inside the emulator): shows "Crosspoint
+    couldn't start" with the section 8 copy. After the port was free, **Try again** loaded the
+    Console. Not matching the spec to look at: the title is not bold and the body line
+    spacing is tight (JUCE `Font` on Android); for the design review.
+  - Debug hook: if `<app data>/webdebug` exists the WebView is debuggable
+    (`adb shell run-as io.lagreca.app.crosspoint touch webdebug`, `adb forward tcp:9333
+    localabstract:webview_devtools_remote_<pid>`), which is how the layout was measured.
+  - Captures for the design review, all from `adb exec-out screencap` of
+    `crosspoint-33-s`, in `/private/tmp/claude-501/a7-review/`: `100-` and `130-`
+    `connected-no-stations`, `settings-sheet`, `keyboard-in-settings`, `error-page`,
+    `echo-notice-phone-width` (the A8 notice, now a full card), plus `cold-start.mp4`
+    and `cold-start-contact.png`.
 
 #### A8 — Phone audio path: echo, routing, Bluetooth · M · any · lane E
 - **Depends on:** A5 · **Touches:** `sonobus/Source/` (Android audio setup),

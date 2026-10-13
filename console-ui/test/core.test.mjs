@@ -193,6 +193,15 @@ test('mock: exclusive solo clears the other solos; plain solo adds (P5.7)', asyn
   await assert.rejects(client.cmd('station.setSolo', { station: ids[0], on: true, exclusive: 'yes' }), /exclusive must be true or false/);
 });
 
+test('touch copy: an Android engine counts as touch-first even with a fine pointer', async () => {
+  globalThis.document ??= { createElement: () => ({}), createTextNode: () => ({}) };
+  const { touchFirst } = await import('../src/console/components.js');
+  assert.equal(touchFirst({ self: { kind: 'android' } }), true);
+  assert.equal(touchFirst({ self: { kind: 'mac' } }), false);   // no matchMedia under node
+  assert.equal(touchFirst({}), false);
+  assert.equal(touchFirst(undefined), false);
+});
+
 test('A8: echoRisk follows the mic (engine-computed) and drives the echo notice copy', async () => {
   const { client, st } = boot('console', 'android-echo');
   await settle(10);
