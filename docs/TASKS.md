@@ -140,7 +140,7 @@ Ordered so that every task appears after everything it depends on.
 | A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | done | Claude 2026-10-12: toolchain installed and verified, `--check` green, emulator boots, Gradle runs |
 | A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
 | A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
-| A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | todo | |
+| A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | done | Claude (sonnet) |
 | A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | wip | Claude: Android API defaults + `self.kind` done; needs emulator |
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | wip | Claude: pack + extract done, host test 10/10 |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: shell + manifest done; needs emulator screenshots |
@@ -2057,7 +2057,40 @@ in; the link is unproven because there is no NDK on this machine.
   `JUCE_ANDROID_ACTIVITY_OVERRIDE_*` defines to match.
 - **Done when:** Crosspoint installs **next to** stock SonoBus on the same
   emulator, and both run.
-- **Result:**
+- **Result (Claude sonnet, 2026-10-12)**: done. Checked on emulator-5560
+  (`aapt dump badging`: package `io.lagreca.app.crosspoint`, label `Crosspoint`,
+  icon `res/drawable-anydpi-v26/icon.xml`, activity
+  `io.lagreca.app.crosspoint.SonoBusActivity`); installs, launches, and the mic
+  dialog reads "Allow **Crosspoint** to record audio?". No stock SonoBus APK was
+  built; the different applicationId is what makes side by side work.
+  - Java package renamed (`sonobus/Source/android/java/io/lagreca/app/crosspoint/`),
+    class names kept. The `.jucer` changes: `bundleIdentifier` on the project
+    (the Projucer takes applicationId, manifest package and the content-provider
+    authority from it; it also changes the iOS bundle id, for P9.3),
+    `JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME/CLASSPATH`,
+    `androidActivitySubClassName`, the manifest `package`, a **literal**
+    `android:label="Crosspoint"` (the Projucer's `app_name` string is the project
+    name, "SonoBus", and renaming the project would touch the plugin names), and
+    a `crosspoint://` VIEW/BROWSABLE intent filter. **Surprise:** as soon as the
+    custom manifest has any `<intent-filter>` the Projucer stops adding
+    MAIN/LAUNCHER, so the `.jucer` now declares both. The filter only makes the
+    link resolve; nothing handles the URL yet (`appNewIntent`).
+  - Icons: `smallIcon`/`bigIcon` now point at `design/icon/crosspoint-256.png` /
+    `-1024.png` (the Projucer writes the legacy `drawable-*/icon.png`). Adaptive
+    icon = `res/drawable-anydpi-v26/icon.xml` (same resource name, so
+    `@drawable/icon` resolves to it on API 26+) with background `#12161a`
+    (`values/ic_launcher_background.xml`) and the `pwa-maskable-512.png`
+    foreground (`drawable-nodpi/ic_launcher_foreground.png`). Those four files
+    are hand-added under `Builds/Android/app/src/main/res/` and survive a resave
+    (the Projucer only writes `drawable-*dpi/icon.png`); `sonobus/.gitignore`
+    ignores `mobile/Builds`, so new files there need `git add -f`.
+  - `ic_stat_crosspoint` (24dp vector from `crosspoint-notification.svg`) is the
+    `SonoBusService` small icon. **I removed the service's large icon**:
+    `BitmapFactory.decodeResource(R.drawable.icon)` returns null for an adaptive
+    XML icon on API 26+. A10 owns the notification content.
+  - Resave noise discarded as usual (iOS, `JucePluginDefines.h`, `gradlew.bat`).
+    Debug APK 195 MB.
+  - Not done: monochrome (themed) icon layer.
 
 #### A5 — Control API on the phone · M · any · lane E
 - **Depends on:** A3 · **Touches:** `sonobus/Source/SonoStandaloneFilterApp.cpp`
