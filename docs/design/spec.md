@@ -17,6 +17,7 @@ the task to `blocked` and write the question in its *Result* (see
 | Console prototype | [design/prototypes/console/](../../design/prototypes/console/index.html) (`?scenario=everyday\|twocalls\|problem\|four\|connecting&view=phone`) |
 | Agent prototype | [design/prototypes/vdi/](../../design/prototypes/vdi/index.html) (`?scenario=listening\|talking\|waiting\|paused\|reconnecting\|password\|nodevice`) |
 | App icon | [design/icon/](../../design/icon/) |
+| Android app addendum (A2) | [android.md](android.md) · prototype [design/prototypes/android/](../../design/prototypes/android/index.html) |
 
 ---
 
