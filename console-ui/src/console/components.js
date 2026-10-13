@@ -3,7 +3,7 @@
 // directly: they send commands (api §5) and re-render from the patches.
 
 import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
-import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText } from '../lib/format.js';
+import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
 
@@ -205,6 +205,21 @@ export function notices() {
       const html = st.unknownPeers.map(n =>
         `<div class="notice"><span class="dot"></span><div><b>${esc(n)}</b> joined the group without a role, so no audio is exchanged with it. <em>It's probably running stock SonoBus.</em></div></div>`).join('');
       setHTML(el, html);
+    },
+  };
+}
+
+// android.md §6: the phone speaker feeds the mic and the platform has no echo canceller.
+// Not blocking, no button; the engine decides (platform.echoRisk), so it costs nothing
+// when the echo canceller works. Sits at the top of the main area.
+export function echoNotice() {
+  const el = h('div', { style: { display: 'contents' } });
+  return {
+    el,
+    update(st) {
+      setHTML(el, echoNoticeShown(st)
+        ? `<div class="notice" role="status"><span class="dot"></span><div><b>${ECHO_NOTICE.lead}</b>${ECHO_NOTICE.body}<em>${ECHO_NOTICE.hint}</em></div></div>`
+        : '');
     },
   };
 }
