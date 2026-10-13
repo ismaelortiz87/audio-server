@@ -415,3 +415,45 @@ Also confirm:
 - every button changes the engine within a second, while locked
 - earcons on Mic changes
 - the player stays while the mic is off for 10 minutes
+
+## 14. Bluetooth mic (A22)
+
+**Why:** with classic Bluetooth earbuds or a car, Android plays media over the
+stereo music channel, but records from the **phone's mic**. The headset's mic
+is only reachable through the Bluetooth **call channel**, which carries audio
+both ways in **mono at call quality** (usually 16 kHz) and at call volume.
+maelo confirmed both cases on 2026-10-13:
+- **Bluetooth buds:** his voice was not taken from the buds.
+- **USB headset dongle:** stereo and mic together, which is a normal USB audio
+  device with no such limit.
+
+**Setting** (Settings sheet, under Microphone; shown only while a Bluetooth
+headset or car is connected):
+
+`Bluetooth mic`: segmented **Phone mic | Headset mic**. Default **Phone mic**,
+which is today's behaviour: stereo and placement kept.
+
+Note under it, changing with the choice:
+- **Phone mic:** "Stereo, full quality. Talk toward the phone."
+- **Headset mic:** "Hands-free, call quality. Both ears hear the same mix, so
+  placement is off."
+
+**Behaviour with "Headset mic":**
+- While a Bluetooth headset or car is connected, Crosspoint switches to the
+  communication route: `MODE_IN_COMMUNICATION` and
+  `setCommunicationDevice(<the BT device>)` (API 31+), or SCO on older phones.
+  Mic and playback both use that device.
+- When it disconnects, Crosspoint goes back to normal media routing and the
+  phone mic, and **the mic state doesn't change** (§6 rule).
+- **LE Audio** devices that can do stereo and mic together keep stereo. In
+  that case the note says "Hands-free, stereo" and placement stays on.
+- The placement field and pucks in the Console show a quiet note while
+  placement is off: "Placement is off while using the headset mic."
+- **Calls (A14):** our own communication mode must not count as a phone call
+  (`PlatformMonitor.appOwnsAudioMode`).
+- **Device names (§6):** while the headset mic is in use, Microphone shows
+  "Bluetooth · {name}".
+
+**API:** `settings.bluetoothMic: "phone" | "headset"`, and
+`platform.bluetoothRoute: null | { name, stereo }` (null when no Bluetooth
+headset or car is connected).

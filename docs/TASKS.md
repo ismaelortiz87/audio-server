@@ -157,7 +157,7 @@ Ordered so that every task appears after everything it depends on.
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
-| A22 | Car mic (optional): talk through the car's mic during Android Auto (SCO / communication device), only if A23 finds the phone mic poor | A8, A23 | M | any + human | deferred | |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | todo | |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -2890,8 +2890,9 @@ is ever needed, adds 1–2 days.
 - **Done when:** A20 can be built without inventing anything.
 - **Result:**
 
-#### A22 — Car mic (optional, deferred) · M · any + human
-- **Depends on:** A8, and A23 finding the phone mic poor · **Touches:** `sonobus/Source/` (Android audio setup),
+#### A22 — Bluetooth mic setting (buds and car) · M · any + design review + human
+- **Spec:** `docs/design/android.md` §14 (Claude, 2026-10-13). maelo's main use is meetings with Bluetooth buds, so this matters more than the car, and it covers the car too.
+- **Depends on:** A8, A14 · **Touches:** `sonobus/Source/` (Android audio setup), `console-ui/` (setting + placement note),
   `sonobus/Source/android/java/`
 - **Do:** during Android Auto, media plays through the car, but app
   recording normally uses the phone mic. Find out whether Crosspoint can
