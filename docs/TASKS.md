@@ -154,7 +154,7 @@ Ordered so that every task appears after everything it depends on.
 | A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
-| A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
+| A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | wip, awaiting design review | Layout B (spike: A impossible on API 33/34) |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
@@ -2825,6 +2825,107 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   - Captures go to `/private/tmp/claude-501/a18-review/`.
   - The real check is maelo's Samsung Now Bar in A13.
   - Design review passed.
+- **Result (2026-10-13, `android-apk`): wip, awaiting design review. Layout B
+  applied. Verified on the API 34 emulator.**
+  - **Layout spike (§12.2), API 34 and API 33: Layout A is impossible.**
+    The system player always draws the standard play/pause as the large
+    centre/primary button, and a custom action can never take that slot. Tried,
+    each captured on the lock screen (`/private/tmp/claude-501/a18-review/`):
+    - `base`: PLAY/PAUSE + SKIP_TO_PREVIOUS/NEXT declared, Mute and Solo custom:
+      ◀ and ▶ in the outer slots, ❚❚ centre (`spike-api34-base.png`,
+      `spike-api33-base.png`).
+    - `nopp`: no PLAY/PAUSE/PLAY_PAUSE and no skip declared, four custom actions
+      (Mic, Next station, Mute, Solo): **the centre button disappears** and the
+      customs fill the bottom row, Mic far left (`spike-api34-nopp.png`,
+      `spike-api33-nopp.png`).
+    - `nopp-skip`: skip declared, no play/pause, customs Mic, Mute, Solo: no
+      centre button again (`spike-api34-nopp-skip.png`).
+    - `reserve`: the Android 13+ extras
+      `android.media.playback.ALWAYS_RESERVE_SPACE_FOR.ACTION_SKIP_TO_PREVIOUS`
+      and `...NEXT` (set on both the session and the PlaybackState) with no
+      play/pause: they only leave **gaps** in the previous/next slots; the
+      customs still go to the outer slots and the centre stays empty
+      (`spike-api34-reserve.png`, `spike-api33-reserve.png`).
+    - `B` (play/pause declared; customs Next station, Mic, Mute, Solo): the
+      layout that ships (`spike-api34-B.png`, `spike-api33-B.png`).
+    - **Pause hides the player.** `paused` (STATE_PAUSED) keeps the player at
+      first (`spike-api34-paused.png`, ▶ shown), but after 10 minutes it is gone
+      from the lock screen although the notification still exists
+      (`spike-api34-paused-after10min.png`). So the session stays PLAYING and
+      the centre ❚❚ never changes; "Listening paused" is told in the second line
+      instead.
+  - **What is implemented (Layout B).** Centre ❚❚ = **Listening** (pause
+    silences station playback and turns the mic off; resume keeps the mic off).
+    Slots after it: **Next station ↻**, **Mic**, **Mute**, **Solo**.
+    Mic icon/label by state: mic / crossed mic, "Mic on. Turn your mic off" /
+    "Mic off. Turn your mic on", **hidden** in PTT mode and during a phone call,
+    "**Allow mic**" (crossed mic, opens the app) when not granted.
+    Mute: speaker / crossed speaker, "Mute {A}" / "Unmute {A}". Solo: target
+    outline / filled, "Solo {A}: only {A} hears you, others dimmed" /
+    "Release solo {A}". No stations: title "Crosspoint", only Mic.
+    The Android 12 and older notification carries the same buttons.
+    - Native: `AndroidServiceController` pushes one JSON state document
+      (selected station, up to 4 stations, connection, soloDimDb, listening)
+      to `CrosspointMediaSession`; latency/loss-only changes go out at most once
+      a second, button-driven changes at once. The Mic state is the micAction
+      argument (0 hidden, 1 on, 2 off, 3 allow). `micPermission` is reported
+      since A9 (`granted | prompt | denied`).
+    - Listening pause is a new processor flag (`setListeningPaused`) riding the
+      call-silence gain ramp (10 ms), so the receive streams keep running and
+      earcons still play. Not saved; Disconnect clears it.
+    - Headset button: `onMediaButtonEvent` maps play/pause/headset hook to the
+      Mic (open mode only), whatever the layout; the on-screen ❚❚ is Listening.
+    - Icons: vector drawables `ic_player_*` (ported from the mock's SVG
+      glyphs; `prev`/`next` ◀ ▶ are in but unused by Layout B).
+    - Artwork per the lead's feedback on Android 13+ (the player background is
+      the artwork, scaled and cropped): rounded tile in the station colour,
+      Crosspoint mark small (92 px of 512) top-left; muted = colour at 35% over
+      panel; lost/offline = ink4; no station = panel; **voice reaches a station
+      = the whole tile blended 55% station / 45% `live`** (the 24 px inset border
+      and the bottom-right mic glyph are dropped: the border showed only as edge
+      strips, the glyph is cropped). `s4` was wrong in the old code (now
+      `#bed590`, console-ui token).
+    - Text per §12.4. The one addition: "Listening paused" leads the second
+      line while paused. The system player on AOSP draws only title + subtitle;
+      the second line was verified through `dumpsys media_session` metadata.
+    - Crash risk fixed: `PendingIntent.getForegroundService` is guarded to API 26+
+      (`getService` below). `sUseMediaStyle` is gone; the plain notification is
+      only the fallback before the session exists. Same notification id 1555, so
+      never two Crosspoint notifications (the shade shows only the media player
+      plus system notices).
+  - **Verified (API 34, local aooserver + 3 headless VDI peers):** captures in
+    `/private/tmp/claude-501/a18-review/`: `d01-live-all`, `d02-solo-mic-live`,
+    `d03-mic-off-t0`, `d04-muted`, `d05-lost`, `d06-ptt`, `d07-call`,
+    `d08-mic-not-granted`, `d10-no-stations`, `d11-reconnecting` (each
+    `-lock.png`, `-shade.png`, `-shade-expanded.png`, plus a `-meta.txt` dump of
+    the session metadata and custom actions). AOSP has one lock-screen player
+    form (no Samsung Now Bar), so "collapsed/expanded" is the lock screen and the
+    shade/quick-settings.
+    - Every button changes the engine within a second **while locked**
+      (PIN set): Mic `true→false`, Mute, Solo (exclusive, soloed station becomes
+      the selection), Next station (title changes), Listening pause (mic off,
+      second line "Listening paused"), resume (mic stays as the user left it),
+      headset key (`input keyevent 79`) toggles the mic.
+    - Phone call: Mic hidden, subtitle "Mic off during your phone call".
+      After the call the mic stays off. Not granted: "Allow mic"; pressing it
+      from the lock screen starts the app behind the keyguard (the permission
+      dialog is the resumed activity and a swipe asks for the PIN).
+    - **The player stays for 10 minutes with the mic off and the screen locked**
+      (`d03-mic-off-t0-lock.png`, `d03-mic-off-t10min-lock.png`; the notification
+      id 1555 is still the single one).
+    - Selection moves on when the selected station goes offline/is forgotten.
+  - **Not verified / left:**
+    - The audible earcon on Mic changes: same `toggleMicWithEarcon` /
+      `playEarcon` path as A14/A17, but a headless emulator gives no way to
+      hear it.
+    - Samsung Now Bar and One UI's own layout (A13, maelo's phone). Layout B was
+      only seen in AOSP's player.
+    - No audio-focus request (A8), unchanged.
+    - The sibling bug noticed while testing: after the emulator or a peer drops,
+      the first `connection.connect` with the same user name often ends
+      "failed / Not connected to a server" until a different name is used (the
+      server still holds the stale user). Not A18; worth a bug card.
+
 #### A19 — Quick Settings mic tile · S · any + design review · lane P
 - **Depends on:** A15, A17 · **Touches:** new `MicTileService.java`, `.jucer`
   manifest (`TileService` with `BIND_QUICK_SETTINGS_TILE`)
