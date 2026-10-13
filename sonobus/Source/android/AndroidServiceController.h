@@ -147,6 +147,15 @@ private:
         else juce::androidRequestNotificationPermission();      // mic already answered: notifications, once (Java guards it)
     }
 
+    /** A18 (android.md section 12.2): the player's Mic button. 0 hidden (PTT mode or a phone call: a button
+        cannot be held, and a call owns the mic), 3 "Allow mic" (not granted; opens the app), else 1 on / 2 off. */
+    int playerMicState (const notification::Input& in) const
+    {
+        if (in.phoneCall || ! in.micOpenMode) return 0;
+        if (! in.micGranted) return 3;
+        return in.micOn ? 1 : 2;
+    }
+
     void timerCallback() override
     {
         auto& sig = Signals::get();
@@ -213,6 +222,7 @@ private:
         in.micGranted = micGranted();
 
         const auto content = notification::build (in);
+        const int micUi = playerMicState (in);
 
         // The user allowed notifications after the service started: post it again so it shows now.
         const bool notifOk = sig.notificationsEnabled.load();
@@ -220,17 +230,17 @@ private:
 
         const double now = Time::getMillisecondCounterHiRes();
         const bool startedOrStopped = serviceWanted != pushedActive;
-        const bool changed = content != pushed;
+        const bool changed = content != pushed || micUi != pushedMicUi;
         if (! startedOrStopped && ! (serviceWanted && changed)) return;
         if (! startedOrStopped && now - lastPushMs < 1000.0) return;      // at most once a second
 
         lastPushMs = now;
         pushed = content;
+        pushedMicUi = micUi;
         pushedActive = serviceWanted;
+        if (! serviceWanted && proc.isListeningPaused()) proc.setListeningPaused (false);    // Disconnect ends a pause
         juce::androidUpdateConnectionNotification (serviceWanted, String::fromUTF8 (content.title.c_str()),
-                                                   String::fromUTF8 (content.text.c_str()), content.live,
-                                                   content.micAction == notification::MicAction::TurnOff ? 1
-                                                 : content.micAction == notification::MicAction::TurnOn ? 2 : 0);
+                                                   String::fromUTF8 (content.text.c_str()), content.live, micUi);
     }
 
     SonobusAudioProcessor& proc;
@@ -243,13 +253,15 @@ private:
 
     bool serviceWanted = false, pushedActive = false, lastNotifOk = true;
     notification::Content pushed;
+    int pushedMicUi = 0;
     double lastPushMs = 0;
 
     // ---- A17: the lock-screen player -----------------------------------------
     CommandRunner runCommand;
     String selectedStation;                 // id; empty when there are no stations
     var playerStations;                     // array of up to kPlayerMaxStations, for Java
-    String lastStationsJson;                // change detection: only push when it differs
+    String lastPlayerJson, lastPlayerKey;   // change detection: only push when it differs
+    double lastPlayerPushMs = 0;
 
     static constexpr int kPlayerMaxStations = 4;
 
@@ -267,7 +279,7 @@ private:
         return var (o);
     }
 
-    /** Section 12.3: keep the selection valid and the pushed list current. */
+    /** Section 12.3: keep the selection valid and the pushed state current. */
     void updatePlayerStations (const var& st)
     {
         const var order = st["stationOrder"], stations = st["stations"];
@@ -300,6 +312,7 @@ private:
         // Selection: the soloed station if any, else the previous one if it is
         // still here, else the first (section 12.3). Offline stations are skipped
         // by the buttons, not by the selection, so a lost station can stay shown.
+        // If the selected station went offline or was forgotten, move on to the next.
         String want;
         if (auto* o = order.getArray())
             for (auto& idv : *o)
@@ -307,16 +320,51 @@ private:
                 const var s = stations.getProperty (idv.toString(), var());
                 if (s.isObject() && static_cast<bool> (s["solo"])) { want = idv.toString(); break; }
             }
-        if (want.isEmpty() && ids.contains (selectedStation)) want = selectedStation;
-        if (want.isEmpty() && ! ids.isEmpty()) want = ids[0];
-        if (want != selectedStation) { selectedStation = want; lastStationsJson.clear(); }
-
-        const String json = JSON::toString (playerStations, false);
-        if (json != lastStationsJson)
+        if (want.isEmpty() && ids.contains (selectedStation)
+            && stations.getProperty (selectedStation, var())["presence"].toString() != "offline")
+            want = selectedStation;
+        if (want.isEmpty())
         {
-            lastStationsJson = json;
-            juce::androidUpdatePlayerStations (json, shortName (selectedStation));
+            const int from = jmax (0, ids.indexOf (selectedStation));
+            for (int i = 0; i < ids.size() && want.isEmpty(); ++i)
+            {
+                const String id = ids[(from + i) % ids.size()];
+                if (stations.getProperty (id, var())["presence"].toString() != "offline") want = id;
+            }
+            if (want.isEmpty() && ! ids.isEmpty()) want = ids[0];      // all offline: show the first, it says so
         }
+        if (want != selectedStation) { selectedStation = want; lastPlayerJson.clear(); }
+
+        const var conn = st["connection"], settings = st["settings"];
+        const var doc = makeObj ({ { "selected", shortName (selectedStation) },
+                                   { "connected", conn["state"].toString() == "connected" },
+                                   { "listening", ! proc.isListeningPaused() },
+                                   { "soloDimDb", settings.isObject() && ! settings["soloDimDb"].isVoid() ? settings["soloDimDb"] : var (-18) },
+                                   { "stations", playerStations } });
+        const String json = JSON::toString (doc, true);
+        if (json == lastPlayerJson) return;
+
+        // Section 4: only when something changed, at most once a second; meters never
+        // go to the player. A button press changes the structure and goes out at once.
+        const double now = Time::getMillisecondCounterHiRes();
+        const String key = playerStructureKey (doc);
+        if (key == lastPlayerKey && now - lastPlayerPushMs < 1000.0) return;
+        lastPlayerJson = json;
+        lastPlayerKey = key;
+        lastPlayerPushMs = now;
+        juce::androidUpdatePlayerState (json);
+    }
+
+    /** Everything in the player document except the latency / loss numbers. */
+    static String playerStructureKey (const var& doc)
+    {
+        String k = doc["selected"].toString() + "|" + String ((int) static_cast<bool> (doc["connected"])) + "|"
+                 + String ((int) static_cast<bool> (doc["listening"])) + "|" + doc["soloDimDb"].toString();
+        if (auto* a = doc["stations"].getArray())
+            for (auto& s : *a)
+                k << "|" << s["name"].toString() << s["colorIndex"].toString() << s["presence"].toString()
+                  << s["health"].toString() << (int) static_cast<bool> (s["mute"]) << (int) static_cast<bool> (s["solo"]);
+        return k;
     }
 
     /** Section 12.2/12.3: run the pressed button through the API's command paths. */
@@ -351,7 +399,7 @@ private:
                 else at = (b == PlayerButton::next) ? (at + 1) % ids.size()
                                                     : (at - 1 + ids.size()) % ids.size();
                 selectedStation = ids[at];
-                lastStationsJson.clear();                    // push the new title now
+                lastPlayerJson.clear();                      // push the new title now
                 state.refreshNow();
                 return;
             }
@@ -367,6 +415,22 @@ private:
                     ? makeObj ({ { "station", selectedStation }, { "on", on } })
                     : makeObj ({ { "station", selectedStation }, { "on", on }, { "exclusive", true } });   // P5.7
                 runCommand (b == PlayerButton::mute ? "station.setMute" : "station.setSolo", args, err);
+                state.refreshNow();
+                return;
+            }
+
+            case PlayerButton::listen:
+            {
+                // Layout B centre. Pause: stop playing the stations and turn the mic off. Resume: play again;
+                // the mic stays off (the mic never comes back by itself, section 6).
+                const bool pause = ! proc.isListeningPaused();
+                proc.setListeningPaused (pause);
+                if (pause && proc.getMicMode() == SonobusAudioProcessor::MicMode::Open && proc.getMicOn())
+                {
+                    proc.setMicOn (false);
+                    proc.playEarcon (false);
+                }
+                lastPlayerJson.clear();
                 state.refreshNow();
                 return;
             }

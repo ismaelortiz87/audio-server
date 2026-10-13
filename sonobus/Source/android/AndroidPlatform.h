@@ -52,7 +52,8 @@ enum class PlayerButton
     next,           // the next station
     mute,           // Mute the selected station
     solo,           // Solo the selected station (exclusive)
-    disconnect      // not on the player today; keeps the numbering aligned with Java
+    disconnect,     // not on the player today; keeps the numbering aligned with Java
+    listen = 7      // Layout B centre: Listening pause / resume
 };
 
 /** A17: the owner id for player-issued commands. Session ids are positive and the

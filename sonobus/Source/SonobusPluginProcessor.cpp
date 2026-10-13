@@ -9538,7 +9538,7 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
     // A14: a phone call silences playback (10 ms ramps). Gain only; the receive
     // streams keep running so the audio is back the moment the call ends.
     {
-        const float callTarget = mPhoneCall.load() ? 0.0f : 1.0f;
+        const float callTarget = (mPhoneCall.load() || mListeningPaused.load()) ? 0.0f : 1.0f;   // A18: Listening paused rides the same ramp
         const float callStart = mCallPlaybackGain;
         mCallPlaybackGain = approachGain(callStart, callTarget);
         if (callStart != 1.0f || mCallPlaybackGain != 1.0f) {

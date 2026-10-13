@@ -397,6 +397,13 @@ public:
     void setPhoneCall(bool inCall);
     bool isPhoneCall() const { return mPhoneCall.load(); }
 
+    // A18 (android.md section 12.2, Layout B): the lock-screen player's "Listening"
+    // pause. Silences everything played from the stations (10 ms ramps, the receive
+    // streams keep running, the earcons still play). Not saved: a restart listens.
+    // The mic is the caller's business (the player turns it off when it pauses).
+    void setListeningPaused(bool paused) { mListeningPaused.store(paused); }
+    bool isListeningPaused() const { return mListeningPaused.load(); }
+
     // A9 (android.md section 3): Android has not granted the microphone. The mic
     // never transmits meanwhile (the audio device has no input either), but
     // mic.on / the mode are left alone, so granting it later returns the mic to
@@ -1219,6 +1226,7 @@ private:
     std::atomic<bool>  mMicOn { true };
     std::atomic<bool>  mPttHeld { false };
     std::atomic<bool>  mPhoneCall { false };      // A14
+    std::atomic<bool>  mListeningPaused { false };  // A18
     std::atomic<bool>  mMicBlocked { false };     // A9
     std::atomic<bool>  mMicOffByCall { false };   // A14
     float              mCallPlaybackGain = 1.0f;  // audio thread: ramps to 0 during a call

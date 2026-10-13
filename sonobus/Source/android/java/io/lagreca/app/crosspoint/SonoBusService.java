@@ -52,12 +52,10 @@ public class SonoBusService extends Service {
     private static String sTitle = "Crosspoint";
     private static String sText = "";
     private static boolean sLive = false;
-    private static int sMicAction = 0;           // 0 none, 1 "Mic off", 2 "Mic on"
-    /** A17: the player's stations (JSON array) and the selected station's short name. */
-    private static String sStationsJson = "[]";
-    private static String sSelectedStation = "";
-    /** A18 spike: when true the foreground notification is the MediaStyle player. */
-    private static boolean sUseMediaStyle = true;
+    /** The Mic button: 0 hidden, 1 "Mic on" (offers off), 2 "Mic off" (offers on), 3 "Allow mic" (A18). */
+    private static int sMicAction = 0;
+    /** A17/A18: the player's state as JSON (selected station, stations, connection, listening). */
+    private static String sPlayerJson = "{}";
     private static SonoBusService sInstance = null;
 
     private NotificationManager mNotificationManager;
@@ -89,10 +87,9 @@ public class SonoBusService extends Service {
         }
     }
 
-    /** A17: the player's station list and selected station (main thread). */
-    static void applyPlayerStations(Context ctx, String stationsJson, String selected) {
-        sStationsJson = stationsJson;
-        sSelectedStation = selected;
+    /** A17/A18: the player's state as JSON (main thread). */
+    static void applyPlayerState(Context ctx, String json) {
+        sPlayerJson = json;
         if (sInstance != null && sInstance.mStarted) sInstance.refresh();
     }
 
@@ -205,12 +202,13 @@ public class SonoBusService extends Service {
         PendingIntent content = PendingIntent.getActivity(this, 0, open, flags);
 
         // A18 (android.md section 12.1): the MediaStyle notification replaces the
-        // section 4 connection notification as the foreground notification, so the
-        // phone shows the lock-screen player and the system keeps it while the
-        // session plays.
-        if (sUseMediaStyle && mMediaSession != null && mMediaSession.isRunning()) {
-            mMediaSession.update(sTitle, sText, "", sLive ? COLOR_LIVE : COLOR_ACCENT, sLive, sMicAction != 0);
-            mMediaSession.updateStations(sStationsJson, sSelectedStation);
+        // section 4 connection notification as the foreground notification (same id,
+        // so there is never a second one), so the phone shows the lock-screen player
+        // and the system keeps it while the session plays. The plain notification
+        // below is only the fallback for the instant before the session exists.
+        if (mMediaSession != null && mMediaSession.isRunning()) {
+            mMediaSession.updateState(sPlayerJson);
+            mMediaSession.updateText(sTitle, sText, sLive, sMicAction);
             return mMediaSession.buildNotification(CHANNEL_ID, content);
         }
 

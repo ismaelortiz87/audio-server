@@ -109,19 +109,19 @@ public class SonoBusActivity   extends Activity
 
     // ---- called from native (SonoBusActivity.h) -------------------------------------------
 
-    /** Title, text, tint and the Mic action come from ConnectionNotification.h. micAction: 0 none, 1 "Mic off", 2 "Mic on". */
+    /** Title, text, tint and the Mic action come from ConnectionNotification.h. micAction: 0 hidden, 1 "Mic on", 2 "Mic off", 3 "Allow mic" (A18). */
     public final void updateConnectionNotification(boolean active, String title, String text, boolean live, int micAction)
     {
         if (sQuitting) return;
         SonoBusService.apply(this, active, title, text, live, micAction);
     }
 
-    /** A17: the player's station list and selected station, pushed from native
-        (android.md section 12.4). Called only when either changes. */
-    public final void updatePlayerStations(String stationsJson, String selected)
+    /** A17/A18: the player's state (selected station, up to 4 stations, connection, listening), as JSON
+        from native (android.md section 12.4). Called only when it changes. */
+    public final void updatePlayerState(String json)
     {
         if (sQuitting) return;
-        SonoBusService.applyPlayerStations(this, stationsJson, selected);
+        SonoBusService.applyPlayerState(this, json);
     }
 
     /** android.md section 3: ask for notifications (Android 13+) right after the mic answer. Asked once. */
