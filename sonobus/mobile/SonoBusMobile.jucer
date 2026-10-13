@@ -469,7 +469,7 @@
         <MODULEPATH id="juce_dsp" path="../../juce/modules"/>
       </MODULEPATHS>
     </XCODE_IPHONE>
-    <ANDROIDSTUDIO targetFolder="Builds/Android" extraDefs="USE_CODEC_OPUS=1&#10;AOO_TIMEFILTER_CHECK=0&#10;AOO_STATIC&#10;JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME=&quot;io_lagreca_app_crosspoint_SonoBusActivity&quot;&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH=&quot;io/lagreca/app/crosspoint/SonoBusActivity&quot;"
+    <ANDROIDSTUDIO targetFolder="Builds/Android" extraDefs="JUCE_ANDROID_OBOE_INPUT_PRESET=7&#10;USE_CODEC_OPUS=1&#10;AOO_TIMEFILTER_CHECK=0&#10;AOO_STATIC&#10;JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME=&quot;io_lagreca_app_crosspoint_SonoBusActivity&quot;&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH=&quot;io/lagreca/app/crosspoint/SonoBusActivity&quot;"
                    externalLibraries="opus" smallIcon="cpIc25" bigIcon="cpIc10"
                    androidAdditionalJavaFolders="../Source/android/java" androidRepositories="maven { url 'https://maven.google.com' }"
                    androidDependencies="implementation 'androidx.appcompat:appcompat:1.0.2'"

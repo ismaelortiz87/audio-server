@@ -162,6 +162,17 @@ private:
     String agentNode (bool input) const;          // the node name shown for the open device
     String nodeDescription (bool input, const String& node);
 
+   #if JUCE_ANDROID
+    // A8: the phone's audio route and echo state (EngineState.cpp)
+    void refreshAndroidRoute (double nowMs);
+    const char* androidOutputRoute() const;
+    var androidDevicesVar();
+    var androidPlatformVar();
+    int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
+    double androidRouteAtMs = -1e12;
+    bool aecChecked = false, aecWorking = false;
+   #endif
+
     // Linux agent (P2.11): PipeWire nodes for the pickers, from pw-dump, cached.
     struct PwNode { String node, description; };
     std::vector<PwNode> pwInputs, pwOutputs;

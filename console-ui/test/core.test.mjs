@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { applyPatch, diff, clone } from '../src/lib/patch.js';
 import { Client } from '../src/api/client.js';
 import { MockEngine } from '../src/api/mock.js';
-import { panText, dbText, listNames } from '../src/lib/format.js';
+import { panText, dbText, listNames, echoNoticeShown, ECHO_NOTICE } from '../src/lib/format.js';
 import { withStereoReceive } from '../src/lib/rtc.js';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -191,4 +191,30 @@ test('mock: exclusive solo clears the other solos; plain solo adds (P5.7)', asyn
   const solos = Object.values(client.store.state.stations).filter(s => s.solo).map(s => s.id);
   assert.deepEqual(solos, [ids[0]], 'exclusive leaves only that one soloed');
   await assert.rejects(client.cmd('station.setSolo', { station: ids[0], on: true, exclusive: 'yes' }), /exclusive must be true or false/);
+});
+
+test('A8: echoRisk follows the mic (engine-computed) and drives the echo notice copy', async () => {
+  const { client, st } = boot('console', 'android-echo');
+  await settle(10);
+  assert.equal(st().platform.outputRoute, 'speaker');
+  assert.equal(st().platform.echoRisk, true);
+  assert.equal(echoNoticeShown(st()), true);
+  assert.equal(ECHO_NOTICE.lead + ECHO_NOTICE.body + ECHO_NOTICE.hint,
+    'Phone speaker: stations may hear themselves through your mic. Use headphones to talk.');
+  await client.cmd('mic.setOn', { on: false }); await settle();
+  assert.equal(st().platform.echoRisk, false, 'a muted mic cannot echo');
+  assert.equal(echoNoticeShown(st()), false);
+  await client.cmd('mic.setOn', { on: true }); await settle();
+  assert.equal(st().platform.echoRisk, true, 'and it comes back with the mic');
+});
+
+test('A8: no notice on the phone when the echo canceller works, nor off Android', async () => {
+  const a = boot('console', 'android');
+  await settle(10);
+  assert.equal(a.st().platform.echoRisk, false);
+  assert.equal(echoNoticeShown(a.st()), false);
+  const m = boot('console', 'everyday');
+  await settle(10);
+  assert.equal(m.st().platform, null);
+  assert.equal(echoNoticeShown(m.st()), false);
 });
