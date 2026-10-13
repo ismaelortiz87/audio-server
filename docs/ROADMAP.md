@@ -248,7 +248,7 @@ design review.
 | P9.1 | Mac menu-bar panel: station activity, talk toggles, mic state | deferred |
 | P9.2 | Native Android Console (was P6.2–P6.4): engine on the phone, web-view shell on its local API, mic + background audio. Tasks A1–A14 in TASKS.md | todo |
 | P9.3 | Native iOS Console: Xcode build from the monorepo, web-view shell, background audio | deferred |
-| P9.4 | Android Auto, **lock-screen controls on the car screen** (A20–A23): the A18 media player registered as an Auto media app, plus the car-mic question | todo (low priority) |
+| P9.4 | Android Auto, **lock-screen controls on the car screen** (A20–A23): the A18 media player registered as an Auto media app (talking uses the phone mic; car mic only if needed) | todo (low priority) |
 | P9.5 | Android Auto **control panel app** (Car App Library, IoT templates): station list with Mute / Solo / Hears you toggles and health text, Mic and Disconnect. Not the full Console: Auto allows no custom UI, meters or web views while driving. About 2–4 d | deferred (non-priority) |
 
 ## P7 — Web Console container

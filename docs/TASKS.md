@@ -157,9 +157,9 @@ Ordered so that every task appears after everything it depends on.
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
-| A22 | Car mic spike: can the app talk through the car's mic during Android Auto (SCO / communication device) | A8 | M | any + human | todo | |
+| A22 | Car mic (optional): talk through the car's mic during Android Auto (SCO / communication device), only if A23 finds the phone mic poor | A8, A23 | M | any + human | deferred | |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | todo | |
-| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, audio, mic) | A20, A22 | S | human | todo | |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
@@ -2851,11 +2851,19 @@ declaration. After that, Auto draws the player with the same buttons, and they
 go through the same engine commands (A17). A fuller Auto app is ROADMAP P9.5
 (deferred).
 
-**Who does what:** A21 is Claude only (design). A20 and A22 can go to any
-agent; A22 also needs maelo in the car. A23 is maelo.
+**Audio in the car:** Android routes media playback to the car speakers by
+itself, so nothing changes there. Recording is different: Android does **not**
+move an app's mic to the car's mic. That needs the Bluetooth call channel
+(SCO), which only calls, the assistant and VoIP apps that switch into
+"communication" mode use. Crosspoint stays in media mode (A8), so in the car it
+talks through the **phone's own mic**. A22 (car mic) is optional and deferred:
+it only comes back if A23 shows the phone mic isn't good enough.
 
-**Order:** A21 and A22 can start now, in parallel (A22 only needs A8). A20
-starts after A18 and A21. A23 comes last.
+**Who does what:** A21 is Claude only (design). A20 can go to any agent. A23
+is maelo.
+
+**Order:** A21 can start now. A20 starts after A18 and A21. A23 comes after
+A20.
 
 **Effort:**
 
@@ -2866,8 +2874,8 @@ starts after A18 and A21. A23 comes last.
 | A22 | 1–2 d, the most uncertain |
 | A23 | a drive |
 
-Car-screen controls alone (A21 + A20) take about **1–1.5 days**. The whole
-set, including talking through the car mic, takes about **2.5–3.5 days**.
+**The plan is A21 + A20: about 1–1.5 days**, plus a drive for A23. A22, if it
+is ever needed, adds 1–2 days.
 
 #### A21 — UX addendum: player on Android Auto · S · design (Claude)
 - **Depends on:** A15 · **Touches:** `docs/design/android.md` (new §13)
@@ -2882,8 +2890,8 @@ set, including talking through the car mic, takes about **2.5–3.5 days**.
 - **Done when:** A20 can be built without inventing anything.
 - **Result:**
 
-#### A22 — Car mic spike · M · any + human
-- **Depends on:** A8 · **Touches:** `sonobus/Source/` (Android audio setup),
+#### A22 — Car mic (optional, deferred) · M · any + human
+- **Depends on:** A8, and A23 finding the phone mic poor · **Touches:** `sonobus/Source/` (Android audio setup),
   `sonobus/Source/android/java/`
 - **Do:** during Android Auto, media plays through the car, but app
   recording normally uses the phone mic. Find out whether Crosspoint can
@@ -2918,13 +2926,14 @@ set, including talking through the car mic, takes about **2.5–3.5 days**.
 - **Result:**
 
 #### A23 — In-car test · S · human (maelo)
-- **Depends on:** A20, A22
+- **Depends on:** A20
 - **Do:** with the release APK installed and Unknown sources on in Android
   Auto, connect to the car and check:
   - Crosspoint appears in Auto
   - the controls work while driving rules apply
   - station audio plays through the car
-  - talking works through whichever mic A22 settled on
+  - talking works through the **phone's mic** (phone in its holder), and
+    whether the VDI hears car-speaker echo. If it's poor, revive A22
   - phone calls interrupt and recover (A14)
 - **Done when:** results are recorded here; anything that fails becomes a bug
   or a task.
