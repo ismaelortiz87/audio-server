@@ -4,7 +4,7 @@
 #   scripts/setup-android.sh            # install everything (idempotent)
 #   scripts/setup-android.sh --check    # report what is present, change nothing
 #
-# Installs: JDK 17 (Temurin, via Homebrew), Android cmdline-tools, platform-tools,
+# Installs: JDK 17 (Homebrew openjdk@17, no sudo), Android cmdline-tools, platform-tools,
 # platform 33, build-tools 33.0.2, NDK 25.2.9519653, CMake 3.22.1 (all pinned by
 # sonobus/mobile/Builds/Android/app/build.gradle) and an arm64 emulator image.
 #
@@ -25,7 +25,7 @@ PLATFORM="android-33"
 BUILD_TOOLS="33.0.2"
 SYSTEM_IMAGE="system-images;android-33;google_apis;arm64-v8a"
 AVD_NAME="crosspoint-33"
-JDK_FORMULA="temurin@17"
+JDK_FORMULA="openjdk@17"
 
 # cmdline-tools is a plain zip, not a brew formula. Override to update.
 CMDLINE_TOOLS_URL="${CMDLINE_TOOLS_URL:-https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip}"
@@ -71,7 +71,7 @@ else
     if [ "$CHECK_ONLY" = "0" ]; then
         command -v brew >/dev/null || { echo "Homebrew is required to install the JDK (https://brew.sh)." >&2; exit 1; }
         echo "  installing $JDK_FORMULA with brew (this downloads ~200 MB)..."
-        brew install --cask "$JDK_FORMULA"
+        brew install "$JDK_FORMULA"
         JAVA_HOME_DETECTED="$(find_jdk_home || true)"
         [ -n "$JAVA_HOME_DETECTED" ] || { echo "JDK install did not produce a usable java_home." >&2; exit 1; }
         ok "JDK 17 at $JAVA_HOME_DETECTED"
