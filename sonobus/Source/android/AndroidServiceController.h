@@ -72,6 +72,23 @@ public:
         (section 12.4). Empty when there is nothing to show. */
     var getPlayerStations() const { return playerStations; }
 
+    /** A20 (section 13.1): the car's browse list selected a station. Only the
+        selection moves: solo, mute and the mic are untouched. Message thread. */
+    void selectStation (const String& shortOrId)
+    {
+        if (shortOrId.isEmpty()) return;
+        // Java knows the short name; the engine keys on the full id.
+        String id = shortOrId;
+        const var st = state.getLastState();
+        if (auto* order = st["stationOrder"].getArray())
+            for (auto& idv : *order)
+                if (shortName (idv.toString()) == shortOrId) { id = idv.toString(); break; }
+        if (id == selectedStation) return;
+        selectedStation = id;
+        lastPlayerJson.clear();               // push the new selection now
+        state.refreshNow();
+    }
+
     /** Is the service (and so the notification) supposed to be running? Used by suspended(): never close the
         audio device while connected. */
     bool isServiceWanted() const { return serviceWanted; }
@@ -176,11 +193,6 @@ private:
         const var st = state.getLastState();
         if (! st.isObject()) return;
 
-        // A17: the lock-screen player. Keeps the selection and the pushed station
-        // list current, then runs any button that was pressed while Java held it.
-        updatePlayerStations (st);
-        handlePlayerButton (static_cast<PlayerButton> (sig.pendingPlayerButton.exchange (0)));
-
         const var conn = st["connection"];
         const String connState = conn["state"].toString(), reason = conn["reason"].toString();
 
@@ -224,6 +236,13 @@ private:
         const auto content = notification::build (in);
         const int micUi = playerMicState (in);
 
+        // A17/A20: the lock-screen player and the Android Auto browse list. Done
+        // here, after the notification content exists, so section 13.3's
+        // connection line is this tick's, not the previous one's.
+        lastConnText = content.text;
+        updatePlayerStations (st);
+        handlePlayerButton (static_cast<PlayerButton> (sig.pendingPlayerButton.exchange (0)));
+
         // The user allowed notifications after the service started: post it again so it shows now.
         const bool notifOk = sig.notificationsEnabled.load();
         if (notifOk != lastNotifOk) { lastNotifOk = notifOk; pushedActive = false; }
@@ -260,10 +279,11 @@ private:
     CommandRunner runCommand;
     String selectedStation;                 // id; empty when there are no stations
     var playerStations;                     // array of up to kPlayerMaxStations, for Java
+    std::string lastConnText;               // notification text (section 4), reused by A20 section 13.3
     String lastPlayerJson, lastPlayerKey;   // change detection: only push when it differs
     double lastPlayerPushMs = 0;
 
-    static constexpr int kPlayerMaxStations = 4;
+    static constexpr int kPlayerMaxStations = 8;
 
     String shortName (const String& id) const
     {
@@ -294,7 +314,7 @@ private:
                 const var s = stations.getProperty (id, var());
                 if (! s.isObject()) continue;
                 ids.add (id);
-                if (arr.size() >= kPlayerMaxStations) continue;   // section 12.3: 4 stations at most
+                if (arr.size() >= kPlayerMaxStations) continue;   // section 12.3: 4 on the phone; section 13.1 lists up to 8 in the car
                 arr.add (makeObj ({ { "id", id },
                                     { "name", shortName (id) },
                                     { "colorIndex", s["colorIndex"] },
@@ -336,8 +356,33 @@ private:
         if (want != selectedStation) { selectedStation = want; lastPlayerJson.clear(); }
 
         const var conn = st["connection"], settings = st["settings"];
+        // Section 13.3: the car shows a "Connect to {group}" item when nothing is
+        // connected but settings are saved, and "Set up on your phone first" when
+        // there is no group at all. The group comes from the connection state, which
+        // already falls back to the most recent saved connection when disconnected.
+        // Section 13.3: while disconnected, the engine's connection state keeps the
+        // server but not always the group (EngineState only fills the group in from
+        // the recents when the server is empty too). For the car's "Connect to
+        // {group}" item, fall back to the most recent saved connection directly.
+        String connGroup = conn["group"].toString();
+        if (connGroup.isEmpty())
+        {
+            Array<AooServerConnectionInfo> recents;
+            proc.getRecentServerConnectionInfos (recents);
+            if (! recents.isEmpty()) connGroup = recents.getReference (0).groupName;
+        }
         const var doc = makeObj ({ { "selected", shortName (selectedStation) },
                                    { "connected", conn["state"].toString() == "connected" },
+                                   { "group", connGroup },
+                                   { "hasSaved", connGroup.isNotEmpty() },
+                                   // Section 13.3: the car needs a connection line while
+                                   // disconnected, when there is no session to ask.
+                                   { "connText", String::fromUTF8 (lastConnText.c_str()) },
+                                   // Section 13.2 needs the call and PTT cases apart: both
+                                   // collapse to a hidden Mic button, so the car is told
+                                   // directly rather than inferring it from micState.
+                                   { "phoneCall", proc.isPhoneCall() },
+                                   { "pttMode", proc.getMicMode() == SonobusAudioProcessor::MicMode::PushToTalk },
                                    { "listening", ! proc.isListeningPaused() },
                                    { "soloDimDb", settings.isObject() && ! settings["soloDimDb"].isVoid() ? settings["soloDimDb"] : var (-18) },
                                    { "stations", playerStations } });
@@ -435,8 +480,10 @@ private:
                 return;
             }
 
-            case PlayerButton::disconnect:
-                disconnect();
+            case PlayerButton::connect:
+                // A20 section 13.3: the car's "Connect to {group}" item reconnects
+                // with the saved settings, like the Console's retry.
+                runCommand ("connection.connect", makeObj ({}), err);
                 state.refreshNow();
                 return;
 

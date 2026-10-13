@@ -159,7 +159,7 @@ Ordered so that every task appears after everything it depends on.
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
-| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | todo | |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -3135,7 +3135,63 @@ is ever needed, adds 1–2 days.
 - **Done when:** on the DHU, Crosspoint appears in the launcher, the player
   shows, and every button and station item changes the engine. Captures go to
   `/private/tmp/claude-501/a20-review/`. Design review passed.
-- **Result:**
+- **Result (2026-10-13, `android-apk`): built and verified against a real
+  `MediaBrowser` client; the DHU itself could not be run here.**
+  - **What landed.** `CrosspointBrowserService.java` (platform
+    `MediaBrowserService`, returning the A18 session's token), `res/xml/automotive_app_desc.xml`
+    (`<uses name="media"/>`), and the manifest's
+    `com.google.android.gms.car.application` meta-data + the
+    `android.media.browse.MediaBrowserService` intent filter, all via the
+    `.jucer`. No new Gradle dependency: the platform class is in `android.jar`
+    at minSdk 24 (the same choice A18 made), so nothing had to be resolved from
+    Maven.
+  - **Browse tree** (§13.1): one item per station in `stationOrder`, up to 8,
+    title = short name, subtitle = the car-short state, icon = a 128 px
+    station-colour tile blended toward live while that station hears you.
+    Tapping sends the station through `nativeSelectStation`, which only moves
+    the selection.
+  - **Two real bugs found and fixed while building it:**
+    1. **The platform class has no `onPlayFromMediaId`/`onSearch`** — those are
+       androidx additions, and `@Override` on them fails to compile. Auto
+       delivers the tap to `MediaSession.Callback.onPlayFromMediaId` instead, so
+       the tap is handled on the session.
+    2. **The session was destroyed on Disconnect**, which broke §13.3
+       completely: with no session token the `MediaBrowserService` cannot be
+       bound at all, so the car had no "Connect to {group}" item and a
+       disconnected fresh boot showed nothing. The session is now
+       process-shared (`CrosspointMediaSession.shared`) and outlives the
+       foreground service; only its `active` flag follows the service, so the
+       lock-screen player still goes away on Disconnect (§12.1). That fix
+       introduced a crash — `MediaBrowserService.setSessionToken` throws
+       "The session token has already been set" on a reconnect — which is fixed
+       by setting it once per service instance.
+  - **Also fixed for §13.3:** the engine's `connection.group` is empty after
+    Disconnect (`EngineState` only fills it from the recents when the *server* is
+    empty too), so the Android side falls back to
+    `getRecentServerConnectionInfos()` for the group name.
+  - **Verified** by binding a throwaway `MediaBrowser` client to the real
+    service on the API 34 emulator (evidence in
+    `/private/tmp/claude-501/a20-review/`):
+    - connected, 3 stations: `peer-vdi / Hears you`, `three / Hears you ·
+      Unstable`, `two / ...`, all with icons, and the session token present;
+    - disconnected with saved settings: exactly one item,
+      `Connect to a20-auto`, which on tap reconnects;
+    - a connect → disconnect → reconnect cycle no longer crashes.
+  - **Not verified — the DHU could not run in this environment, so there are no
+    car-screen captures.** `extras;google;auto` installs and the DHU starts, but
+    the `google_apis_playstore` image ships **Android Auto as a stub**
+    (`versionName=1.2.531830-stub`) with no Head Unit Server, and the real app
+    needs an interactive Play Store sign-in. Consequence: §13.1's *rendering*
+    (how Auto lays out the five buttons, whether Next station lands in the
+    overflow) and the day/night theming are **unverified**; what is verified is
+    the browse tree, the session token and the command wiring Auto consumes.
+    The setup + the "Unknown sources" step are documented in
+    `docs/ANDROID.md`; a machine with a signed-in Play Store should be able to
+    finish this step in minutes.
+  - One test-harness trap worth recording: Android 11+ package visibility makes
+    a *client* fail with "Unable to start service … not found" unless it declares
+    `<queries>`. That looked like a server-side bug for a while and is not.
+
 
 #### A23 — In-car test · S · human (maelo)
 - **Depends on:** A20

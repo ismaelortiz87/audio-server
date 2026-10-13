@@ -90,6 +90,10 @@ public class SonoBusService extends Service {
     /** A17/A18: the player's state as JSON (main thread). */
     static void applyPlayerState(Context ctx, String json) {
         sPlayerJson = json;
+        // A20: the Android Auto browse list reads the same pushed state, so it
+        // keeps working while disconnected (section 13.3), when the media session
+        // and its notification are gone.
+        CrosspointBrowserService.setStateJson(json);
         if (sInstance != null && sInstance.mStarted) sInstance.refresh();
     }
 
@@ -135,8 +139,13 @@ public class SonoBusService extends Service {
     /** A18: create the media session before the first notification, so the
         MediaStyle notification has a session token to attach to. */
     private void startMediaSession() {
-        if (mMediaSession == null) mMediaSession = new CrosspointMediaSession(this);
-        mMediaSession.start();
+        // A20 (section 13.4: one session): the process-shared session is handed to
+        // the Android Auto browser, so the car draws this player and its buttons.
+        // It is reused across connects so Auto can still browse after Disconnect
+        // (section 13.3); only its *active* flag follows the service.
+        mMediaSession = CrosspointMediaSession.shared(this, true);
+        mMediaSession.setActive(true);
+        CrosspointBrowserService.setSession(mMediaSession);
     }
 
     @Override
@@ -150,7 +159,11 @@ public class SonoBusService extends Service {
     @Override
     public void onDestroy() {
         releaseLocks();
-        if (mMediaSession != null) { mMediaSession.stop(); mMediaSession = null; }
+        // The session itself is kept (the Auto browser still needs the token and
+        // the pushed state); only deactivate it, so the lock-screen player goes
+        // away on Disconnect as section 12.1 says.
+        if (mMediaSession != null) mMediaSession.setActive(false);
+        mMediaSession = null;
         if (sInstance == this) sInstance = null;
         mStarted = false;
         if (BuildConfig.DEBUG) Log.d(TAG, "service stopped");

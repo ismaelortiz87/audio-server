@@ -34,6 +34,12 @@ struct Signals
     // by one person, and dropping a double-tap beats replaying a stale command.
     std::atomic<int> pendingPlayerButton { 0 };
 
+    // A20: the Android Auto browse list. Tapping a station item selects it. A
+    // String cannot go through an atomic, and the JNI callback already runs on the
+    // Android main thread (= JUCE's message thread), so this is called directly
+    // like onShutdown, rather than polled.
+    std::function<void (const juce::String& stationId)> onSelectStation;
+
     const char* micPermissionName() const
     {
         const int m = micPermission.load();
@@ -52,7 +58,7 @@ enum class PlayerButton
     next,           // the next station
     mute,           // Mute the selected station
     solo,           // Solo the selected station (exclusive)
-    disconnect,     // not on the player today; keeps the numbering aligned with Java
+    connect,        // A20: the car's "Connect to {group}" browse item
     listen = 7      // Layout B centre: Listening pause / resume
 };
 

@@ -241,6 +241,51 @@ Check with `aapt dump badging <apk> | head -1`.
   its `Process::hide()` aborts the app (invalid local ref). Both worked around
   in `ConsoleShell.h` and `SonoStandaloneFilterApp.cpp`; see A3.
 
+## Android Auto (A20)
+
+Crosspoint is declared as an Android Auto **media app**, so it appears in the
+car launcher and draws the same player as the phone's lock screen
+([design/android.md](design/android.md) §13). No extra Gradle dependency: the
+platform `android.service.media.MediaBrowserService` and
+`Notification.MediaStyle` are in `android.jar` at minSdk 24.
+
+### Testing on the Desktop Head Unit (DHU)
+
+```sh
+scripts/setup-android.sh --auto       # installs extras;google;auto
+```
+
+Then, with the phone or emulator attached and **Android Auto installed**:
+
+```sh
+# 1. On the device: enable Developer settings in Android Auto
+#    (Android Auto → Settings → tap "Version" 10 times), then
+#    ⋮ → Developer settings → "Start head unit server".
+# 2. Forward the DHU port and run it:
+adb forward tcp:5277 tcp:5277
+$ANDROID_HOME/extras/google/auto/desktop-head-unit -i touch
+# Add -h for headless (no window).
+```
+
+**Sideloaded apps need Unknown sources in Auto:** Android Auto → Settings →
+Developer settings → **Unknown sources** (the wording varies by version; on
+some it is "Add new apps to Android Auto" / a per-app toggle). Without it a
+sideloaded Crosspoint never appears in the car launcher, however correct the
+manifest is.
+
+**Gotcha:** the `google_apis_playstore` system images ship **Android Auto as a
+stub** (`versionName=1.2.531830-stub`) with no Head Unit Server, so the DHU
+cannot connect to them and `START_HEAD_UNIT_SERVER` does not resolve. The real
+app has to come from the Play Store, which needs an interactive sign-in. If the
+DHU is unavailable, the Auto-facing surface can still be verified directly: bind
+a `MediaBrowser` to `CrosspointBrowserService` and read the browse tree and
+session token, which is what Auto consumes (this is how A20 was checked).
+
+**Client-side note:** Android 11+ package visibility hides another app's
+services unless the *client* declares `<queries>` (or is a system app like Auto
+itself). A test client that omits it fails with "Unable to start service … not
+found", which looks like a server-side bug and is not.
+
 ## Where the debug build stands
 
 | Task | State |

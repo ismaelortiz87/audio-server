@@ -60,6 +60,7 @@ private:
     CALLBACK (nativePhoneCallJni,        "nativePhoneCall",        "(Z)V") \
     CALLBACK (nativeNotificationActionJni, "nativeNotificationAction", "(I)V") \
     CALLBACK (nativePlayerButtonJni,     "nativePlayerButton",     "(I)V") \
+    CALLBACK (nativeSelectStationJni,    "nativeSelectStation",    "(Ljava/lang/String;)V") \
     CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
@@ -109,6 +110,16 @@ private:
     static void JNIEXPORT nativePlayerButtonJni (JNIEnv*, jclass, jint button)
     {
         crosspoint::android::Signals::get().pendingPlayerButton.store ((int) button);
+    }
+
+    /** A20 (section 13.1): the car's browse list selected a station. Like
+        nativeShutdown, this runs on the Android main thread (= JUCE's message
+        thread), so it calls straight through instead of being polled. */
+    static void JNIEXPORT nativeSelectStationJni (JNIEnv* env, jclass, jstring station)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        if (sig.onSelectStation && station != nullptr)
+            sig.onSelectStation (juceString (env, station));
     }
 
     // Swipe-away: runs on the Android main thread, which is JUCE's message thread.

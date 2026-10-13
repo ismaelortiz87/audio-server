@@ -14,8 +14,14 @@
   <application android:label="Crosspoint" android:name="com.rmsl.juce.JuceApp" android:icon="@drawable/icon" android:hardwareAccelerated="true"
                android:networkSecurityConfig="@xml/network_security_config" android:allowAudioPlaybackCapture="true"
                android:theme="@style/CrosspointTheme">
+    <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc"/>
     <service android:name="SonoBusService" android:enabled="true" android:exported="false" android:foregroundServiceType="microphone|mediaPlayback"
              android:stopWithTask="false"/>
+    <service android:name="CrosspointBrowserService" android:exported="true">
+      <intent-filter>
+        <action android:name="android.media.browse.MediaBrowserService"/>
+      </intent-filter>
+    </service>
     <activity android:label="Crosspoint" android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|fontScale|density|uiMode"
               android:screenOrientation="unspecified" android:launchMode="singleTask" android:hardwareAccelerated="true"
               android:windowSoftInputMode="adjustResize" android:name="io.lagreca.app.crosspoint.SonoBusActivity" android:exported="true">

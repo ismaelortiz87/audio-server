@@ -774,6 +774,11 @@ public:
             if (apiCommands == nullptr) { err = "the engine is not ready"; return false; }
             return apiCommands->runLocalCommand (crosspoint::android::kPlayerCommandOwner, cmd, args, err);
         });
+        // A20 (section 13.1): the car's browse list only moves the selection.
+        crosspoint::android::Signals::get().onSelectStation = [this] (const String& station)
+        {
+            if (androidService != nullptr) androidService->selectStation (station);
+        };
         androidService->setShutdownHandler ([this, proc]() {            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
             if (mainWindow.get() != nullptr) {

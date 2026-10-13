@@ -35,6 +35,8 @@ public class SonoBusActivity   extends Activity
     static native void nativeNotificationAction(int action);   // 1 = Mic off/on, 2 = Disconnect
     /** A17: a lock-screen player button (codes match crosspoint::android::PlayerButton). */
     static native void nativePlayerButton(int button);
+    /** A20 (section 13.1): the Android Auto browse list selected a station. */
+    static native void nativeSelectStation(String station);
     static native void nativeShutdown();                       // swipe-away: leave the group, save state
 
     private final static String TAG = "Crosspoint";

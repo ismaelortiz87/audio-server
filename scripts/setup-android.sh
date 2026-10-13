@@ -24,6 +24,8 @@ CMAKE_VERSION="3.22.1"
 PLATFORM="android-33"
 BUILD_TOOLS="33.0.2"
 SYSTEM_IMAGE="system-images;android-33;google_apis;arm64-v8a"
+# A20: the Android Auto Desktop Head Unit lives in extras;google;auto.
+AUTO_PACKAGE="extras;google;auto"
 AVD_NAME="crosspoint-33"
 JDK_FORMULA="openjdk@17"
 
@@ -31,10 +33,13 @@ JDK_FORMULA="openjdk@17"
 CMDLINE_TOOLS_URL="${CMDLINE_TOOLS_URL:-https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip}"
 
 CHECK_ONLY=0
+WITH_AUTO=0
 for arg in "$@"; do
     case "$arg" in
         --check) CHECK_ONLY=1 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        # A20: also install the Android Auto Desktop Head Unit.
+        --auto) WITH_AUTO=1 ;;
+        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -102,8 +107,10 @@ fi
 
 if [ "$CHECK_ONLY" = "1" ]; then
     say "Packages"
-    for pkg in "platform-tools" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
-               "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "emulator" "$SYSTEM_IMAGE"; do
+    pkgs=("platform-tools" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
+          "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "emulator" "$SYSTEM_IMAGE")
+    [ "$WITH_AUTO" = "1" ] && pkgs+=("$AUTO_PACKAGE")
+    for pkg in "${pkgs[@]}"; do
         if [ -d "$ANDROID_HOME/$(echo "$pkg" | sed 's/;/ /g' | awk '{print $1}')" ] || \
            ls -d "$ANDROID_HOME"/*/"${pkg##*;}" >/dev/null 2>&1; then
             ok "$pkg"
@@ -140,9 +147,10 @@ yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null 2>&1 || tru
 echo "  installing platform-tools, platforms;$PLATFORM, build-tools;$BUILD_TOOLS,"
 echo "             ndk;$NDK_VERSION, cmake;$CMAKE_VERSION, emulator, $SYSTEM_IMAGE"
 echo "  (the NDK alone is ~1.5 GB; this is the slow step)"
-"$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
-    "platform-tools" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
-    "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "emulator" "$SYSTEM_IMAGE"
+install_pkgs=("platform-tools" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
+              "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "emulator" "$SYSTEM_IMAGE")
+[ "$WITH_AUTO" = "1" ] && install_pkgs+=("$AUTO_PACKAGE")
+"$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "${install_pkgs[@]}"
 ok "packages installed"
 
 # ---------------------------------------------------------------- AVD --------

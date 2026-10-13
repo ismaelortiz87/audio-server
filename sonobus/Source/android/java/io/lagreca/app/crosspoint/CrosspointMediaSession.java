@@ -52,6 +52,9 @@ final class CrosspointMediaSession {
     static final int NATIVE_MUTE = 4;
     static final int NATIVE_SOLO = 5;
     static final int NATIVE_LISTEN = 7;      // Layout B centre: Listening pause / resume
+    /** A20 section 13.3: the car's "Connect to {group}" browse item. 6 is the
+        spare slot in the native enum (its `disconnect` is never sent today). */
+    static final int NATIVE_CONNECT = 6;
     // Not a native code: "Allow mic" opens the app instead.
 
     static final String ACTION_MIC = "io.lagreca.app.crosspoint.MIC";
@@ -76,9 +79,13 @@ final class CrosspointMediaSession {
     private int micState = MIC_HIDDEN;
     private boolean connected = false;
     private boolean listening = true;                                // Layout B centre
+    private String group = "";                                       // A20 section 13.3
+    private boolean hasSaved = false;                                // A20 section 13.3
+    private boolean callActive = false, pttMode = false;             // A20 section 13.2
     private int soloDimDb = -18;
     private final List<Station> stations = new ArrayList<>();
     private String selected = "";
+    private boolean active = false;                                  // A20: shown in the system UI only while connected
 
     // ---- what was last given to the system, so nothing is re-posted when it did not change
     private String lastMetaKey = "";
@@ -91,10 +98,44 @@ final class CrosspointMediaSession {
         String presence = "online", health = "clear";
         double latencyMs = -1, lossPct = 0;
         boolean mute, solo;
+        boolean hearsYou;                                            // A20 section 13.1
     }
 
     CrosspointMediaSession(Context ctx) {
         this.ctx = ctx.getApplicationContext();
+    }
+
+    // ---- one session for the whole process (section 13.4) --------------------
+
+    /**
+     * The single Crosspoint session, shared by the phone's lock screen and the
+     * Android Auto browser. It outlives the foreground service on purpose: after
+     * Disconnect the service stops, but Auto must still be able to browse and
+     * offer "Connect to {group}" (section 13.3), and a MediaBrowserService with
+     * no session token cannot be bound at all.
+     *
+     * It is only *active* while the service runs, so the lock-screen player still
+     * disappears on Disconnect (section 12.1); the token simply stays valid.
+     */
+    private static CrosspointMediaSession sShared = null;
+
+    /** `wantActive`: true from the foreground service (connected), false when Auto
+        is browsing a Crosspoint that is not connected. */
+    static synchronized CrosspointMediaSession shared(Context ctx, boolean wantActive) {
+        if (sShared == null) {
+            sShared = new CrosspointMediaSession(ctx);
+            sShared.start();
+        }
+        sShared.setActive(wantActive);
+        return sShared;
+    }
+
+    static synchronized CrosspointMediaSession peek() { return sShared; }
+
+    /** Shown in the system's media UI only while connected (section 12.1). */
+    void setActive(boolean active) {
+        this.active = active;
+        if (session != null) session.setActive(active);
     }
 
     // ------------------------------------------------------------ session
@@ -133,10 +174,27 @@ final class CrosspointMediaSession {
                 else if (ACTION_NEXT.equals(action)) nativeAction(NATIVE_NEXT);
                 else if (ACTION_MIC.equals(action)) micPressed();
             }
+            /**
+             * A20 (section 13.1): the Android Auto browse list. Auto delivers the
+             * tap here, not to the browse service (the platform
+             * MediaBrowserService has no onPlayFromMediaId). A tap only selects
+             * the station; mute, solo and the mic are untouched.
+             */
+            @Override public void onPlayFromMediaId(String mediaId, Bundle extras) {
+                if (mediaId == null) return;
+                if (mediaId.startsWith(CrosspointBrowserService.STATION_PREFIX))
+                    SonoBusActivity.nativeSelectStation(
+                            mediaId.substring(CrosspointBrowserService.STATION_PREFIX.length()));
+                else if (CrosspointBrowserService.CONNECT_ID.equals(mediaId))
+                    nativeAction(NATIVE_CONNECT);          // section 13.3
+            }
             @Override public void onStop() { /* the service lifetime owns this */ }
         });
         session.setSessionActivity(openAppIntent());
-        session.setActive(true);
+        // Not necessarily active: the service activates it while connected, and a
+        // cold Android Auto launch creates it inactive so no phantom player appears
+        // on the lock screen (section 12.1).
+        session.setActive(active);
         refresh();
     }
 
@@ -170,6 +228,10 @@ final class CrosspointMediaSession {
             selected = o.optString("selected", "");
             connected = o.optBoolean("connected", false);
             listening = o.optBoolean("listening", true);
+            group = o.optString("group", "");
+            hasSaved = o.optBoolean("hasSaved", false);
+            callActive = o.optBoolean("phoneCall", false);
+            pttMode = o.optBoolean("pttMode", false);
             soloDimDb = o.optInt("soloDimDb", -18);
             org.json.JSONArray arr = o.optJSONArray("stations");
             for (int i = 0; arr != null && i < arr.length(); i++) {
@@ -184,6 +246,7 @@ final class CrosspointMediaSession {
                 st.lossPct = s.isNull("lossPct") ? 0 : s.optDouble("lossPct", 0);
                 st.mute = s.optBoolean("mute", false);
                 st.solo = s.optBoolean("solo", false);
+                st.hearsYou = s.optBoolean("hearsYou", false);
                 stations.add(st);
             }
         } catch (org.json.JSONException e) {
@@ -195,6 +258,77 @@ final class CrosspointMediaSession {
     private Station selectedStation() {
         for (Station s : stations) if (s.name.equals(selected)) return s;
         return null;
+    }
+
+    // ---- A20 (section 13.1): what the Android Auto browse list reads ----------
+
+    /** The session token Auto attaches its player to. */
+    MediaSession.Token getToken() { return session != null ? session.getSessionToken() : null; }
+
+    /** One entry per station, in stationOrder, up to 8 (section 13.1). */
+    List<Station> getStations() { return stations; }
+
+    String getSelectedName() { return selected; }
+    boolean isConnected() { return connected; }
+    String getGroup() { return group; }
+    boolean hasSavedConnection() { return hasSaved; }
+    /** Section 13.2: the car-short now-playing subtitle. */
+    String getCarSubtitle() { return carSubtitle(); }
+
+    /** Section 13.1: the browse item's icon, 128 px, in the station colour, blended
+        toward live while that station hears you. Offline: ink4. */
+    Bitmap stationIcon(int index) {
+        Station s = index >= 0 && index < stations.size() ? stations.get(index) : null;
+        final int size = 128;
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(tileColor(s, s != null && s.hearsYou));      // same rule as section 12.4
+        c.drawRoundRect(0, 0, size, size, 28, 28, p);
+        return bmp;
+    }
+
+    /** Section 13.1: the browse item's subtitle, e.g. "Hears you · Clear". */
+    String stationState(Station s) {
+        if (s == null) return "";
+        List<String> p = new ArrayList<>();
+        if (s.hearsYou) p.add("Hears you");
+        if (s.solo) p.add("Soloed");
+        if (s.mute) p.add("Muted");
+        String presence = s.presence == null ? "online" : s.presence;
+        if ("lost".equals(presence)) p.add("Lost");
+        else if ("offline".equals(presence)) p.add("Offline");
+        else if ("unstable".equals(s.health)) p.add("Unstable");
+        else if (!s.hearsYou && !s.solo) p.add("Clear");
+        StringBuilder sb = new StringBuilder();
+        for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
+        return sb.length() == 0 ? "Clear" : sb.toString();
+    }
+
+    /**
+     * Section 13.2: the car-short now-playing subtitle, used only on Android Auto.
+     * Car screens truncate around 30 characters and the driver only glances, so
+     * these are shortened forms of the section 4/12 lines: no numbers except the
+     * "Clear/Unstable" words, no meters.
+     */
+    private String carSubtitle() {
+        if (!listening) return "Paused · mic off";
+        if (micState == MIC_ALLOW) return "Mic blocked · allow on phone";
+        if (callActive) return "Mic off · on a call";
+        if (pttMode) return "Push to talk · hold on phone";
+        if (!connected) return connText.isEmpty() ? "Not connected" : connText;
+        if (micState != MIC_ON) return "Mic off";
+        // Mic is on: say who hears you.
+        List<String> hear = new ArrayList<>();
+        for (Station s : stations) if (s.hearsYou) hear.add(s.name);
+        boolean anySolo = false;
+        for (Station s : stations) anySolo |= s.solo;
+        if (hear.isEmpty()) return "Mic open · nobody hears you";
+        if (anySolo && hear.size() == 1) return "Live · solo " + hear.get(0);
+        if (hear.size() == 1) return "Live · " + hear.get(0) + " hears you";
+        if (hear.size() == stations.size()) return "Live · all " + hear.size() + " hear you";
+        if (hear.size() == 2) return "Live · " + hear.get(0) + " and " + hear.get(1) + " hear you";
+        return "Live · " + hear.size() + " of " + stations.size() + " hear you";
     }
 
     // ------------------------------------------------------------ text (section 12.4)
@@ -327,12 +461,21 @@ final class CrosspointMediaSession {
      * whole player background, where an inset border shows only as edge strips.
      */
     private static int tileColor(Station s, boolean voice) {
+        if (s == null) return voice ? blend(LIVE, PANEL, 0.55f) : PANEL;
+        return tileColorFor(s.colorIndex, s.presence, s.mute, voice || s.hearsYou);
+    }
+
+    /**
+     * The same rule, by value, so the Android Auto browse list (which reads the
+     * pushed JSON rather than a Station) draws identical icons (section 13.1:
+     * offline is ink4, muted is the colour at 35% over panel, live blends 55/45).
+     */
+    static int tileColorFor(int colorIndex, String presence, boolean mute, boolean voice) {
         int c;
-        if (s == null) c = PANEL;
-        else if ("lost".equals(s.presence) || "offline".equals(s.presence)) c = INK4;
+        if ("lost".equals(presence) || "offline".equals(presence)) c = INK4;
         else {
-            c = STATION_COLORS[s.colorIndex % STATION_COLORS.length];
-            if (s.mute) c = blend(PANEL, c, 0.35f);
+            c = STATION_COLORS[Math.abs(colorIndex) % STATION_COLORS.length];
+            if (mute) c = blend(PANEL, c, 0.35f);
         }
         return voice ? blend(LIVE, c, 0.55f) : c;
     }
