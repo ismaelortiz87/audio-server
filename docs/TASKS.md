@@ -144,7 +144,7 @@ Ordered so that every task appears after everything it depends on.
 | A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | wip | Claude: Android API defaults + `self.kind` done; needs emulator |
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | wip | Claude: pack + extract done, host test 10/10 |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: shell + manifest done; needs emulator screenshots |
-| A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | todo | |
+| A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
 | A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | todo | |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | todo | |
@@ -2220,7 +2220,97 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
   (Phone calls are A14.)
 - **Done when:** findings recorded here and the chosen default is
   implemented. On the emulator, nothing regresses; the by-ear check is A13.
-- **Result:**
+- **Result:** (2026-10-12, Claude sonnet)
+  **How SonoBus picks the device and buffer.** JUCE 7.0.8 on Android uses **Oboe**
+  (`JUCE_USE_ANDROID_OBOE` defaults to 1; OpenSL is not enabled). No device type
+  is chosen in our code: the device list is JUCE's, `System Default (Input/Output)`
+  first (Oboe `kUnspecified`, so Android's own routing decides) then one entry per
+  `AudioDeviceInfo`. `SonoStandaloneFilterApp.cpp` asks for buffer 192 at the
+  phone's native sample rate. Streams ask for Exclusive + LowLatency; the emulator
+  grants Shared/None (it has no MMAP path), a real phone may differ. JUCE reopens the
+  output on `ErrorDisconnected` with the unspecified id, which is what makes the output
+  follow headphones; the **input stream has no such restart** (see A13).
+  **The AEC preset: feasible, done, small patch.** JUCE never calls
+  `setInputPreset`, so Oboe's default `VoiceRecognition` (no echo canceller) is what
+  stock SonoBus uses. `VoiceCommunication` (7) asks the platform for AEC + noise
+  suppression on the mic path (Android 9+ / API 28+, ignored below). It needs a JUCE
+  patch (the stream builder is private to JUCE): 20 commented lines in
+  `juce_Oboe_android.cpp`, behind `#ifdef JUCE_ANDROID_OBOE_INPUT_PRESET`, input
+  direction only, with a retry on the old preset if the open fails. The `.jucer`
+  (Android exporter `extraDefs`) sets `JUCE_ANDROID_OBOE_INPUT_PRESET=7`; remove that
+  one define and JUCE behaves as before. **Verified on the emulator:** the capture
+  stream is created with `inputPreset = 7` (logcat) and `dumpsys audio` shows
+  `src:VOICE_COMMUNICATION` for the app (it was `VOICE_RECOGNITION` before).
+  **Latency cost (per Oboe/AAudio docs and AOSP behaviour, NOT measured: the emulator
+  has no low-latency path to compare):** effects on the capture session generally
+  take it off the FAST/MMAP path, so expect the mic side to go from a few ms to
+  roughly 20-40 ms more, and Exclusive mode may be refused (Shared is what we get
+  anyway on many phones). Output is untouched: we do not set the output usage to
+  VoiceCommunication, because that would switch to the call volume stream and can
+  steer routing to the earpiece. A13 measures the real cost.
+  **Is the AEC "working"?** The engine cannot ask. `platform.echoRisk` assumes it works
+  when the preset is compiled in AND `AcousticEchoCanceler.isAvailable()` is true.
+  The emulator has no AEC effect, so it correctly reports `echoRisk: true` on speaker.
+  If A13 hears echo on a phone that reports an AEC, flip the assumption: set
+  `aecWorking = false` in `EngineState::refreshAndroidRoute` (notice always shows on
+  speaker while the mic transmits).
+  **Implemented.**
+  - Device names (`sonobus/Source/AndroidAudioRoute.h`, header-only, plain C++ plus a
+    small JNI half): JUCE names are `"<product> <type text>"`; the type is parsed back and
+    mapped to Phone speaker / Earpiece / Wired headphones / Bluetooth · name / USB · name
+    and Phone mic / Headset mic / ... `devices.inputs/outputs` keep JUCE's name as `id`
+    (so `devices.setInput/Output` still work) and use the plain label as `name`;
+    `mic.device`/`output.device` use the same label, so the picker marks the current one.
+    Non-devices (telephony, remote submix, FM/TV tuner, HDMI, echo reference) are hidden;
+    two entries with one label collapse to one (A2DP preferred over SCO, the default
+    entry over its explicit twin). The `System Default` entry is labelled with whatever
+    Android currently routes to (live, 2 Hz, `getAudioDevicesForAttributes` on API 33+,
+    else wired > USB > Bluetooth > speaker).
+  - Default output with nothing plugged in: **Phone speaker** (`System Default` resolves
+    to it; the emulator reports `output.device: "Phone speaker"`, `outputRoute: "speaker"`).
+    Earpiece is only chosen if picked. Output follows headphones through the system
+    routing; the mic state is engine state and routing never touches it.
+  - Default input stays the phone mic, also with a Bluetooth headset connected (A2DP has
+    no mic; SCO is a narrowband call link and we never start it). A Bluetooth SCO mic can
+    be picked from the list but we do not manage the SCO link: A13 checks whether it
+    captures at all; if not, hide Bluetooth inputs.
+  - API: `platform: { outputRoute, echoRisk }` on Android (null elsewhere), added to
+    `buildConsoleState`; other tasks add their fields next to these two.
+  - UI: `echoNotice()` in `console-ui/src/console/components.js`, first child of `<main>`,
+    shown only while `platform.echoRisk`; copy from android.md section 6; mock derives
+    `echoRisk` from route + mic like the engine (`android-echo` scenario). Tests: two in
+    `console-ui/test/core.test.mjs`; host test `tests/android/a8-device-names.cpp`
+    (`c++ -std=c++17 tests/android/a8-device-names.cpp`; labels, routes, hidden devices,
+    echoRisk).
+  - Other apps' audio: nothing in our Java, JUCE's Java or Oboe calls `requestAudioFocus`
+    or `AudioManager.setMode`; `dumpsys audio` shows an empty focus stack with the app
+    running. Crosspoint neither pauses other apps nor is paused by them, as designed.
+    (A call is A14.)
+  **Verified on the emulator (crosspoint-33-e):** builds; app runs; state shows the plain
+  names, `outputRoute: speaker`, `echoRisk: true` (no AEC on the emulator); input stream
+  opens with preset 7; no focus requests; desktop `build-desktop.sh --app-only` builds;
+  `npm test` 17/17. **Not measurable here:** real AEC quality, latency cost, headphone /
+  Bluetooth / USB plug events (the emulator has speaker + mic only), earpiece. The
+  emulator screenshot of the notice is inconclusive: the pre-A7 web view layout squeezes
+  `<main>` to a sliver (only the notice's rounded corner shows), so A7 should confirm the
+  notice at phone width.
+  **A13 checklist (audio, on the real phone):**
+  1. Phone speaker + open mic with a VDI talking: do they hear themselves? With the
+     preset (this build) versus echo if you remove the define. Does the Console show the
+     notice exactly when it echoes, and not when it doesn't? (If it echoes but no notice,
+     flip `aecWorking`.)
+  2. Latency: loopback or the Console's latency numbers with the preset on and off; is
+     the extra mic latency acceptable (about 20-40 ms expected)?
+  3. Plug wired headphones in and out mid-call: output moves and back, **audio keeps
+     flowing both ways, the mic button state never changes**; does the mic input keep
+     working after unplugging a headset with a mic (the input stream is not restarted by
+     JUCE)? Settings shows "Wired headphones" / "Headset mic" then "Phone speaker" / "Phone mic".
+  4. Bluetooth A2DP headset: output goes to it ("Bluetooth · name"), mic stays "Phone mic";
+     picking the headset's mic (SCO): does it capture, and how bad is it?
+  5. USB audio device if available: appears as "USB · name" for both.
+  6. Earpiece: picking it works or not (it may need call mode; if not, drop it from the list).
+  7. Music/video in another app keeps playing while connected and talking; neither pauses.
+  8. Volume buttons change the voice level (media volume) and the notice's wording reads right.
 
 #### A9 — Mic permission flow · S · any + design review · lane P
 - **Depends on:** A7, A2 · **Touches:** `sonobus/Source/` (permission request,
