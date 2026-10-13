@@ -140,9 +140,22 @@ public:
     // keeps the audio running. The web page does not see Back (JUCE 7.0.8's
     // WebBrowserComponent has no evaluateJavascript), so closing the settings
     // sheet with Back is not possible from here: see docs/TASKS.md A7.
+    //
+    // Not Process::hide() itself: in JUCE 7.0.8 it builds its activity LocalRef from
+    // the temporary returned by getCurrentActivity(), which is deleted by then, so ART
+    // aborts ("invalid local reference"). Calling moveTaskToBack here with the ref held
+    // for the whole call is what it should have done (A3, seen on the emulator).
     bool backButtonPressed() override
     {
-        Process::hide();
+        auto* env = getEnv();
+        auto activity = getCurrentActivity();
+        if (env != nullptr && activity.get() != nullptr)
+        {
+            jclass cls = env->GetObjectClass (activity.get());
+            jmethodID moveToBack = env->GetMethodID (cls, "moveTaskToBack", "(Z)Z");
+            env->CallBooleanMethod (activity.get(), moveToBack, JNI_TRUE);
+            env->DeleteLocalRef (cls);
+        }
         return true;
     }
    #endif

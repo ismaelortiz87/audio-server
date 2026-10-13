@@ -137,9 +137,9 @@ Ordered so that every task appears after everything it depends on.
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
 | P9.2 | Native Android Console (APK): broken down into A1–A14 below, lanes in the P9.2 card | P5.6 | — | — | todo | |
-| A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | wip | Claude: scripts + Projucer done; toolchain install scripted, needs running |
+| A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | done | Claude 2026-10-12: toolchain installed and verified, `--check` green, emulator boots, Gradle runs |
 | A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
-| A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | wip | Claude: `.jucer` + Android fixes done; link unproven (no SDK) |
+| A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
 | A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | todo | |
 | A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | wip | Claude: Android API defaults + `self.kind` done; needs emulator |
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | wip | Claude: pack + extract done, host test 10/10 |
@@ -1907,7 +1907,22 @@ toolchain install itself has not been run (no JDK/SDK/NDK on this Mac).
 - `local.properties` is now git-ignored and rewritten from `$ANDROID_HOME` on
   every resave (that is A3's "stop tracking" item, done here because the two
   files cannot be separated).
-**Not done:** `./gradlew --version` and the emulator boot, which need the SDK.
+- **Toolchain installed and verified (Claude, 2026-10-12)**: `scripts/setup-android.sh`
+  run for real, `--check` all green: JDK 17, cmdline-tools, platform 33,
+  build-tools 33.0.2, NDK 25.2.9519653, CMake 3.22.1, emulator, arm64 image,
+  AVD `crosspoint-33`. `./gradlew` (7.5.1, downloaded on first run) works and
+  the emulator boots (`scripts/build-android.sh --emulator`).
+  - **Surprise 1:** `brew install --cask temurin@17` needs `sudo` (a package
+    installer), which a non-interactive shell cannot give. The script now uses
+    the `openjdk@17` formula (no sudo, keg-only under
+    `/opt/homebrew/opt/openjdk@17`), which `find_jdk_home` already looked for.
+    Gradle and the build script find it without `JAVA_HOME`.
+  - **Surprise 2:** the Homebrew cask/formula path needs no manual PATH change;
+    `build-android.sh` exports JAVA_HOME/ANDROID_HOME itself.
+  - `build-android.sh` bugs fixed: launch hint now reads package and activity
+    from `aapt dump badging` (no hard-coded id), BSD-safe capitalisation, and the
+    APK is found with `ls -t` instead of `find -newermt`.
+  - Download sizes: NDK + SDK pieces about 3 GB under `~/Library/Android/sdk`.
 
 #### A2 — UX addendum: Android-only states · S · design · lane D
 - **Depends on:** UX4 · **Touches:** `docs/design/`
@@ -1979,7 +1994,58 @@ in; the link is unproven because there is no NDK on this machine.
   appended is gone.
 - `local.properties` untracked (it held `/Users/jesse/...`) and regenerated.
 - Desktop unbroken: `scripts/build-desktop.sh --app-only` is green.
-**Not done:** `gradlew assembleDebug` and the on-emulator install/join check.
+- **Verified on the emulator (Claude, 2026-10-12)** with `scripts/build-android.sh
+  --emulator`: resave, `assembleDebug`, install. `BUILD SUCCESSFUL`; the first
+  cold build took about 2m15s of Gradle (native compile of all four ABIs:
+  arm64-v8a, armeabi-v7a, x86, x86_64; **all ABIs left on**), incremental
+  rebuilds about 50s. Debug APK is 194 MB (four ABIs, unstripped, with the
+  Console zip). Package `com.sonosaurus.sonobus`, activity
+  `com.sonosaurus.sonobus.SonoBusActivity`, versionName 1.7.2.
+  - **Zero C++ compile or link errors** from the 16 newly listed sources: the
+    previous agent's include-closure work and the `__ANDROID__` guards were enough.
+    The failures were all Gradle/Java/resources side:
+    1. `build.gradle` evaluated `${sonoupload_keystore_password}` etc. at
+       configuration time, so even debug failed ("unknown property"). The `.jucer`
+       now emits `${findProperty('sonoupload_key...') ?: ''}`; A11 passes real
+       values with `-P` or `~/.gradle/gradle.properties`.
+    2. The manifest referenced `@mipmap/ic_launcher[_round]`, which do not exist in
+       the repo (the Projucer only generates `drawable-*/icon.png`). The `.jucer`
+       manifest now says `@drawable/icon`. A4 owns real icons.
+    3. `SonoBusService.java` used `R.drawable.ic_notify` (missing). Interim:
+       `R.drawable.icon`; A4 supplies the notification icon.
+  - **Runtime bugs found and fixed on the emulator (not compile errors):**
+    - JUCE's Android WebView calls `pageLoadHadNetworkError` for **every
+      subresource HTTP error**. The Console probes `rtc/config`, a 404 on the
+      phone (no WebRTC gateway), so the shell replaced a healthy page with "The
+      Console didn't load. ... Not Found". `ConsoleShell.h` now ignores non-`net::`
+      errors on Android. `ApiServer` also serves `/favicon.ico` (alias of
+      `icons/crosspoint-32.png`), which the WebView also requested.
+    - **Back crashed the app** (SIGABRT, "JNI ERROR: jobject is an invalid local
+      reference"): JUCE 7.0.8's `Process::hide()` builds its activity LocalRef
+      from a deleted temporary. `backButtonPressed()` now calls
+      `Activity.moveTaskToBack(true)` itself. After the fix Back goes to the
+      launcher, the process keeps its pid, and the group connection stays
+      `connected` (checked 30+ seconds after Back).
+  - **Launch:** `adb shell am start -n com.sonosaurus.sonobus/.SonoBusActivity`.
+    `logcat`: `JUCE v7.0.8`, `SonoBusActivity C++ constructed`, Oboe streams open,
+    `Bound system chosen udp port`. First launch shows the system mic permission
+    dialog ("Allow SonoBus to record audio?", A9 will own that flow).
+  - **Console renders without the GL context** (attachGL skipped while the web
+    shell shows): header "Crosspoint • Connected", mic button, Open mic / Push to
+    talk, output slider, all in the WebView. Screens (device-only `adb exec-out
+    screencap`): not committed. **Layout problem for A7:** a ~110px empty band at
+    the top (the Android status bar inset is applied twice, or the safe-area
+    padding is wrong) and the station list area is clipped behind the mic panel.
+  - **API:** `adb forward tcp:7070 tcp:7070`; `GET /` returns the Console
+    `index.html` (200), `/favicon.ico` 200, state reports `self.kind: "android"`.
+  - **Group join: verified through the control API only**, not through the stock
+    UI: a WebSocket `connection.connect` to `aoo.sonobus.net:10998`, group
+    `crosspoint-a3-test`, went `connecting` then `connected` (patch stream),
+    persisted after Back. I did not drive the JUCE editor (the stock UI is
+    hidden behind the web shell by A7), so "joins a group with the stock UI" is
+    read as "the engine joins a group". No second peer joined, so no audio was
+    heard.
+  - Desktop `scripts/build-desktop.sh --app-only` is green after all changes.
 
 #### A4 — Crosspoint identity on Android · S · any · lane B
 - **Depends on:** A3 · **Touches:** `.jucer`, `sonobus/Source/android/java/`,

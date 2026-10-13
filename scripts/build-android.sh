@@ -75,6 +75,10 @@ if [ "$DO_RESAVE_ONLY" = "0" ]; then
     export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$PATH"
 fi
 
+aapt_badging() {
+    "$ANDROID_HOME"/build-tools/*/aapt dump badging "$1" 2>/dev/null
+}
+
 # --------------------------------------------------------------- resave ------
 resave() {
     [ -x "$PROJUCER_BIN" ] || die "Projucer not found at $PROJUCER_BIN. Run scripts/build-projucer.sh."
@@ -125,7 +129,8 @@ resave
 cd "$ANDROID_DIR"
 [ "$DO_CLEAN" = "1" ] && { say "gradle clean"; ./gradlew clean; }
 
-say "Gradle assemble$(echo "$CONFIG" | sed 's/^./\U&/')"
+CONFIG_CAP="$(printf '%s' "${CONFIG:0:1}" | tr '[:lower:]' '[:upper:]')${CONFIG:1}"
+say "Gradle assemble$CONFIG_CAP"
 if [ "$CONFIG" = "release" ]; then
     ./gradlew assembleRelease
 else
@@ -133,8 +138,9 @@ else
 fi
 
 # Print the APK path (the product flavor is debug_/release_, see app/build.gradle).
-APK="$(find "$ANDROID_DIR/app/build/outputs/apk" -name '*.apk' -newermt '-10 minutes' 2>/dev/null | head -1)"
-[ -n "$APK" ] || APK="$(find "$ANDROID_DIR/app/build/outputs/apk" -name '*'"$CONFIG"'*.apk' 2>/dev/null | head -1)"
+# Newest APK of this build type (BSD find has no reliable -newermt).
+APK="$(ls -t "$ANDROID_DIR"/app/build/outputs/apk/*/"$CONFIG"/*.apk 2>/dev/null | head -1 || true)"
+[ -n "$APK" ] || APK="$(find "$ANDROID_DIR/app/build/outputs/apk" -name '*.apk' 2>/dev/null | head -1)"
 [ -n "$APK" ] || die "no APK produced"
 
 say "APK"
@@ -145,5 +151,7 @@ if [ "$DO_INSTALL" = "1" ]; then
     say "Install"
     adb devices | grep -qE '\sdevice$' || die "no device/emulator attached (start one, or use --emulator)"
     adb install -r "$APK"
-    echo "  installed. Launch with: adb shell am start -n io.lagreca.app.crosspoint/com.sonosaurus.sonobus.SonoBusActivity"
+    PKG="$(aapt_badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+    ACT="$(aapt_badging "$APK" | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")"
+    echo "  installed. Launch with: adb shell am start -n $PKG/$ACT"
 fi

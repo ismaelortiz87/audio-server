@@ -167,6 +167,14 @@ private:
 
         bool pageLoadHadNetworkError (const String& errorInfo) override
         {
+           #if JUCE_ANDROID
+            // JUCE's Android WebView reports *every* subresource HTTP error here, not just
+            // the page. The Console probes rtc/config, which is a 404 on a phone (no WebRTC
+            // gateway), and that must not replace the page with the error screen. Real
+            // load failures arrive as "net::ERR_..." (or empty, for TLS errors) (A3).
+            if (errorInfo.isNotEmpty() && ! errorInfo.contains ("net::"))
+                return true;
+           #endif
             // Posted so we never delete the web view from inside its own callback.
             Component::SafePointer<ConsoleShellView> sp (&owner);
             MessageManager::callAsync ([sp, errorInfo]
