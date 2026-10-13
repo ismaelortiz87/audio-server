@@ -27,6 +27,14 @@ docs/ANDROID.md (how to build) and docs/design/android.md (the design spec).
 | A13 on-phone acceptance | maelo (human) |
 | B15 phone touch sizes | fixed, closed |
 
+## Update 2026-10-13
+
+- **A9:** the agent stopped at the usage limit. Its partial work is committed
+  as `6421d326` on its branch; resume it per the A9 card.
+- **New lock-screen controls** (tasks A15–A19, TASKS.md "Lock-screen station
+  controls"): A15 is design (Claude only). The others can go to any agent, in
+  the parallel order given there.
+
 ## The A9 agent's job
 
 If it has finished, its branch has commits ahead of `android-apk`. Check with

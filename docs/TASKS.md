@@ -145,12 +145,17 @@ Ordered so that every task appears after everything it depends on.
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | wip | Claude: built and verified on the emulator; awaiting design review (screens in /private/tmp/claude-501/a7-review/) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
-| A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
+| A9 | Mic permission flow + A7/A10 review fixes (resume WIP `6421d326`) | A7, A2 | S | any + design review | todo | partial WIP on branch `worktree-agent-a6d6ce498dac75612` |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | wip, awaiting design review | |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | |
 | A12 | Mic toggle from the headset button (optional) | A14, A7 | S | any + design review | todo | |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
+| A15 | UX addendum: lock-screen station controls (expanded notification + mic tile) | A2, A10 | S | design | todo | |
+| A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | todo | |
+| A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | todo | |
+| A18 | Expanded notification with per-station Mute / Solo / Hears you + Mic, usable locked | A15, A16, A17 | M | any + design review | todo | |
+| A19 | Quick Settings tile: Crosspoint mic on/off | A15, A17 | S | any + design review | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
@@ -2436,6 +2441,13 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
   listening.
 - **Done when:** grant, deny and "deny then grant in Settings" all behave per
   A2 on the emulator; design review passed.
+- **Resume (2026-10-13):** a Sonnet agent got about halfway, then stopped at the
+  usage limit. Its unbuilt, unverified work is committed as `6421d326` on
+  branch `worktree-agent-a6d6ce498dac75612` (22 files). It covers the mic
+  flow and parts of review fixes 1–6 from docs/HANDOFF-android-apk.md
+  ("The A9 agent's job"). Merge `android-apk` into it, finish, build and
+  verify. The notification fixes (DEFAULT channel, one-station copy) stay in
+  A9 because the WIP already touches them.
 - **Result:**
 
 #### A10 — Background audio (foreground service) · M · any + design review · lane P
@@ -2609,6 +2621,113 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
   been measured, compare latency and background behaviour with the PWA.
 - **Done when:** results recorded here; anything that fails becomes a bug
   in `BUGS.md` or a new A-task.
+- **Result:**
+
+### Lock-screen station controls (A15–A19)
+
+maelo asked for this on 2026-10-13 after using the APK. The notification is
+not practical as it stands: once dismissed it doesn't come back until the app
+restarts, and it only has Mic and Disconnect. Android has no Live Activities
+for custom controls; Android 16 "Live Updates" don't allow custom layouts. The
+closest fit is the **expanded foreground-service notification with a custom
+layout**: buttons that work without unlocking, one row per station. A
+**Quick Settings tile** adds the mic toggle.
+
+**Who does what**
+- **Claude (lead, design) only:** A15, and the design reviews of A9, A18 and A19.
+- **Any agent:** A9 (resume), A16, A17, A18, A19.
+- **maelo:** A13 (re-test on the phone with these).
+
+**Order and parallel work**
+
+| Step | Can run in parallel | Waits for |
+|---|---|---|
+| 1 | **A15** (Claude) · **A9** (agent) · **A17** (agent) | nothing |
+| 2 | **A16** (agent) | A9 (both edit `SonoBusService.java`) |
+| 3 | **A18** (agent) · **A19** (agent) | A15 + A17 (A18 also A16) |
+| 4 | design review of A9, A18, A19 (Claude) | step 3 |
+| 5 | A13 on the phone (maelo) | step 4 |
+
+**Files by task** (they're split this way to avoid conflicts):
+- A17: a new receiver plus `AndroidServiceController.h`
+- A16 and A18: `SonoBusService.java` and the notification layout
+- A19: a new `TileService` class
+
+All of them edit the `.jucer` manifest XML: keep those edits small, resolve
+conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
+
+#### A15 — UX addendum: lock-screen controls · S · design (Claude) · lane D
+- **Depends on:** A2, A10 · **Touches:** `docs/design/android.md` (new §12),
+  `design/prototypes/android/`
+- **Do:** spec the collapsed view (live line + Mic on/off), the expanded view
+  (one row per station: swatch-like marker, short name, Mute / Solo / Hears
+  you toggles in their states, then Mic on/off + Disconnect), the order and
+  maximum (4 rows; what a 5th does), button states and copy, what works while
+  locked (all toggles; tapping the body unlocks and opens the app), the solo
+  rule (exclusive, as P5.7), behaviour when the lock screen hides
+  notification content, light/dark system shade, and the Quick Settings mic
+  tile (label, states, locked behaviour). Add a prototype screen.
+- **Done when:** A18 and A19 can be built without inventing anything.
+- **Result:**
+
+#### A17 — Native control bridge · M · any · lane P
+- **Depends on:** A10 · **Touches:** new
+  `sonobus/Source/android/java/io/lagreca/app/crosspoint/ControlReceiver.java`,
+  `sonobus/Source/android/AndroidServiceController.h`, JNI glue, `.jucer`
+  manifest (register the receiver, not exported)
+- **Do:** buttons send `PendingIntent`s (explicit, immutable) to a receiver.
+  The receiver calls into the engine through JNI and runs the **same command
+  paths the control API uses** (`station.setMute`, `station.setSolo` with
+  `exclusive`, `station.setTalk`, `mic.setOn`, `connection.disconnect`), so
+  routing rules and `hearsYou` stay engine-owned. Extend the state pushed to
+  Java (it is already throttled, one push per second at most) with up to 4
+  stations in `stationOrder`, each with id, short name, `colorIndex`, presence,
+  mute, solo, talk and `hearsYou`. Mic changes from here play the earcon
+  (A14's `toggleMicWithEarcon`). Commands must work while the screen is
+  locked, without an activity.
+- **Done when:** a host or emulator test drives every command through the
+  receiver (`adb shell am broadcast` with the explicit component) and the
+  engine state changes accordingly. No UI in this task.
+- **Result:**
+
+#### A16 — Service notification never stays gone · S · any · lane P
+- **Depends on:** A9 (both edit `SonoBusService.java`) · **Touches:**
+  `SonoBusService.java`, `AndroidServiceController.h`
+- **Do:** on Android 14+, users can dismiss foreground-service notifications.
+  Set a `deleteIntent` that re-posts it, and re-post whenever the app comes to
+  the foreground and on every state push, while the service runs. Also check
+  why touching the body made it vanish on maelo's phone (it isn't
+  `setAutoCancel`; check whether the content intent restarts the task or
+  service). Record the cause in *Result*.
+- **Done when:** on an Android 14+ emulator image, swiping the notification
+  away or tapping it brings it back within a second, while connected. After
+  Disconnect or swipe-away from Recents it stays gone.
+- **Result:**
+
+#### A18 — Expanded notification with station controls · M · any + design review · lane P
+- **Depends on:** A15, A16, A17 · **Touches:** `SonoBusService.java`, new
+  `res/layout/notification_*.xml` (`RemoteViews`, `DecoratedCustomViewStyle`;
+  hand-added res files survive a resave, as A7's did), `.jucer` if needed
+- **Do:** build A15's collapsed and expanded views, wired to A17's commands.
+  The views must update from the pushed state without flicker or sound, and
+  work locked: no `setAuthenticationRequired`, `VISIBILITY_PUBLIC`. Keep the
+  existing title/text copy as the collapsed text.
+- **Done when:** on the emulator, locked, every button changes the engine
+  state, and the notification reflects it within a second. Captures go to
+  `/private/tmp/claude-501/a18-review/` (locked collapsed, locked expanded,
+  shade expanded, 4 stations, 1 station, a soloed station, mic live). Design
+  review passed.
+- **Result:**
+
+#### A19 — Quick Settings mic tile · S · any + design review · lane P
+- **Depends on:** A15, A17 · **Touches:** new `MicTileService.java`, `.jucer`
+  manifest (`TileService` with `BIND_QUICK_SETTINGS_TILE`)
+- **Do:** a tile "Crosspoint mic" that toggles the mic through A17, with
+  states per A15 (active = live, inactive = off, unavailable when disconnected
+  or the mic isn't granted). It must work from the lock screen if A15 says so.
+- **Done when:** added to Quick Settings on the emulator, it toggles the mic
+  locked and unlocked, its state follows changes made in the app, and design
+  review passed.
 - **Result:**
 
 ### P9.3 — Native iOS Console · L · deferred
