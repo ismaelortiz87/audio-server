@@ -148,20 +148,20 @@ Ordered so that every task appears after everything it depends on.
 | A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: code verified present; design review: mic-blocked Console approved (A24 02). **Recapture needed:** Settings problem rows (A24 03 was covered by an emulator System UI ANR) |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
-| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | **Recapture needed:** during and after a call **with the mic live before the call** (A24 04/05 were covered by an ANR, and the mic was already off) |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | done | Claude 2026-10-13: design review passed (code matches android.md §5/§6 on every point; unit tests for the earcon). maelo: marked done. **Known unverified:** the live "call detected" path on a real device — this box's `emu gsm call` doesn't flip `AudioManager.getMode()`, so if it ever misbehaves, switch detection to a `PHONE_STATE` broadcast and recapture with the mic live before the call (A24 04/05 were lost to an ANR) |
 | A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
-| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | wip, awaiting check on the Samsung | Claude 2026-10-13: merged (`cc8ddaab`), builds; APK `build/apk/crosspoint-debug-cc8ddaab.apk` |
-| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`), builds; maelo 2026-10-13: checked on the Samsung, confirmed nice |
+| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
-| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
-| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
-| A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip, PR #2 | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; follow-ups (shared station-state, §13.2 Dimmed, §13.3 fresh-install message) in PR #2; car acceptance passed (maelo 2026-10-13, A23) |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
+| A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
@@ -2572,9 +2572,19 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
 - **Done when:** on the emulator, a simulated call (`adb emu gsm call …`)
   shows the §6 states and leaves the mic off afterwards. The earcons play
   locally, and the F2 VDI peer receives **no** cue audio. Design review
-  passed.
-- **Result (Claude sonnet, 2026-10-12)**: implemented; verified on the emulator and with host tests; wip,
-  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
+  passed. *(2026-10-13: design review passed; the emulator call simulation
+  does not flip `AudioManager.getMode()` on this box's image, so the live
+  call path was closed on code + unit-test evidence and marked done by
+  maelo. If a real device ever reports a call and the app ignores it, the
+  fix is to drive detection from a `PHONE_STATE` broadcast instead of
+  `getMode()`, and to recapture with the mic live before the call.)*
+- **Result (Claude sonnet, 2026-10-12; design review Claude, 2026-10-13)**: implemented;
+  verified on the emulator and with host tests; **done 2026-10-13** (maelo) after the design
+  review confirmed the code matches android.md §5/§6 on every point (earcon tone/gap/level/
+  fades + output-only mix after the send tap; mic off on call start with PTT released and
+  staying off after; mic-off earcon on call end; playback gain ramp with pre-fader activity
+  intact; mic button / live band / notification copy; `platform.phoneCall` + `micOffByCall`).
+  Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
   `app-aftercall.png`, `shade-call.png`).
   - **Call detection** (`PlatformMonitor.java`, no permission): `AudioManager.getMode()` every 500 ms:
     `MODE_IN_CALL` (cellular), `MODE_CALL_SCREENING`, or `MODE_IN_COMMUNICATION` (VoIP) while
@@ -2605,6 +2615,15 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
     the output buffer only after every send path has run. I did not run the F2 harness with a desktop
     peer measuring the received audio, and nobody listened to the earcon on the emulator (no audio check).
   - **Not verified:** a VoIP call (only the cellular emulation was run); the earcon's audibility.
+  - **Correction (2026-10-13, re-test on the emulator):** re-running `adb emu gsm call`/`accept` on the
+    API 34 emulator did **not** drive `platform.phoneCall` to true, so the "phoneCall/micOffByCall true"
+    result above could not be reproduced here. The likely cause is the emulator's gsm-call simulation not
+    moving `AudioManager.getMode()` to `MODE_IN_CALL` (incomplete emulator telephony) — on a **real** device
+    the telephony stack does set the audio mode during a live call, so the existing `inCall()` detection
+    (which reads `getMode()`) is plausibly correct but is **unverified in this environment**. Net: A14's
+    engine/earcon/UI side is complete; the "call detected" path still needs a **real-device** (or an
+    emulator that actually flips `getMode`) check, and a `PHONE_STATE` broadcast would make detection
+    robust regardless of the audio mode. Not a code defect proven, just not re-verified on this box.
 
 #### A12 — Mic toggle from the headset button · S · any + design review · lane P · optional
 - **Depends on:** A14, A7 · **Touches:** `sonobus/Source/android/java/`
@@ -3117,7 +3136,49 @@ is ever needed, adds 1–2 days.
   Unit (DHU) as far as it allows, then maelo checks in the car.
 - **Done when:** findings are recorded (works, works with caveats, or
   doesn't), with the chosen behaviour implemented or documented.
-- **Result:**
+- **Result (2026-10-13, `task/A22-bt-mic-setting`):** implemented behind the
+  `settings.bluetoothMic: "phone" | "headset"` setting (android.md §14).
+  - **Findings:** works, with the §14 caveats. Classic Bluetooth: the headset
+    mic is only reachable on the call channel — the engine's A8
+    VoiceCommunication streams follow the route, so "headset" engages
+    `setCommunicationDevice()` (API 31+) or `MODE_IN_COMMUNICATION` + SCO
+    (24–30) while a headset/car is connected, and releases it otherwise.
+    That route is mono at call quality: **placement is off** (the Console says
+    so), both ears get the same mix. LE Audio keeps stereo. A real call always
+    owns the route and is never overridden; the app's own engagement sets
+    `PlatformMonitor.appOwnsAudioMode`, so **A14 call detection is not broken**.
+    The mic on/off state never changes (A14 §6 rule). `platform.bluetoothRoute`
+    reports `{ name, stereo }` (null when nothing is connected); the Console
+    shows the Phone/Headset mic control (with the §14 notes) only while a
+    headset or car is connected.
+  - **Code:** `BluetoothRoute.java` (main-looper route controller), JNI
+    `nativeBtRoute`/`nativeBtMicSetting`, `Signals.btRoute/btMic`, engine
+    setting + persistence, Console UI + placement note, `platform.js btRoute`
+    (unit-tested). **Build-verified:** debug APK assembles (all ABIs), JNI
+    symbols present in libjuce_jni.so, Console strings embedded in the A6 zip.
+  - **Design review (Claude, 2026-10-13): PASSED with two fixes** (in this PR).
+    Checked against android.md §14 + §6: setting, notes, mic-state rule,
+    `platform.bluetoothRoute`, placement note, and the "Bluetooth · {name}"
+    Microphone label (§6) all match. The two bugs found and fixed in
+    `BluetoothRoute.java`:
+    1. **LE Audio must not switch the route.** §14 says LE Audio "keeps
+       stereo" — it can carry media and the mic together, so there is nothing
+       to move. The code engaged `setCommunicationDevice()` for LE too, which
+       would have forced the mono call channel and dropped the stereo it
+       exists to keep (the 2024+ default; maelo's case). Now LE only sets
+       `sHeld`/`appOwnsAudioMode`; only classic A2DP moves to the
+       communication route.
+    2. **Reported route must follow the actual route.** `platform.bluetoothRoute`
+       was set whenever the *setting* was "headset", even when the route
+       wasn't engaged (e.g. a real call owns it). §14 says it is null unless
+       engaged. Now it is null unless the route is on, and the `stereo` flag
+       is the engaged-and-LE case. `releaseRoute()` also no longer clobbers
+       the mode if a call took over first.
+    Not yet: maelo's buds/car check (A13 covers the car).
+    Gotcha: this box's `android-33` SDK jar postdates the
+    `OUTPUT_DEVICE_*`→`TYPE_*` rename, so `BluetoothRoute.java` resolves the
+    type constants at runtime (both names) instead of referencing them at
+    compile time.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`
