@@ -145,7 +145,7 @@ Ordered so that every task appears after everything it depends on.
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | done | Claude: design approved 2026-10-12 (follow-ups moved to A9) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
-| A9 | Mic permission flow + A7/A10 review fixes (resume WIP `6421d326`) | A7, A2 | S | any + design review | todo | partial WIP on branch `worktree-agent-a6d6ce498dac75612` |
+| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: every item verified present on `android-apk` (WIP `6421d326` + later merges); built and run by the A18 agent; console-ui 31/31. In-app screens captured in A24 |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | in-app call screens reviewed with A9/A18 captures |
@@ -2960,7 +2960,15 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   5. Smoke-test on an emulator: it installs and launches, the Console loads,
      it connects to a group, and the lock-screen player shows with working
      buttons.
-  6. Delete the build intermediates (`Builds/Android/app/build`, `.cxx`) and
+  6. For Claude's design review of A9 and A14, capture the in-app screens
+     with adb screencap into `/private/tmp/claude-501/a24-review/`:
+     - the first-connect mic dialog
+     - the Console with the mic blocked, both "Tap to allow" and "Allow in
+       Android settings"
+     - the Settings problem rows
+     - during and after a phone call (`adb emu gsm call` / `gsm cancel`)
+     - the one-station live band
+  7. Delete the build intermediates (`Builds/Android/app/build`, `.cxx`) and
      discard the resave noise.
 - **Done when:** the APK paths, sizes and the commit they were built from are
   recorded here, plus one line on what changed since maelo's last APK
