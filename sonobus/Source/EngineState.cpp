@@ -5,6 +5,11 @@
  #include "PipeWireDevices.h"   // P2.11
 #endif
 
+#if JUCE_ANDROID
+ #include "android/AndroidPlatform.h"   // A10/A14: Java-reported platform signals
+#endif
+#include "AndroidAudioRoute.h"   // A8: plain device names, output route (the naming half is plain C++)
+
 #include <cmath>
 #include <ctime>
 
@@ -406,8 +411,101 @@ String EngineState::deviceName (bool input) const
 {
     if (deviceManager == nullptr) return {};
     const auto setup = deviceManager->getAudioDeviceSetup();
-    return input ? setup.inputDeviceName : setup.outputDeviceName;
+    const String raw = input ? setup.inputDeviceName : setup.outputDeviceName;
+   #if JUCE_ANDROID
+    // A8, android.md section 6: plain words ("Phone speaker"), the same label
+    // devicesVar() gives the entry, so the pickers can mark the current one.
+    return String (androidaudio::labelForJuceName (raw.toStdString(), input, input ? androidDefaultIn : androidDefaultOut));
+   #else
+    return raw;
+   #endif
 }
+
+#if JUCE_ANDROID
+//==============================================================================
+// A8: what the phone is doing with audio. The device scan inside JUCE runs once, but
+// Android's routing changes with headphones, so the "System Default" entry is resolved
+// here, live, at 2 Hz (a few JNI calls).
+void EngineState::refreshAndroidRoute (double nowMs)
+{
+    if (nowMs - androidRouteAtMs < 500.0) return;
+    androidRouteAtMs = nowMs;
+    androidDefaultOut = androidaudio::currentDefaultType (false);
+    androidDefaultIn  = androidaudio::currentDefaultType (true);
+    if (! aecChecked)
+    {
+        aecChecked = true;
+        // JUCE_ANDROID_OBOE_INPUT_PRESET=7 (VoiceCommunication) is set in the .jucer; the
+        // effect must also exist on this phone. Whether it works well is an A13 by-ear check.
+       #if defined (JUCE_ANDROID_OBOE_INPUT_PRESET)
+        aecWorking = JUCE_ANDROID_OBOE_INPUT_PRESET == 7 && androidaudio::platformEchoCancellerAvailable();
+       #endif
+    }
+}
+
+const char* EngineState::androidOutputRoute() const
+{
+    String raw;
+    if (deviceManager != nullptr) raw = deviceManager->getAudioDeviceSetup().outputDeviceName;
+    const std::string name = raw.toStdString();
+    const int type = name.empty() || androidaudio::isSystemDefault (name) ? androidDefaultOut : androidaudio::typeFromJuceName (name);
+    return androidaudio::routeOf (type);
+}
+
+var EngineState::androidDevicesVar()
+{
+    // JUCE lists every AudioDeviceInfo, e.g. "Pixel 8 built-in speaker". Offer each real
+    // device once, by plain label, hide the ones nobody can plug in (remote submix...).
+    // The id stays JUCE's name so devices.setInput/Output keep working. "System Default"
+    // is the one that follows the headphones; it is shown as whatever it currently is,
+    // and the explicit twin of that same device is not offered next to it.
+    struct Entry { String id, label; int pref; };
+    const auto build = [this] (bool input)
+    {
+        std::vector<Entry> list;
+        auto* type = deviceManager->getCurrentDeviceTypeObject();
+        if (type == nullptr) return list;
+        const int defType = input ? androidDefaultIn : androidDefaultOut;
+        for (auto& n : type->getDeviceNames (input))
+        {
+            const std::string raw = n.toStdString();
+            std::string product;
+            const bool sys = androidaudio::isSystemDefault (raw);
+            const int t = sys ? defType : androidaudio::typeFromJuceName (raw, &product);
+            if (! sys && androidaudio::isHidden (t, input)) continue;
+            Entry e { n, String (androidaudio::labelForJuceName (raw, input, defType)), sys ? 100 : androidaudio::preference (t) };
+            bool dup = false;
+            for (auto& o : list)
+                if (o.label == e.label) { dup = true; if (e.pref > o.pref) o = e; break; }
+            if (! dup) list.push_back (e);
+        }
+        return list;
+    };
+    Array<var> ins, outs;
+    if (deviceManager != nullptr)
+    {
+        for (auto& e : build (true))  ins.add (obj ({ { "id", e.id }, { "name", e.label } }));
+        for (auto& e : build (false)) outs.add (obj ({ { "id", e.id }, { "name", e.label } }));
+    }
+    return obj ({ { "inputs", var (ins) }, { "outputs", var (outs) } });
+}
+
+var EngineState::androidPlatformVar()
+{
+    // control-api 5.5 / android.md section 10. Other A-tasks add their own fields
+    // (micPermission, phoneCall...) next to these two.
+    const char* route = androidOutputRoute();
+    MicFields mic;
+    fillMicFields (mic);
+    auto& sig = crosspoint::android::Signals::get();     // A10 / A14 fields
+    return obj ({ { "outputRoute", route },
+                  { "echoRisk", androidaudio::echoRisk (route, aecWorking, mic.transmitting) },
+                  { "notifications", sig.notificationsEnabled.load() ? "granted" : "denied" },
+                  { "backgroundRestricted", sig.backgroundRestricted.load() },
+                  { "phoneCall", processor.isPhoneCall() },
+                  { "micOffByCall", processor.isMicOffByCall() } });
+}
+#endif
 
 String EngineState::agentNode (bool input) const
 {
@@ -446,6 +544,10 @@ String EngineState::nodeDescription (bool input, const String& node)
 
 var EngineState::devicesVar (bool agent)
 {
+   #if JUCE_ANDROID
+    if (! agent && deviceManager != nullptr)
+        return androidDevicesVar();
+   #endif
     Array<var> ins, outs;
     if (agent && pwListed)
     {
@@ -702,6 +804,13 @@ var EngineState::buildConsoleState (double now)
     String name = processor.getCurrentUsername();
     if (name.isEmpty()) name = options.selfName;
 
+   #if JUCE_ANDROID
+    refreshAndroidRoute (now);
+    const var platform = androidPlatformVar();
+   #else
+    const var platform;   // null: control-api 5.5
+   #endif
+
     return obj ({
         { "self", obj ({ { "name", name }, { "role", "console" }, { "kind", processor.getSelfConsoleKind() } }) },
         { "connection", connectionVar (now, false) },
@@ -712,7 +821,7 @@ var EngineState::buildConsoleState (double now)
         { "mic", obj ({ { "mode", mic.mode }, { "on", mic.on }, { "pttHeld", mic.pttHeld },
                         { "transmitting", mic.transmitting }, { "device", deviceName (true) } }) },
         { "output", obj ({ { "device", deviceName (false) }, { "level", (double) gainToLevelDb ((float) wet) } }) },
-        { "platform", options.platformState ? options.platformState() : var() },   // control-api 5.5: null except on Android
+        { "platform", platform },
         { "settings", obj ({ { "soloDimDb", soloDimDb() }, { "pttHotkey", strOrNull (options.pttHotkey ? options.pttHotkey() : String()) },
                              { "codec", codec }, { "bitrateKbps", bitrate },
                              { "networkBuffer", obj ({ { "mode", autoBuf ? "auto" : "manual" },

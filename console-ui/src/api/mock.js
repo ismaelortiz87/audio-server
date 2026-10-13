@@ -21,6 +21,8 @@ export class MockEngine {
     const table = role === 'console' ? CONSOLE_SCENARIOS : AGENT_SCENARIOS;
     const make = table[scenario] ?? Object.values(table)[0];
     this.state = make();
+    // A8: a phone whose platform echo canceller does not work (the android-echo scenario).
+    this.noAec = !!this.state.platform?.echoRisk;
     this.activity = {};
     if (role === 'console') {
       for (const s of Object.values(this.state.stations)) {
@@ -67,6 +69,7 @@ export class MockEngine {
     const held = [...this.conns].some(c => c.pttHeld);
     st.mic.pttHeld = st.mic.mode === 'ptt' && held;
     st.mic.transmitting = st.mic.mode === 'open' ? st.mic.on : st.mic.pttHeld;
+    if (st.platform) st.platform.echoRisk = this.noAec && st.platform.outputRoute === 'speaker' && st.mic.transmitting;
     const anySolo = Object.values(st.stations).some(s => s.solo);
     for (const s of Object.values(st.stations)) {
       s.hearsYou = s.talk && s.presence === 'online' && st.mic.transmitting && !(anySolo && !s.solo);

@@ -691,9 +691,6 @@ public:
         o.configPath = loadedConfigPath;
         if (globalHotkey != nullptr)    // P6.5
             o.pttHotkey = [this]() { return globalHotkey != nullptr ? globalHotkey->getBinding() : String(); };
-       #if JUCE_ANDROID
-        o.platformState = [proc]() { return crosspoint::android::platformVar (*proc); };   // control-api 5.5
-       #endif
         engineState = std::make_unique<crosspoint::EngineState>(*proc, dm, *apiServer, o);
 
         // P4.3 / P4.4: meters stream and command handler

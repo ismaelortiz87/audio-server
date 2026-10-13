@@ -544,6 +544,15 @@ private:
             builder.setSampleRate (newSampleRate);
             builder.setPerformanceMode (oboe::PerformanceMode::LowLatency);
 
+            // CROSSPOINT PATCH (A8): Oboe's input preset defaults to VoiceRecognition, which
+            // has no echo canceller. An app can define JUCE_ANDROID_OBOE_INPUT_PRESET as an
+            // oboe::InputPreset value (VoiceCommunication = 7) to get the platform's AEC and
+            // noise suppression on the mic. Unset = unchanged JUCE behaviour. Android 9+ only.
+           #ifdef JUCE_ANDROID_OBOE_INPUT_PRESET
+            if (direction == oboe::Direction::Input)
+                builder.setInputPreset (static_cast<oboe::InputPreset> (JUCE_ANDROID_OBOE_INPUT_PRESET));
+           #endif
+
            #if JUCE_USE_ANDROID_OBOE_STABILIZED_CALLBACK
             if (newCallback != nullptr)
             {
@@ -566,6 +575,17 @@ private:
                  + "\nPerformanceMode = " + getOboeString (oboe::PerformanceMode::LowLatency));
 
             openResult = builder.openStream (&stream);
+
+           #ifdef JUCE_ANDROID_OBOE_INPUT_PRESET
+            if (openResult != oboe::Result::OK && direction == oboe::Direction::Input)
+            {
+                // CROSSPOINT PATCH (A8): a device that refuses the preset still gets a mic.
+                builder.setInputPreset (oboe::InputPreset::VoiceRecognition);
+                stream = nullptr;
+                openResult = builder.openStream (&stream);
+            }
+           #endif
+
             JUCE_OBOE_LOG ("Building Oboe stream with result: " + getOboeString (openResult)
                  + "\nStream state = " + (stream != nullptr ? getOboeString (stream->getState()) : String ("?")));
 

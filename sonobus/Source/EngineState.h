@@ -43,8 +43,6 @@ public:
         String configError;              // agent: last config load/reload error, else ""
         int intervalMs = 100;
         std::function<String()> pttHotkey;   // P6.5: the global PTT binding ("⌥Space"), "" or unset = none (settings.pttHotkey null)
-        /** Android (control-api 5.5): the state.platform object. Unset = `null` (every other platform). */
-        std::function<var()> platformState;
     };
 
     /** `deviceManager` may be null (no device info is reported then). Registers
@@ -167,6 +165,17 @@ private:
     String deviceName (bool input) const;
     String agentNode (bool input) const;          // the node name shown for the open device
     String nodeDescription (bool input, const String& node);
+
+   #if JUCE_ANDROID
+    // A8: the phone's audio route and echo state (EngineState.cpp)
+    void refreshAndroidRoute (double nowMs);
+    const char* androidOutputRoute() const;
+    var androidDevicesVar();
+    var androidPlatformVar();
+    int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
+    double androidRouteAtMs = -1e12;
+    bool aecChecked = false, aecWorking = false;
+   #endif
 
     // Linux agent (P2.11): PipeWire nodes for the pickers, from pw-dump, cached.
     struct PwNode { String node, description; };

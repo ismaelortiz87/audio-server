@@ -1,5 +1,5 @@
 // Android only. What the Java side reports (PlatformMonitor, the notification
-// actions) and the `platform` object of the Console state (control-api 5.5).
+// actions); EngineState::androidPlatformVar() puts them in state.platform.
 //
 // The JNI callbacks in SonoBusActivity.h only store values here (atomics), so
 // they are safe before the engine exists; the AndroidServiceController (message
@@ -12,8 +12,6 @@
 #include "JuceHeader.h"
 
 #if JUCE_ANDROID
-
-#include "../SonobusPluginProcessor.h"
 
 #include <atomic>
 #include <functional>
@@ -31,18 +29,6 @@ struct Signals
 
     static Signals& get() { static Signals s; return s; }
 };
-
-/** state.platform (message thread). Others add their keys here. */
-inline var platformVar (const SonobusAudioProcessor& proc)
-{
-    auto* o = new DynamicObject();
-    auto& sig = Signals::get();
-    o->setProperty ("notifications", sig.notificationsEnabled.load() ? "granted" : "denied");
-    o->setProperty ("backgroundRestricted", sig.backgroundRestricted.load());
-    o->setProperty ("phoneCall", proc.isPhoneCall());
-    o->setProperty ("micOffByCall", proc.isMicOffByCall());
-    return var (o);
-}
 
 } // namespace crosspoint::android
 
