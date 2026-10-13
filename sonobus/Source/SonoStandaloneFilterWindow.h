@@ -37,6 +37,9 @@
 // HACK
 #include "SonobusPluginEditor.h"
 #include "ConsoleShell.h"   // P6.1
+#if JUCE_ANDROID
+ #include "android/SonoBusActivity.h"   // A10: androidRequestNotificationPermission()
+#endif
 
 #include <limits>
 #include <algorithm>
@@ -119,9 +122,20 @@ public:
         if (audioInputRequired && RuntimePermissions::isRequired (RuntimePermissions::recordAudio)
             && ! RuntimePermissions::isGranted (RuntimePermissions::recordAudio))
             RuntimePermissions::request (RuntimePermissions::recordAudio,
-                                         [this, preferredDefaultDeviceName] (bool granted) { init (granted, preferredDefaultDeviceName); });
-        else
+                                         [this, preferredDefaultDeviceName] (bool granted) {
+                                             init (granted, preferredDefaultDeviceName);
+                                            #if JUCE_ANDROID
+                                             // A10 (android.md section 3): notifications are asked right after the mic answer
+                                             // (Android 13+, once). A9: when the mic flow moves to the first connect, move this with it.
+                                             juce::androidRequestNotificationPermission();
+                                            #endif
+                                         });
+        else {
             init (audioInputRequired, preferredDefaultDeviceName);
+           #if JUCE_ANDROID
+            juce::androidRequestNotificationPermission();   // mic already answered: still ask for notifications, once
+           #endif
+        }
     }
 
     void init (bool enableAudioInput, const String& preferredDefaultDeviceName)

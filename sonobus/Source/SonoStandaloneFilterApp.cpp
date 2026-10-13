@@ -85,6 +85,7 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 
 #if JUCE_ANDROID
 #include "android/SonoBusActivity.h"
+#include "android/AndroidServiceController.h"   // A10 / A14
 
 #if JUCE_USE_ANDROID_OPENSLES || JUCE_USE_ANDROID_OBOE
   #include "juce_audio_devices/native/juce_HighPerformanceAudioHelpers_android.h"
@@ -203,6 +204,9 @@ public:
     std::unique_ptr<crosspoint::ApiServer> apiServer;
     std::unique_ptr<crosspoint::EngineState> engineState;   // P4.2 (declared after apiServer: destroyed first)
     std::unique_ptr<crosspoint::ApiCommands> apiCommands;   // P4.3/P4.4 (declared after engineState: destroyed first)
+   #if JUCE_ANDROID
+    std::unique_ptr<crosspoint::android::AndroidServiceController> androidService;   // A10/A14 (declared after apiCommands: destroyed first)
+   #endif
     String loadedConfigPath;                                 // P4.2: agent state configPath
     String apiStartError;                                    // P6.1: why the API is not listening (shown in the window)
     bool webShellShown = false;                              // A7: the web view is the window content (no GL context then)
@@ -687,6 +691,9 @@ public:
         o.configPath = loadedConfigPath;
         if (globalHotkey != nullptr)    // P6.5
             o.pttHotkey = [this]() { return globalHotkey != nullptr ? globalHotkey->getBinding() : String(); };
+       #if JUCE_ANDROID
+        o.platformState = [proc]() { return crosspoint::android::platformVar (*proc); };   // control-api 5.5
+       #endif
         engineState = std::make_unique<crosspoint::EngineState>(*proc, dm, *apiServer, o);
 
         // P4.3 / P4.4: meters stream and command handler
@@ -714,6 +721,24 @@ public:
                 return true;
             };
         }
+       #if JUCE_ANDROID
+        // android.md section 10. A9 adds platform.requestMic here.
+        hooks.platformCommand = [](const String & cmd, const var & args, String & code, String & msg) {
+            if (cmd == "platform.openSettings") {
+                const String page = args.getProperty ("page", var()).toString();
+                if (page != "app" && page != "notifications" && page != "battery") {
+                    code = "bad_request"; msg = "page must be app, notifications or battery"; return false;
+                }
+                if (! juce::androidOpenSettingsPage (page)) { code = "internal"; msg = "Android could not open that settings page"; return false; }
+                return true;
+            }
+            if (cmd == "platform.allowBackground") {
+                if (! juce::androidAllowBackground()) { code = "internal"; msg = "Android could not open the background-use dialog"; return false; }
+                return true;
+            }
+            code = "bad_request"; msg = "Unknown command " + cmd; return false;
+        };
+       #endif
         hooks.initialConnection = cmdlineConnInfo;
         hooks.hasInitialConnection = cmdlineConnInfo.serverHost.isNotEmpty() && cmdlineConnInfo.groupName.isNotEmpty();
        #if CROSSPOINT_HAS_CONFIG
@@ -723,6 +748,22 @@ public:
         hooks.reloadConfig = [this, proc, dm](String & code, String & msg) { return apiReloadConfig(proc, dm, code, msg); };
        #endif
         apiCommands = std::make_unique<crosspoint::ApiCommands>(*proc, dm, *apiServer, *engineState, apiConfig.role, std::move(hooks));
+
+       #if JUCE_ANDROID
+        // A10 / A14: the foreground service, the notification, phone calls and earcons.
+        androidService = std::make_unique<crosspoint::android::AndroidServiceController>(
+            *proc, *engineState, [this]() { if (apiCommands != nullptr) apiCommands->disconnect(); });
+        androidService->setShutdownHandler ([this, proc]() {
+            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
+            if (apiCommands != nullptr) apiCommands->disconnect();
+            if (mainWindow.get() != nullptr) {
+                mainWindow->pluginHolder->savePluginState();
+                mainWindow->pluginHolder->saveAudioDeviceState();
+            }
+            appProperties.saveIfNeeded();
+            juce::ignoreUnused (proc);
+        });
+       #endif
 
         // B10: a Console started without -c/-g rejoins its last server and group.
         if (apiConfig.role == "console" && cmdlineConnInfo.groupName.isEmpty())
@@ -1732,8 +1773,8 @@ public:
     void timerCallback() override
     {
 #if JUCE_ANDROID
-        DBG("setting foreground service active");
-        setAndroidForegroundServiceActive(true);
+        // A10: the foreground service is driven by the connection state now
+        // (AndroidServiceController), not started unconditionally.
         stopTimer();
         return;
 #endif
@@ -1772,6 +1813,9 @@ public:
         //DBG("shutdown");
         quitSignalWatcher.stopTimer();
         if (globalHotkey != nullptr) { globalHotkey->onChange = nullptr; globalHotkey.reset(); }   // P6.5: first, releases the key
+       #if JUCE_ANDROID
+        androidService.reset(); // A10/A14: before the state and the commands it uses
+       #endif
         apiCommands.reset(); // P4.3/P4.4: before the state and the server
         agentConnector.reset();        // P2.4: before the processor goes away
         agentDeviceWatcher.reset();
@@ -1790,7 +1834,6 @@ public:
         }
 
 #if JUCE_ANDROID
-        setAndroidForegroundServiceActive(false);
   #if JUCE_OPENGL
         detachGL();
   #endif
@@ -1845,19 +1888,17 @@ public:
             mainWindow->pluginHolder->saveAudioDeviceState();
 
             if (auto * sonoproc = dynamic_cast<SonobusAudioProcessor*>(mainWindow->pluginHolder->processor.get())) {
-                if (sonoproc->getNumberRemotePeers() == 0 && !mainWindow->pluginHolder->isInterAppAudioConnected()) {
+                bool keepAudio = false;
+#if JUCE_ANDROID
+                // A10: connected (or trying to) means the service runs and audio keeps flowing
+                // both ways in the background, even with no station present yet.
+                keepAudio = androidService != nullptr && androidService->isServiceWanted();
+#endif
+                if (sonoproc->getNumberRemotePeers() == 0 && !keepAudio && !mainWindow->pluginHolder->isInterAppAudioConnected()) {
                     // shutdown audio engine
                     DBG("no connections shutting down audio");
                     mainWindow->getDeviceManager().closeAudioDevice();
                     sonoproc->setPlayHead (nullptr);
-#if JUCE_ANDROID
-                    setAndroidForegroundServiceActive(false);
-#endif
-                }
-                else {
-#if JUCE_ANDROID
-                    setAndroidForegroundServiceActive(true);
-#endif
                 }
             }
 
@@ -1872,18 +1913,6 @@ public:
         
         Desktop::getInstance().setScreenSaverEnabled(true);        
     }
-
-    void setAndroidForegroundServiceActive(bool flag)
-    {
-    #if JUCE_ANDROID
-        LocalRef<jobject> activity (getMainActivity());
-
-        if (activity != nullptr) {
-            getEnv()->CallVoidMethod(activity.get(), SonoBusActivity.setForegroundServiceActive, flag);
-        }
-    #endif
-    }
-
 
     void resumed() override
     {
@@ -1904,10 +1933,6 @@ public:
             DBG("was not active: restarting");
             mainWindow->getDeviceManager().restartLastAudioDevice();
         }
-
-#if JUCE_ANDROID
-        setAndroidForegroundServiceActive(true);
-#endif
 
     }
     

@@ -266,7 +266,7 @@ void ApiCommands::setHotkeyPtt (bool down)
 void ApiCommands::applyPtt()
 {
     // A hold only counts in ptt mode (mock: pttHeld = mode == ptt && any holder).
-    processor.setPttHeld (processor.getMicMode() == Proc::MicMode::PushToTalk && ! pttHolders.empty());
+    processor.setPttHeld (processor.getMicMode() == Proc::MicMode::PushToTalk && ! pttHolders.empty() && ! processor.isPhoneCall());
 }
 
 var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const var& a)
@@ -274,6 +274,17 @@ var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const v
     // ---- connection --------------------------------------------------------
     if (cmd == "connection.connect")    { connectionConnect (a); return {}; }
     if (cmd == "connection.disconnect") { connectionDisconnect(); return {}; }
+
+    // ---- platform (android.md section 10) ------------------------------------
+    if (cmd.startsWith ("platform."))
+    {
+        if (! hooks.platformCommand)
+            throw CmdError { "not_supported", cmd + " is only available in the Android app" };
+        String code, message;
+        if (! hooks.platformCommand (cmd, a, code, message))
+            throw CmdError { code.isNotEmpty() ? code : "internal", message };
+        return {};
+    }
 
     // ---- stations ----------------------------------------------------------
     if (cmd == "station.setLevel")
@@ -358,7 +369,10 @@ var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const v
     {
         if (processor.getMicMode() != Proc::MicMode::Open)
             throw CmdError { "wrong_mode", "mic.setOn only works in open-mic mode" };
-        processor.setMicOn (P44_VALIDATE (needBool (a, "on")));
+        const bool on = P44_VALIDATE (needBool (a, "on"));
+        if (on && processor.isPhoneCall())      // A14: the phone owns the audio during a call
+            throw CmdError { "busy", "The mic is off during your phone call" };
+        processor.setMicOn (on);
         return {};
     }
     if (cmd == "mic.ptt")

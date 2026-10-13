@@ -43,6 +43,8 @@ public:
         String configError;              // agent: last config load/reload error, else ""
         int intervalMs = 100;
         std::function<String()> pttHotkey;   // P6.5: the global PTT binding ("⌥Space"), "" or unset = none (settings.pttHotkey null)
+        /** Android (control-api 5.5): the state.platform object. Unset = `null` (every other platform). */
+        std::function<var()> platformState;
     };
 
     /** `deviceManager` may be null (no device info is reported then). Registers
@@ -74,6 +76,10 @@ public:
     void setUserDisconnected (bool disconnected)    { userDisconnected = disconnected; }
     /** agent.reloadConfig result: shown as state.configError and connection.error. */
     void setConfigError (const String& err)         { configError = err; }
+
+    /** Message thread. The state as of the last tick (A10: the Android notification is
+        derived from the same data the Console shows). */
+    var getLastState() const                        { return previous; }
 
     /** Message thread. Builds the state now and publishes the difference. Called
         by the timer; tests and P4.4 can call it after a change to avoid waiting

@@ -13,6 +13,8 @@
 #include "juce_core/juce_core.h"
 #include "juce_core/native/juce_JNIHelpers_android.h"
 
+#include "AndroidPlatform.h"
+
 class SonoBusActivity
 {
 public:
@@ -54,6 +56,10 @@ private:
     FIELD    (cppCounterpartInstance,    "cppCounterpartInstance", "J") \
     CALLBACK (constructNativeClassJni,   "constructNativeClass",   "()V") \
     CALLBACK (destroyNativeClassJni,     "destroyNativeClass",     "()V") \
+    CALLBACK (nativePlatformSignalsJni,  "nativePlatformSignals",  "(ZZ)V") \
+    CALLBACK (nativePhoneCallJni,        "nativePhoneCall",        "(Z)V") \
+    CALLBACK (nativeNotificationActionJni, "nativeNotificationAction", "(I)V") \
+    CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
 #undef JNI_CLASS_MEMBERS
@@ -78,6 +84,33 @@ private:
             delete myself;
     }
 
+    // A10 / A14: static natives (PlatformMonitor, the service's notification actions). They
+    // only record what happened; the AndroidServiceController acts on it on the message thread.
+    static void JNIEXPORT nativePlatformSignalsJni (JNIEnv*, jclass, jboolean notifications, jboolean restricted)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        sig.notificationsEnabled.store (notifications != JNI_FALSE);
+        sig.backgroundRestricted.store (restricted != JNI_FALSE);
+    }
+
+    static void JNIEXPORT nativePhoneCallJni (JNIEnv*, jclass, jboolean inCall)
+    {
+        crosspoint::android::Signals::get().phoneCall.store (inCall != JNI_FALSE);
+    }
+
+    static void JNIEXPORT nativeNotificationActionJni (JNIEnv*, jclass, jint action)
+    {
+        crosspoint::android::Signals::get().pendingAction.store ((int) action);
+    }
+
+    // Swipe-away: runs on the Android main thread, which is JUCE's message thread.
+    static void JNIEXPORT nativeShutdownJni (JNIEnv*, jclass)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        sig.shutdownRequested.store (true);
+        if (sig.onShutdown) sig.onShutdown();
+    }
+
  
     //==============================================================================
     jweak javaCounterpartInstance = nullptr;
@@ -88,10 +121,46 @@ private:
 namespace juce {
 
 #define JNI_CLASS_MEMBERS(METHOD, STATICMETHOD, FIELD, STATICFIELD, CALLBACK) \
-    METHOD (setForegroundServiceActive,     "setForegroundServiceActive", "(Z)V")
+    METHOD (updateConnectionNotification,   "updateConnectionNotification", "(ZLjava/lang/String;Ljava/lang/String;ZI)V") \
+    METHOD (requestNotificationPermission,  "requestNotificationPermission", "()V") \
+    METHOD (openSettingsPage,               "openSettingsPage", "(Ljava/lang/String;)Z") \
+    METHOD (allowBackground,                "allowBackground", "()Z")
 
     DECLARE_JNI_CLASS (SonoBusActivity, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH);
 #undef JNI_CLASS_MEMBERS
+
+// Calls into the activity (A10). Message thread. Defined here, inside juce::, where
+// `SonoBusActivity` is unambiguously the JNI class above.
+inline void androidUpdateConnectionNotification (bool active, const String& title, const String& text, bool live, int micAction)
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity == nullptr) return;
+    auto* env = getEnv();
+    LocalRef<jstring> jTitle (javaString (title)), jText (javaString (text));
+    env->CallVoidMethod (activity.get(), SonoBusActivity.updateConnectionNotification,
+                         (jboolean) active, jTitle.get(), jText.get(), (jboolean) live, (jint) micAction);
+}
+
+/** android.md section 3: notifications are asked right after the mic answer (Android 13+). */
+inline void androidRequestNotificationPermission()
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity != nullptr) getEnv()->CallVoidMethod (activity.get(), SonoBusActivity.requestNotificationPermission);
+}
+
+inline bool androidOpenSettingsPage (const String& page)
+{
+    LocalRef<jobject> activity (getMainActivity());
+    if (activity == nullptr) return false;
+    LocalRef<jstring> jPage (javaString (page));
+    return getEnv()->CallBooleanMethod (activity.get(), SonoBusActivity.openSettingsPage, jPage.get()) != JNI_FALSE;
+}
+
+inline bool androidAllowBackground()
+{
+    LocalRef<jobject> activity (getMainActivity());
+    return activity != nullptr && getEnv()->CallBooleanMethod (activity.get(), SonoBusActivity.allowBackground) != JNI_FALSE;
+}
 
 
 }

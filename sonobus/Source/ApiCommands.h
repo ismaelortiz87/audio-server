@@ -42,6 +42,9 @@ public:
             persists it; returns false with a message when it cannot. Unset = the
             engine has no global hotkey, and the key answers `not_supported`. */
         std::function<bool (const String& spec, String& errMessage)> setPttHotkey;
+        /** platform.* (android.md section 10: openSettings, allowBackground, and A9's
+            requestMic). Unset = `not_supported` (every platform but Android). */
+        std::function<bool (const String& cmd, const var& args, String& errCode, String& errMessage)> platformCommand;
         /** The connection the app was started with (headless -c/-g/-n or the YAML). */
         AooServerConnectionInfo initialConnection;
         bool hasInitialConnection = false;
@@ -64,6 +67,9 @@ public:
         logic as a client's mic.ptt, so a UI hold and the hotkey combine: the mic is
         held while either is down). Ignored unless the mic is in push-to-talk mode. */
     void setHotkeyPtt (bool down);
+
+    /** The same as the connection.disconnect command (A10: the notification's Disconnect action). */
+    void disconnect()                            { connectionDisconnect(); }
 
     /** Frame builders, exposed for tests of the dB mapping. */
     static var levelPair (float peak, float rms);

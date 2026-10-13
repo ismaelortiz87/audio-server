@@ -6088,12 +6088,30 @@ void SonobusAudioProcessor::setMicMode(MicMode mode)
     // mode (e.g. a repeated command) can't cause a gap in a held PTT.
     if (mMicMode.exchange(m) != m) {
         mPttHeld.store(false);
+        mMicOffByCall.store(false);     // A14: a mode change ends "mic off since your phone call"
     }
 }
 
 bool SonobusAudioProcessor::isMicTransmitting() const
 {
+    if (mPhoneCall.load()) return false;    // A14: a call owns the audio
     return mMicMode.load() == (int) MicMode::PushToTalk ? mPttHeld.load() : mMicOn.load();
+}
+
+// A14 (android.md section 6)
+void SonobusAudioProcessor::setPhoneCall(bool inCall)
+{
+    if (mPhoneCall.exchange(inCall) == inCall) return;
+    if (inCall) {
+        // The mic goes off and STAYS off: nothing here turns it back on.
+        mMicOffByCall.store(true);
+        mPttHeld.store(false);
+        mMicOn.store(false);
+    }
+    else if (mMicMode.load() == (int) MicMode::Open) {
+        // "The mic-off earcon plays when the call ends, not when it starts."
+        mEarcon.request(false);
+    }
 }
 
 // P4.4
@@ -9516,6 +9534,18 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
     }
 
     
+    // A14: a phone call silences playback (10 ms ramps). Gain only; the receive
+    // streams keep running so the audio is back the moment the call ends.
+    {
+        const float callTarget = mPhoneCall.load() ? 0.0f : 1.0f;
+        const float callStart = mCallPlaybackGain;
+        mCallPlaybackGain = approachGain(callStart, callTarget);
+        if (callStart != 1.0f || mCallPlaybackGain != 1.0f) {
+            for (int channel = 0; channel < mainBusOutputChannels; ++channel)
+                buffer.applyGainRamp(channel, 0, numSamples, callStart, mCallPlaybackGain);
+        }
+    }
+
     // P4.4 agent.testTone: 440 Hz at -18 dBFS into the main output, 10 ms fades.
     // Atomics and arithmetic only, no allocation.
     if (const int armed = mApiToneArm.exchange(0); armed > 0) {
@@ -9541,6 +9571,14 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
         mApiTonePhase = ph;
         mApiToneElapsed += n;
         mApiToneRemaining -= n;
+    }
+
+    // A14 (android.md section 5): the mic on / off cue. LOCAL ONLY: it is added to
+    // the main output here, after the remote.oursource->process() calls above
+    // that consumed sendWorkBuffer, and nowhere else (not the recording mix, not
+    // a send buffer), so no station can ever receive it.
+    if (mainBusOutputChannels > 0) {
+        mEarcon.render(buffer.getArrayOfWritePointers(), mainBusOutputChannels, numSamples, getSampleRate());
     }
 
     outputMeterSource.measureBlock (buffer, 0, numSamples);

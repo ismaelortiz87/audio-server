@@ -3,12 +3,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.lagreca.app.crosspoint" android:versionCode="86"
           android:versionName="1.7.2">
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
   <supports-screens android:smallScreens="true" android:normalScreens="true" android:largeScreens="true" android:anyDensity="true"
                     android:xlargeScreens="true"/>
   <application android:label="Crosspoint" android:name="com.rmsl.juce.JuceApp" android:icon="@drawable/icon" android:hardwareAccelerated="true"
                android:networkSecurityConfig="@xml/network_security_config" android:allowAudioPlaybackCapture="true"
                android:theme="@android:style/Theme.NoTitleBar">
-    <service android:name="SonoBusService" android:enabled="true" android:exported="false"/>
+    <service android:name="SonoBusService" android:enabled="true" android:exported="false" android:foregroundServiceType="microphone|mediaPlayback"
+             android:stopWithTask="false"/>
     <activity android:label="Crosspoint" android:configChanges="keyboardHidden|orientation|screenSize" android:screenOrientation="unspecified"
               android:launchMode="singleTask" android:hardwareAccelerated="true" android:name="io.lagreca.app.crosspoint.SonoBusActivity"
               android:exported="true">

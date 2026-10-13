@@ -14,6 +14,7 @@
 #include <string>
 
 #include "MVerb.h"
+#include "Earcon.h"
 
 #include "EffectParams.h"
 #include "ChannelGroup.h"
@@ -380,12 +381,26 @@ public:
     void setMicMode(MicMode mode);
     MicMode getMicMode() const { return mMicMode.load() == (int) MicMode::PushToTalk ? MicMode::PushToTalk : MicMode::Open; }
     // Stored in either mode; it only matters in open mode (P4.4 enforces wrong_mode).
-    void setMicOn(bool on) { mMicOn.store(on); }
+    // Turning the mic on (or holding PTT) clears micOffByCall (A14).
+    void setMicOn(bool on) { mMicOn.store(on); if (on) mMicOffByCall.store(false); }
     bool getMicOn() const { return mMicOn.load(); }
-    void setPttHeld(bool held) { mPttHeld.store(held); }
+    void setPttHeld(bool held) { mPttHeld.store(held); if (held) mMicOffByCall.store(false); }
     bool getPttHeld() const { return mPttHeld.load(); }
-    // mode == open ? on : pttHeld
+    // mode == open ? on : pttHeld; never while a phone call owns the audio (A14)
     bool isMicTransmitting() const;
+
+    // A14 (android.md section 6): a phone or VoIP call. While it lasts the mic is
+    // off (open mode: mic turned off; PTT: holds ignored) and playback is
+    // silenced. When it ends playback returns and the mic STAYS off.
+    // micOffByCall is true from call start until the mic is turned on or the
+    // mode changes. Message thread.
+    void setPhoneCall(bool inCall);
+    bool isPhoneCall() const { return mPhoneCall.load(); }
+    bool isMicOffByCall() const { return mMicOffByCall.load(); }
+
+    // A14 (android.md section 5): the local mic on / off cue. Mixed into the
+    // output only, after everything that is sent to stations. Any thread.
+    void playEarcon(bool micOn) { mEarcon.request(micOn); }
 
     // Playback dim applied to non-soloed peers while anything is soloed
     // (spec 3.5; default -18 dB). Clamped to -60..0 dB.
@@ -1196,6 +1211,10 @@ private:
     std::atomic<int>   mMicMode { (int) MicMode::Open };
     std::atomic<bool>  mMicOn { true };
     std::atomic<bool>  mPttHeld { false };
+    std::atomic<bool>  mPhoneCall { false };      // A14
+    std::atomic<bool>  mMicOffByCall { false };   // A14
+    float              mCallPlaybackGain = 1.0f;  // audio thread: ramps to 0 during a call
+    crosspoint::Earcon mEarcon;                   // A14
     std::atomic<float> mSoloDimDb { -18.0f };
     // P4.4
     std::atomic<bool>  mSendPaused { false };

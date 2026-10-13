@@ -3,132 +3,264 @@
 
 package io.lagreca.app.crosspoint;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.Notification;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
+import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
-import android.os.Binder;
-import androidx.annotation.Nullable;
+import android.os.Looper;
+import android.os.PowerManager;
+import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
-import android.util.Log;
-
+/**
+ * A10 (docs/design/android.md sections 1 and 4): the foreground service that
+ * keeps the engine alive from connect until Disconnect or swipe-away.
+ *
+ * It owns no copy of its own: the native side computes title, text, tint and
+ * the Mic action from the engine state (ConnectionNotification.h) and pushes
+ * them through SonoBusActivity.updateConnectionNotification() -> apply().
+ * The service only draws them, holds the Wi-Fi and wake locks while it runs,
+ * and reports the two notification actions and a swipe-away back to native.
+ */
 public class SonoBusService extends Service {
 
-     private final static String TAG = "SonoBus";
-    private final static String FOREGROUND_CHANNEL_ID = "foreground_audio_sonobus";
-    private NotificationManager mNotificationManager;
-    
-    public static final int NOTIFICATION_ID_FOREGROUND_SERVICE = 8468343;
+    private final static String TAG = "Crosspoint";
 
-    private IBinder mBinder = new MyBinder();
-    
-    @Nullable
+    public static final String CHANNEL_ID = "connection";
+    private static final String OLD_CHANNEL_ID = "foreground_audio_sonobus";
+    public static final int NOTIFICATION_ID = 1555;
+
+    static final String ACTION_MIC = "io.lagreca.app.crosspoint.action.MIC";
+    static final String ACTION_DISCONNECT = "io.lagreca.app.crosspoint.action.DISCONNECT";
+
+    // android.md section 4: tint accent normally, live while the voice reaches a station.
+    private static final int COLOR_ACCENT = 0xFF2E6B66;
+    private static final int COLOR_LIVE = 0xFFFF4F7B;
+
+    // The latest content from native (main thread only).
+    private static String sTitle = "Crosspoint";
+    private static String sText = "";
+    private static boolean sLive = false;
+    private static int sMicAction = 0;           // 0 none, 1 "Mic off", 2 "Mic on"
+    private static SonoBusService sInstance = null;
+
+    private NotificationManager mNotificationManager;
+    private PowerManager.WakeLock mWakeLock;
+    private WifiManager.WifiLock mWifiLock, mWifiLockLowLatency;
+    private int mForegroundTypes = -1;
+    private boolean mStarted = false;
+
+    // ---------------------------------------------------------------- native -> service
+
+    /** Main thread. Start, update or stop the service from the native state. */
+    static void apply(Context ctx, boolean active, String title, String text, boolean live, int micAction) {
+        sTitle = title;
+        sText = text;
+        sLive = live;
+        sMicAction = micAction;
+        if (!active) {
+            if (sInstance != null) sInstance.shutDown();
+            return;
+        }
+        if (sInstance != null && sInstance.mStarted) {
+            sInstance.refresh();
+        } else {
+            Intent intent = new Intent(ctx, SonoBusService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent);
+            else ctx.startService(intent);
+        }
+    }
+
+    // ---------------------------------------------------------------- lifecycle
+
     @Override
     public IBinder onBind(Intent intent) {
-        return mBinder;
+        return null;
     }
+
     @Override
     public void onCreate() {
         super.onCreate();
-
-        if (BuildConfig.DEBUG) Log.d(TAG, "SonoBus service created");            
-
+        if (BuildConfig.DEBUG) Log.d(TAG, "service created");
+        sInstance = this;
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        
-        //doStartForeground();
+        createChannel();
     }
-    
-    public void makeForegroundActive(boolean flag) 
-    {
-        if (flag) {
-            doStartForeground();
-        }
-        else {
-            stopForeground(true);
-        }
-    }
-    
-    public void doStartForeground()
-    {
-        //Toast.makeText(this,"Creating Notification",Toast.LENGTH_SHORT).show();
-        
-        // handle build version above android oreo
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
-            mNotificationManager.getNotificationChannel(FOREGROUND_CHANNEL_ID) == null) {
-            CharSequence name = "SonoBus Audio"; //getString(R.string.text_name_notification);
-            int importance = NotificationManager.IMPORTANCE_LOW;
-            NotificationChannel channel = new NotificationChannel(FOREGROUND_CHANNEL_ID, name, importance);
-            channel.enableVibration(false);
-            mNotificationManager.createNotificationChannel(channel);
-            //Log.d(TAG, "starting notification on O");            
-        }
-        
-        Intent notificationIntent = new Intent(this, SonoBusActivity.class);
-        notificationIntent.setAction(Intent.ACTION_MAIN);
-        notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        notificationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        
-        // if min sdk goes below honeycomb
-        /*if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
-         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-         } else {
-         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-         }*/
-		 
-        int immutableflag = 0x04000000; // done to avoid version checking
-        
-		PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | immutableflag);
-        
-        
-        NotificationCompat.Builder notificationBuilder;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            notificationBuilder = new NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID);
-        } else {
-            notificationBuilder = new NotificationCompat.Builder(this);
-        }
-        
-        notificationBuilder.setContentTitle("SonoBus")
-        .setContentText("App is active")
-        .setOnlyAlertOnce(true)
-        .setAutoCancel(true)
-        .setCategory(NotificationCompat.CATEGORY_SERVICE)
-        .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setContentIntent(pendingIntent)
-        .setSmallIcon(R.drawable.ic_stat_crosspoint) // A4: monochrome status-bar icon (design/icon/crosspoint-notification.svg)
-        //.setPriority(Notification.PRIORITY_MAX)
-        .setOngoing(true).build();
-        
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            notificationBuilder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        }
-        
-        startForeground(1555, notificationBuilder.build());
-        
-    }
-    
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-
-        //doStartForeground();
-        
-        return START_STICKY;
+        String action = intent != null ? intent.getAction() : null;
+        if (ACTION_MIC.equals(action)) {
+            SonoBusActivity.nativeNotificationAction(1);
+        } else if (ACTION_DISCONNECT.equals(action)) {
+            SonoBusActivity.nativeNotificationAction(2);
+        }
+        if (!mStarted) {
+            mStarted = true;
+            acquireLocks();
+            refresh();
+        }
+        // The engine lives in this process: a restart by the system would only
+        // bring up a notification for an engine that is gone.
+        return START_NOT_STICKY;
     }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // stopWithTask="false" in the manifest, so we get here when the app is
+        // swiped away from Recents: disconnect and quit (android.md section 1).
+        SonoBusActivity.quitApp(this);
+        super.onTaskRemoved(rootIntent);
+    }
+
     @Override
     public void onDestroy() {
-       if (BuildConfig.DEBUG) Log.d(TAG, "SonoBus service stopped");            
-
+        releaseLocks();
+        if (sInstance == this) sInstance = null;
+        mStarted = false;
+        if (BuildConfig.DEBUG) Log.d(TAG, "service stopped");
+        super.onDestroy();
     }
-    
-    public class MyBinder extends Binder {
-        SonoBusService getService() {
-            return SonoBusService.this;
+
+    /** Disconnect / swipe-away: remove the notification and stop. */
+    void shutDown() {
+        mStarted = false;
+        mForegroundTypes = -1;
+        stopForeground(true);
+        stopSelf();
+        mNotificationManager.cancel(NOTIFICATION_ID);
+        releaseLocks();
+    }
+
+    // ---------------------------------------------------------------- notification
+
+    private void createChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        if (mNotificationManager.getNotificationChannel(OLD_CHANNEL_ID) != null)
+            mNotificationManager.deleteNotificationChannel(OLD_CHANNEL_ID);
+        if (mNotificationManager.getNotificationChannel(CHANNEL_ID) != null) return;
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Connection", NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription("Shows whether your microphone is live while Crosspoint is connected");
+        channel.enableVibration(false);
+        channel.setSound(null, null);
+        channel.setShowBadge(false);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        mNotificationManager.createNotificationChannel(channel);
+    }
+
+    private PendingIntent actionIntent(String action, int requestCode) {
+        Intent i = new Intent(this, SonoBusService.class).setAction(action);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? PendingIntent.getForegroundService(this, requestCode, i, flags)
+            : PendingIntent.getService(this, requestCode, i, flags);
+    }
+
+    private Notification build() {
+        Intent open = new Intent(this, SonoBusActivity.class);
+        open.setAction(Intent.ACTION_MAIN);
+        open.addCategory(Intent.CATEGORY_LAUNCHER);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent content = PendingIntent.getActivity(this, 0, open, flags);
+
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(sTitle)
+            .setContentText(sText)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(sText))
+            .setSmallIcon(R.drawable.ic_stat_crosspoint)          // A4: design/icon/crosspoint-notification.svg
+            .setColor(sLive ? COLOR_LIVE : COLOR_ACCENT)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(content);
+        // At most two actions, in this order (android.md section 4).
+        if (sMicAction == 1) b.addAction(0, "Mic off", actionIntent(ACTION_MIC, 1));
+        else if (sMicAction == 2) b.addAction(0, "Mic on", actionIntent(ACTION_MIC, 1));
+        b.addAction(0, "Disconnect", actionIntent(ACTION_DISCONNECT, 2));
+        return b.build();
+    }
+
+    private int foregroundTypes() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0;
+        int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+        // The microphone type needs RECORD_AUDIO (enforced from Android 14).
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        return types;
+    }
+
+    private void refresh() {
+        Notification n = build();
+        int types = foregroundTypes();
+        if (mForegroundTypes != types) {
+            // First call, or the mic permission changed: (re)declare the types.
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION_ID, n, types);
+                else startForeground(NOTIFICATION_ID, n);
+                mForegroundTypes = types;
+            } catch (RuntimeException e) {
+                Log.e(TAG, "startForeground failed", e);
+                startForeground(NOTIFICATION_ID, n);
+                mForegroundTypes = types;
+            }
+        } else {
+            mNotificationManager.notify(NOTIFICATION_ID, n);
         }
     }
-    
+
+    // ---------------------------------------------------------------- locks
+
+    /** Held only while the service runs, i.e. while connected (or trying to). */
+    private void acquireLocks() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "crosspoint:connection");
+            mWakeLock.setReferenceCounted(false);
+            mWakeLock.acquire();
+
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    mWifiLockLowLatency = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "crosspoint:lowlatency");
+                    mWifiLockLowLatency.setReferenceCounted(false);
+                    mWifiLockLowLatency.acquire();
+                }
+                if (Build.VERSION.SDK_INT < 34) {
+                    // The low-latency mode only applies with the screen on and the app in front; this one
+                    // keeps Wi-Fi out of power save while the screen is off.
+                    mWifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "crosspoint:highperf");
+                    mWifiLock.setReferenceCounted(false);
+                    mWifiLock.acquire();
+                }
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "could not take the wake/Wi-Fi locks", e);
+        }
+    }
+
+    private void releaseLocks() {
+        try {
+            if (mWakeLock != null && mWakeLock.isHeld()) mWakeLock.release();
+            if (mWifiLock != null && mWifiLock.isHeld()) mWifiLock.release();
+            if (mWifiLockLowLatency != null && mWifiLockLowLatency.isHeld()) mWifiLockLowLatency.release();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "could not release the locks", e);
+        }
+        mWakeLock = null; mWifiLock = null; mWifiLockLowLatency = null;
+    }
 }
