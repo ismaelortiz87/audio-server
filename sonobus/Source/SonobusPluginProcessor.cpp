@@ -163,15 +163,18 @@ static int agentSilentSecondsOverride()
 
 // P1.7 / control-api section 7: what kind of Console this is, advertised in its
 // peer info next to "role" so a VDI agent can show "Console - Mac". Values:
-// "mac" (default on macOS), "web" (the headless Console serving the web UI; set
-// CROSSPOINT_CONSOLE_KIND=web), "other" (default elsewhere). Anything else
-// given in the env is ignored. Only a Console advertises it.
+// "mac" (default on macOS), "android" (the native phone app, A5), "web" (the
+// headless Console serving the web UI; set CROSSPOINT_CONSOLE_KIND=web),
+// "other" (default elsewhere). Anything else given in the env is ignored. Only a
+// Console advertises it.
 static String consoleKindString()
 {
     static String v = [] {
         auto e = SystemStats::getEnvironmentVariable("CROSSPOINT_CONSOLE_KIND", "").trim().toLowerCase();
-        if (e == "mac" || e == "web" || e == "other") return e;
-#if JUCE_MAC
+        if (e == "mac" || e == "android" || e == "web" || e == "other") return e;
+#if JUCE_ANDROID
+        return String("android");   // A5: agents show "Console - Android"
+#elif JUCE_MAC
         return String("mac");
 #else
         return String("other");
@@ -6085,12 +6088,31 @@ void SonobusAudioProcessor::setMicMode(MicMode mode)
     // mode (e.g. a repeated command) can't cause a gap in a held PTT.
     if (mMicMode.exchange(m) != m) {
         mPttHeld.store(false);
+        mMicOffByCall.store(false);     // A14: a mode change ends "mic off since your phone call"
     }
 }
 
 bool SonobusAudioProcessor::isMicTransmitting() const
 {
+    if (mPhoneCall.load()) return false;    // A14: a call owns the audio
+    if (mMicBlocked.load()) return false;   // A9: the OS has not granted the microphone
     return mMicMode.load() == (int) MicMode::PushToTalk ? mPttHeld.load() : mMicOn.load();
+}
+
+// A14 (android.md section 6)
+void SonobusAudioProcessor::setPhoneCall(bool inCall)
+{
+    if (mPhoneCall.exchange(inCall) == inCall) return;
+    if (inCall) {
+        // The mic goes off and STAYS off: nothing here turns it back on.
+        mMicOffByCall.store(true);
+        mPttHeld.store(false);
+        mMicOn.store(false);
+    }
+    else if (mMicMode.load() == (int) MicMode::Open) {
+        // "The mic-off earcon plays when the call ends, not when it starts."
+        mEarcon.request(false);
+    }
 }
 
 // P4.4
@@ -9513,6 +9535,18 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
     }
 
     
+    // A14: a phone call silences playback (10 ms ramps). Gain only; the receive
+    // streams keep running so the audio is back the moment the call ends.
+    {
+        const float callTarget = (mPhoneCall.load() || mListeningPaused.load()) ? 0.0f : 1.0f;   // A18: Listening paused rides the same ramp
+        const float callStart = mCallPlaybackGain;
+        mCallPlaybackGain = approachGain(callStart, callTarget);
+        if (callStart != 1.0f || mCallPlaybackGain != 1.0f) {
+            for (int channel = 0; channel < mainBusOutputChannels; ++channel)
+                buffer.applyGainRamp(channel, 0, numSamples, callStart, mCallPlaybackGain);
+        }
+    }
+
     // P4.4 agent.testTone: 440 Hz at -18 dBFS into the main output, 10 ms fades.
     // Atomics and arithmetic only, no allocation.
     if (const int armed = mApiToneArm.exchange(0); armed > 0) {
@@ -9538,6 +9572,14 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
         mApiTonePhase = ph;
         mApiToneElapsed += n;
         mApiToneRemaining -= n;
+    }
+
+    // A14 (android.md section 5): the mic on / off cue. LOCAL ONLY: it is added to
+    // the main output here, after the remote.oursource->process() calls above
+    // that consumed sendWorkBuffer, and nowhere else (not the recording mix, not
+    // a send buffer), so no station can ever receive it.
+    if (mainBusOutputChannels > 0) {
+        mEarcon.render(buffer.getArrayOfWritePointers(), mainBusOutputChannels, numSamples, getSampleRate());
     }
 
     outputMeterSource.measureBlock (buffer, 0, numSamples);

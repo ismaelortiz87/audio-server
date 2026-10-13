@@ -71,9 +71,17 @@ public:
     /** Stations whose last published presence is "online" (P4.3 meters). */
     StringArray getOnlineStations() const;
     /** connection.disconnect: shows reason "Disconnected" instead of "lost" until the next connect. */
-    void setUserDisconnected (bool disconnected)    { userDisconnected = disconnected; }
+    void setUserDisconnected (bool disconnected)
+    {
+        userDisconnected = disconnected;
+        if (disconnected) userDisconnectedAtMs = Time::getMillisecondCounterHiRes();
+    }
     /** agent.reloadConfig result: shown as state.configError and connection.error. */
     void setConfigError (const String& err)         { configError = err; }
+
+    /** Message thread. The state as of the last tick (A10: the Android notification is
+        derived from the same data the Console shows). */
+    var getLastState() const                        { return previous; }
 
     /** Message thread. Builds the state now and publishes the difference. Called
         by the timer; tests and P4.4 can call it after a change to avoid waiting
@@ -162,6 +170,17 @@ private:
     String agentNode (bool input) const;          // the node name shown for the open device
     String nodeDescription (bool input, const String& node);
 
+   #if JUCE_ANDROID
+    // A8: the phone's audio route and echo state (EngineState.cpp)
+    void refreshAndroidRoute (double nowMs);
+    const char* androidOutputRoute() const;
+    var androidDevicesVar();
+    var androidPlatformVar (bool anyHearsYou);
+    int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
+    double androidRouteAtMs = -1e12;
+    bool aecChecked = false, aecWorking = false;
+   #endif
+
     // Linux agent (P2.11): PipeWire nodes for the pickers, from pw-dump, cached.
     struct PwNode { String node, description; };
     std::vector<PwNode> pwInputs, pwOutputs;
@@ -184,6 +203,7 @@ private:
     double consoleLatencyAtMs = -1e12;
     bool everConnectedToServer = false;
     bool userDisconnected = false;       // P4.4
+    double userDisconnectedAtMs = 0;     // the socket may still look connected for a moment after an explicit Disconnect
     String configError;                  // P4.4: starts as options.configError
 
     var previous;                        // last published snapshot (message thread)

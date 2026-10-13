@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Crosspoint notification / status-bar icon (A2, docs/design/android.md §4).
+       Monochrome: Android tints it. The app icon's active route (in from the
+       left, out the bottom) stopping short of the lit node, no tile, no matrix.
+       Convert to a 24dp vector drawable (ic_stat_crosspoint); no masks used. -->
+  <g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+    <path d="M3 12 H6.4"/>
+    <path d="M12 17.6 V21"/>
+  </g>
+  <path fill="#fff" fill-rule="evenodd" d="M12 7.6 a4.4 4.4 0 1 0 0.001 0 Z M12 10.3 a1.7 1.7 0 1 1 -0.001 0 Z"/>
+</svg>

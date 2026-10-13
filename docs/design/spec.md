@@ -17,6 +17,7 @@ the task to `blocked` and write the question in its *Result* (see
 | Console prototype | [design/prototypes/console/](../../design/prototypes/console/index.html) (`?scenario=everyday\|twocalls\|problem\|four\|connecting&view=phone`) |
 | Agent prototype | [design/prototypes/vdi/](../../design/prototypes/vdi/index.html) (`?scenario=listening\|talking\|waiting\|paused\|reconnecting\|password\|nodevice`) |
 | App icon | [design/icon/](../../design/icon/) |
+| Android app addendum (A2) | [android.md](android.md) · prototype [design/prototypes/android/](../../design/prototypes/android/index.html) |
 
 ---
 
@@ -105,7 +106,7 @@ A full-width strip under the top bar: the single loudest element.
 
 | Condition (engine state) | Style | Text |
 |---|---|---|
-| transmitting, every known station hears me | live | `LIVE` pill + "All {n} stations hear you" |
+| transmitting, every known station hears me | live | `LIVE` pill + "All {n} stations hear you"; with only one known station, "{A} hears you" |
 | transmitting, some hear me (the rest includes lost/offline stations) | live | `LIVE` + "{A and B} hear(s) you · {C} doesn't / {C and D} don't" |
 | transmitting, solo narrowing | live | `LIVE` + "Solo: only {A} hears you" |
 | transmitting, nobody hears me | quiet | "Mic open, but no station is set to hear you." |

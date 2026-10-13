@@ -37,6 +37,9 @@
 // HACK
 #include "SonobusPluginEditor.h"
 #include "ConsoleShell.h"   // P6.1
+#if JUCE_ANDROID
+ #include "android/SonoBusActivity.h"   // A10: androidRequestNotificationPermission()
+#endif
 
 #include <limits>
 #include <algorithm>
@@ -116,13 +119,37 @@ public:
 
         auto audioInputRequired = (inChannels > 0);
 
+       #if JUCE_ANDROID
+        // A9 (android.md section 3): never ask for the microphone at launch. The audio device opens without
+        // input unless it is already granted; the AndroidServiceController asks on the first connect (or PTT
+        // press) and calls enableAudioInput() once the answer is yes.
+        defaultDeviceName = preferredDefaultDeviceName;
+        audioInputEnabled = audioInputRequired && RuntimePermissions::isGranted (RuntimePermissions::recordAudio);
+        init (audioInputEnabled, preferredDefaultDeviceName);
+       #else
         if (audioInputRequired && RuntimePermissions::isRequired (RuntimePermissions::recordAudio)
             && ! RuntimePermissions::isGranted (RuntimePermissions::recordAudio))
             RuntimePermissions::request (RuntimePermissions::recordAudio,
-                                         [this, preferredDefaultDeviceName] (bool granted) { init (granted, preferredDefaultDeviceName); });
+                                         [this, preferredDefaultDeviceName] (bool granted) {
+                                             init (granted, preferredDefaultDeviceName);
+                                         });
         else
             init (audioInputRequired, preferredDefaultDeviceName);
+       #endif
     }
+
+    /** Android: the microphone was granted after launch, so re-open the audio device with the input. */
+    void enableAudioInput()
+    {
+        if (audioInputEnabled) return;
+        audioInputEnabled = true;
+       #if JUCE_ANDROID
+        reloadAudioDeviceState (true, defaultDeviceName, options.get());
+       #endif
+    }
+
+    bool audioInputEnabled = true;
+    String defaultDeviceName;
 
     void init (bool enableAudioInput, const String& preferredDefaultDeviceName)
     {
@@ -929,19 +956,40 @@ public:
         pluginHolder = nullptr;
     }
 
+   #if CROSSPOINT_HAS_WEB_SHELL && JUCE_ANDROID
+    /** A7: the Back button, forwarded to the web shell. False when there is no shell. */
+    bool handleShellBack()
+    {
+        if (auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent()))
+            return mc->handleShellBack();
+        return false;
+    }
+   #endif
+
    #if CROSSPOINT_HAS_WEB_SHELL
-    /** P6.1: swaps the SonoBus editor for the web-view shell (the editor stays alive but
-        hidden: it still carries the command-line connection and the saved state).
-        Title "Crosspoint", minimum 360 x 560, last size and position restored. */
-    void showWebShell (const String& url, const String& fatalError)
+    /** P6.1 / A7: swaps the SonoBus editor for the web-view shell (the editor stays
+        alive but hidden: it still carries the command-line connection and the saved
+        state).
+        Mac: title "Crosspoint", minimum 360 x 560, last size and position restored.
+        Android: the window is already fullscreen (android.md section 2), so there is
+        no geometry to set and no title bar to hide. */
+    void showWebShell (const String& url, const String& fatalError, ConsoleShellFatal fatal = {})
     {
         auto* mc = dynamic_cast<MainContentComponent*> (getContentComponent());
         if (mc == nullptr) return;
 
         shellMode = true;
         optionsButton.setVisible (false);
+
+       #if JUCE_ANDROID
+        // No size: the content takes the window's real (fullscreen) size from resized() below.
+        // Sizing it from getWidth()/getHeight() here left it at the size the window had
+        // before it went fullscreen (the web page filled only the top of the screen).
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), 0, 0);
+        resized();
+       #else
         setResizeLimits (360, 560, 10000, 10000);
-        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError), 440, 760);
+        mc->setShell (std::make_unique<ConsoleShellView> (url, fatalError, std::move (fatal)), 440, 760);
 
         int x = -100, y = -100, w = -100, h = -100;
         if (auto* props = pluginHolder->settings.get())
@@ -954,6 +1002,7 @@ public:
         h = jmax (h, 560);
         if (x != -100 && y != -100) setBoundsConstrained ({ x, y, w, h });
         else                        centreWithSize (w, h);
+       #endif
     }
    #endif
 
@@ -1179,6 +1228,14 @@ private:
 
         AudioProcessorEditor * getEditor() const { return editor.get(); }
 
+       #if CROSSPOINT_HAS_WEB_SHELL && JUCE_ANDROID
+        bool handleShellBack()
+        {
+            if (auto* v = dynamic_cast<ConsoleShellView*> (shell.get())) { v->handleBack(); return true; }
+            return false;
+        }
+       #endif
+
        #if CROSSPOINT_HAS_WEB_SHELL
         // P6.1: show the web-view shell in place of the (kept, hidden) editor.
         void setShell (std::unique_ptr<Component> newShell, int w, int h)
@@ -1188,7 +1245,8 @@ private:
             notification.setVisible (false);
             shouldShowNotification = false;
             addAndMakeVisible (*shell);
-            setSize (w, h);
+            if (w > 0 && h > 0)
+                setSize (w, h);
             resized();
         }
        #endif

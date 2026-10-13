@@ -136,8 +136,34 @@ Ordered so that every task appears after everything it depends on.
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
-| P9.2 | Native Android Console (was P6.2–P6.4) | P5.6 | L | any | deferred | |
+| P9.2 | Native Android Console (APK): broken down into A1–A23 below, lanes in the P9.2 card | P5.6 | — | — | todo | |
+| A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | done | Claude 2026-10-12: toolchain installed and verified, `--check` green, emulator boots, Gradle runs |
+| A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
+| A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
+| A4 | Crosspoint identity on Android (app id, name, icons, Java package) | A3 | S | any | done | Claude (sonnet) |
+| A5 | Control API on the phone (loopback, survives pause, connect persists) | A3 | M | any | done | Claude: verified on the emulator through `adb forward` (2026-10-12) |
+| A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
+| A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | done | Claude: design approved 2026-10-12 (follow-ups moved to A9) |
+| A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
+| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: code verified present; design review: mic-blocked Console approved (A24 02). **Recapture needed:** Settings problem rows (A24 03 was covered by an emulator System UI ANR) |
+| A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
+| A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | **Recapture needed:** during and after a call **with the mic live before the call** (A24 04/05 were covered by an ANR, and the mic was already off) |
+| A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
+| A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
+| A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
+| A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
+| A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
+| A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | wip, awaiting check on the Samsung | Claude 2026-10-13: merged (`cc8ddaab`), builds; APK `build/apk/crosspoint-debug-cc8ddaab.apk` |
+| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
+| A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
+| A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
+| P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
 | P10.3 | UX addendum: recording + recaps | UX4 | M | design | done | Claude |
@@ -147,7 +173,7 @@ Ordered so that every task appears after everything it depends on.
 
 **Parallel tracks:** UX1–UX4 run from day one, alongside F1/F2/P1. Once P1.4
 is done: P2 (config/agent) · P3 (removal) · P4 (API). Mobile is the PWA
-(P7.7); native Android/iOS are deferred to P9 (D9). P3 tasks all touch `SonobusPluginEditor.cpp`, so run
+(P7.7). The native Android APK is P9.2 (A1–A14, five lanes); native iOS stays deferred. P3 tasks all touch `SonobusPluginEditor.cpp`, so run
 them one at a time.
 
 ---
@@ -1394,8 +1420,8 @@ build against the spec. Implementers don't make design decisions (see
 
 ## P6 — Native shell (Mac)
 
-Android and iOS native apps are deferred (ROADMAP D9); phones use the PWA
-(P7.7). The old Android cards are kept under P9.2.
+Native iOS is deferred (ROADMAP D9); iOS uses the PWA (P7.7). The native
+Android app is now planned as P9.2, tasks A1–A14 (lanes in the P9.2 card).
 
 
 ### P5.7 — Exclusive solo · S
@@ -1791,25 +1817,1403 @@ Location: replaces `docker/`. Keep the old files until P7.6.
   state, as a compact view of the same Console UI. Needs a UX addendum first.
 - **Result:**
 
-### P9.2 — Native Android Console · L · deferred
-Phones use the PWA for now (D9). Revive this if P7.7's latency or
-background-audio results are poor. Former cards:
+### P9.2 — Native Android Console (APK) · broken down into A1–A14
+The phone runs the whole engine, as stock SonoBus does on Android and as the
+Mac shell (P6.1) does: the audio engine (AOO P2P, Opus) runs in the app, the
+control API listens on `127.0.0.1:7070`, and a web view shows the bundled
+Console UI from it. Audio stays native and goes straight to the VDIs, with no
+container hop. This replaces the old P6.2–P6.4 cards.
 
-#### (was P6.3) — Android build pipeline · L
-- **Depends on:** F1 · **Touches:** `sonobus/mobile/`
-- **Do:** get the Android build working from the hoisted layout
-  (`sonobus/mobile/Builds/Android`), scripted (`scripts/build-android.sh`),
-  producing a debug APK. Stock UI is fine for this task.
-- **Done when:** APK installs and joins a group.
+**State on 2026-10-11 (why the cards look like this):**
+- `sonobus/mobile/SonoBusMobile.jucer` (Projucer, JUCE 7.0.8) still describes
+  stock SonoBus. It is missing every source added since the fork: `ApiServer`,
+  `ApiSha1`, `ApiCommands`, `EngineState`, `AgentConnect`, `AppIdentity`,
+  `GlobalHotkey*`, `ConsoleShell.h`. But `SonoStandaloneFilterApp.cpp` includes
+  them unconditionally, so **the Android build does not link today**.
+- It sets `JUCE_WEB_BROWSER="0"`, `android:hardwareAccelerated="false"` (a
+  WebView needs it on), `applicationId com.sonosaurus.sonobus`, and a release
+  keystore at `~/.android/sonouploadnew.jks` (upstream's).
+- `Builds/Android/local.properties` is committed with `sdk.dir=/Users/jesse/...`.
+- `ConsoleShell.h` only builds when `JUCE_MAC && JUCE_WEB_BROWSER`. The UI path
+  (`apiConfig.uiDir`) only has a Mac bundle fallback. `CROSSPOINT_HAS_CONFIG` is
+  0 on Android, so there is no YAML on the phone (by design: the Console's
+  onboarding flow connects it).
+- Stock SonoBus already has `RECORD_AUDIO`, `FOREGROUND_SERVICE` and a
+  `SonoBusService` (`sonobus/Source/android/java`), targetSdk 33.
+- This Mac has no JDK, Android SDK, NDK or Projucer installed.
+- `console-ui` only uses WebRTC when the server offers `rtc/config` (the web
+  container). Against an engine's own API it uses no browser audio, so the
+  same UI works in the Android web view as in the Mac shell.
+
+**Lanes.** Each lane is a chain one agent can own. Lanes run in parallel once
+their entry dependency is `done`.
+
+| Lane | Tasks, in order | Starts after |
+|---|---|---|
+| **D** design (Claude only) | A2 (**done**), then the design reviews of A7, A9, A10, A12, A14 | now |
+| **B** build & packaging | A1 → A3 → A4 → A11 | now |
+| **E** engine on the phone | A5 → A8 | A3 |
+| **S** shell & UI | A6 → A7 | A3 (A7 also needs A5, A2) |
+| **P** Android platform (Java, manifest) | A10 → A14 → A9 → A12 | A4 + A2 (A14 also needs A5; A9 and A12 also need A7) |
+| **H** human on a real phone | A13 | everything else |
+
+Critical path: A1 → A3 → A5 → A7 → A9 → A13. A3 is the funnel: nothing except A2
+can start until the current engine builds for Android.
+
+**First APK, as soon as possible (D9, maelo 2026-10-12):** A1 → A3 → (A5 and
+A6 in parallel) → A7 gives a debug APK with the Console UI driving the
+phone's own engine, installable by `adb install`. Stock SonoBus already asks
+for the mic at launch and has a foreground service, so listening and talking
+should work with the screen on before A9 and A10 land. Do **A4** right after
+A3 if stock SonoBus is installed on the phone: until then both apps share
+`com.sonosaurus.sonobus`, and the install fails. A8–A14 harden it after that.
+Agents should take these first.
+
+**Rules for this phase:**
+- **The `.jucer` is a hotspot.** A3, A4, A6, A7, A10 and A11 all edit it. Keep
+  each task's `.jucer` change small and rebase before merging. **Never
+  hand-merge files under `Builds/Android/`.** Resolve the `.jucer`, then
+  regenerate them with `scripts/build-android.sh --resave` (A1).
+- **No secrets in the repo** (it's public). Keystores and passwords come from
+  the environment or `~/.gradle/gradle.properties`.
+- **Verify on the emulator** (arm64 system image) with `adb`. Real-phone
+  checks are A13. To capture the UI for design review, use
+  `adb exec-out screencap -p`, never a desktop capture.
+- `SonoStandaloneFilterApp.cpp` is touched by A5 (API startup) and A6 (UI
+  path). They are different blocks; rebase rather than run them in one PR.
+
+#### A1 — Android toolchain + Projucer · M · any · lane B
+- **Depends on:** — · **Touches:** `scripts/` (new `setup-android.sh`,
+  `build-projucer.sh`), `docs/ANDROID.md` (new), `.gitignore`
+- **Do:** script the prerequisites so any agent can reproduce them. On macOS:
+  JDK 17 (AGP 7.3.0 needs 11–17), Android cmdline-tools, platform 33, build
+  tools, NDK `25.2.9519653` (what `app/build.gradle` pins), and an arm64
+  emulator image. Build the Projucer **from `juce/extras/Projucer`** (7.0.8, it
+  must match the vendored JUCE), and use it headless with `--resave`. Add a
+  `scripts/build-android.sh --resave` entry point. Write `docs/ANDROID.md`
+  (what's installed, where, how to start the emulator).
+- **Done when:** `--resave` of the current `.jucer` changes nothing under
+  `Builds/Android/` except expected noise (record which), `./gradlew --version`
+  runs, and the emulator boots.
+- **Result (Claude, 2026-10-12)**: scripts written and the Projucer built; the
+toolchain install itself has not been run (no JDK/SDK/NDK on this Mac).
+- `scripts/setup-android.sh` — installs Temurin 17 (brew), cmdline-tools,
+  platform-tools, platform 33, build-tools 33.0.2, NDK 25.2.9519653, CMake
+  3.22.1, the android-33 arm64 system image and an AVD `crosspoint-33`.
+  `--check` reports without changing anything; it currently reports everything
+  missing, as expected.
+- `scripts/build-projucer.sh` — builds the Projucer from `juce/`. **Verified**:
+  `JUCE_BUILD_EXTRAS=ON` on JUCE's own CMake project (extras/Projucer alone has
+  no `juce_add_gui_app`), linked at
+  `build/projucer/.../Projucer.app/Contents/MacOS/Projucer`, reports 1.7.2.
+- `scripts/build-android.sh` — `--resave` / `--install` / `--emulator` /
+  `--release` / `--clean`. **`--resave` verified idempotent**: two passes
+  produce byte-identical trees.
+- `docs/ANDROID.md` — what is installed where, the resave-noise list, emulator
+  and `adb` recipes, and the gotchas.
+- Recorded resave noise (discard it, per the doc): `Builds/iOS/**` (line-ending
+  churn in the `.plist`/`.json` files plus a rewritten `project.pbxproj`),
+  `JucePluginDefines.h` (ARA archive id tracks the `.jucer` version),
+  `gradlew.bat` (CRLF). The ARA id moved 1.7.1 → 1.7.2, which the checked-in
+  file had simply never caught up with.
+- `local.properties` is now git-ignored and rewritten from `$ANDROID_HOME` on
+  every resave (that is A3's "stop tracking" item, done here because the two
+  files cannot be separated).
+- **Toolchain installed and verified (Claude, 2026-10-12)**: `scripts/setup-android.sh`
+  run for real, `--check` all green: JDK 17, cmdline-tools, platform 33,
+  build-tools 33.0.2, NDK 25.2.9519653, CMake 3.22.1, emulator, arm64 image,
+  AVD `crosspoint-33`. `./gradlew` (7.5.1, downloaded on first run) works and
+  the emulator boots (`scripts/build-android.sh --emulator`).
+  - **Surprise 1:** `brew install --cask temurin@17` needs `sudo` (a package
+    installer), which a non-interactive shell cannot give. The script now uses
+    the `openjdk@17` formula (no sudo, keg-only under
+    `/opt/homebrew/opt/openjdk@17`), which `find_jdk_home` already looked for.
+    Gradle and the build script find it without `JAVA_HOME`.
+  - **Surprise 2:** the Homebrew cask/formula path needs no manual PATH change;
+    `build-android.sh` exports JAVA_HOME/ANDROID_HOME itself.
+  - `build-android.sh` bugs fixed: launch hint now reads package and activity
+    from `aapt dump badging` (no hard-coded id), BSD-safe capitalisation, and the
+    APK is found with `ls -t` instead of `find -newermt`.
+  - Download sizes: NDK + SDK pieces about 3 GB under `~/Library/Android/sdk`.
+
+#### A2 — UX addendum: Android-only states · S · design · lane D
+- **Depends on:** UX4 · **Touches:** `docs/design/`
+- **Do:** spec what the phone app needs that the PWA and Mac don't: the mic
+  permission ask and the "denied" state, the foreground-service notification
+  (text, actions such as mute mic and disconnect), push-to-talk from a headset
+  button or the notification (A12), the engine-failed error page on a phone,
+  launch/splash, and system bars and safe areas around the phone layout (P5.5).
+- **Done when:** spec merged; A7, A9, A10 and A12 can build to it without
+  inventing anything.
+- **Result:** done (Claude, 2026-10-11). Spec: `docs/design/android.md`.
+  Prototype: `design/prototypes/android/` (`?screen=board` shows them all).
+  Notification icon: `design/icon/crosspoint-notification.svg`. Decisions:
+  - swipe-away from Recents quits; Back and Home never disconnect
+  - the mic permission is asked on the first connect, with no pre-prompt
+  - the notification title mirrors the live band, with Mic on/off and
+    Disconnect actions
+  - the headset button toggles the mic in open-mic mode only; nothing in PTT
+  - a phone call turns the mic off, and **it stays off after the call**
+  - earcons for mic changes made without looking
+  - problem rows at the top of Settings
+  - touch copy ("Tap…", no "Space") for any coarse pointer, the PWA included
+
+  It found work no card covered, now **A14** (phone calls + earcons). API
+  additions are in android.md §10 and control-api §5.5; each implementing task
+  adds its fields to `console-ui/src/api/mock.js` too (control-api §6), so its
+  design review can be screenshotted.
+
+#### A3 — Debug APK builds the current engine · L · any · lane B
+- **Depends on:** A1 · **Touches:** `sonobus/mobile/SonoBusMobile.jucer`,
+  `sonobus/mobile/Builds/Android/`, `scripts/build-android.sh`, small
+  `#if JUCE_ANDROID` fixes in `sonobus/Source/`
+- **Do:** add the missing sources (listed above) to the `.jucer`. Make them
+  compile with the NDK; `GlobalHotkey` should become a no-op on Android, and
+  PipeWire code is already Linux-only. Keep `Config`/rapidyaml out
+  (`CROSSPOINT_HAS_CONFIG` stays 0). Stop tracking `local.properties` and
+  generate it from `$ANDROID_HOME`. Reconcile the two `ndkVersion` values in
+  `app/build.gradle`. Debug builds must not need the upstream keystore.
+  `scripts/build-android.sh` = resave + `gradlew assembleDebug`, printing the
+  APK path. The UI stays the stock JUCE editor in this task.
+- **Done when:** one command produces a debug APK that installs on the
+  emulator, launches, and joins a group on `aoo.sonobus.net` with the stock
+  UI. Desktop build (F1) and F2 are unchanged.
+- **Result (Claude, 2026-10-12)**: the `.jucer` and the Android compile fixes are
+in; the link is unproven because there is no NDK on this machine.
+- Added the 16 source files the engine includes but the mobile `.jucer` never
+  listed (plus the `crosspoint-ui.zip` resource, A6): `AgentConnect`,
+  `ApiCommands`, `ApiServer`, `ApiSha1.h`, `AppIdentity.h`, `ConsoleShell.h`,
+  `EngineState`, `GlobalHotkey`, `GlobalHotkeyCarbon` (`.cpp`/`.h` pairs where
+  they exist) and `ReverbView.h`. Found by walking the include
+  closure of the files the `.jucer` already listed, not by eyeballing: 118
+  source entries now, and the closure is complete.
+- **Found and fixed a real Android blocker:** the NDK defines `__linux__`, so
+  the P2.11 PipeWire branches (`#if defined(__linux__)`) would have compiled on
+  Android and failed to link (no ALSA headers). Those guards are now
+  `&& !defined(__ANDROID__)` in `PipeWireDevices.{h,cpp}`, `EngineState.cpp`
+  and `ApiCommands.cpp` (6 sites). JUCE's own `JUCE_LINUX` is safe — JUCE
+  checks `JUCE_ANDROID` first (TargetPlatform.h:62), so `JUCE_LINUX` stays 0.
+- `Config`/rapidyaml are **not** added (`CROSSPOINT_HAS_CONFIG` is 0 on Android), the
+  PipeWire files are not listed, and the iOS-only `.mm` files that the Projucer
+  already emitted for Android are untouched.
+- Rejected a `release`-only keystore: the Projucer points **every** build type
+  at `signingConfigs.juceSigning` (jucer_ProjectExport_Android.h:848), so the
+  `.jucer` now adds an `androidCustomAppBuildGradleContent` override that
+  re-points **debug** at Gradle's own debug key. Release still needs a real
+  keystore, which is A11.
+- `ndkVersion` reconciled: the Projucer emits its own pinned
+  `25.2.9519653`, and the stale `ndkVersion "22.0.7026061"` line the `.jucer`
+  appended is gone.
+- `local.properties` untracked (it held `/Users/jesse/...`) and regenerated.
+- Desktop unbroken: `scripts/build-desktop.sh --app-only` is green.
+- **Verified on the emulator (Claude, 2026-10-12)** with `scripts/build-android.sh
+  --emulator`: resave, `assembleDebug`, install. `BUILD SUCCESSFUL`; the first
+  cold build took about 2m15s of Gradle (native compile of all four ABIs:
+  arm64-v8a, armeabi-v7a, x86, x86_64; **all ABIs left on**), incremental
+  rebuilds about 50s. Debug APK is 194 MB (four ABIs, unstripped, with the
+  Console zip). Package `com.sonosaurus.sonobus`, activity
+  `com.sonosaurus.sonobus.SonoBusActivity`, versionName 1.7.2.
+  - **Zero C++ compile or link errors** from the 16 newly listed sources: the
+    previous agent's include-closure work and the `__ANDROID__` guards were enough.
+    The failures were all Gradle/Java/resources side:
+    1. `build.gradle` evaluated `${sonoupload_keystore_password}` etc. at
+       configuration time, so even debug failed ("unknown property"). The `.jucer`
+       now emits `${findProperty('sonoupload_key...') ?: ''}`; A11 passes real
+       values with `-P` or `~/.gradle/gradle.properties`.
+    2. The manifest referenced `@mipmap/ic_launcher[_round]`, which do not exist in
+       the repo (the Projucer only generates `drawable-*/icon.png`). The `.jucer`
+       manifest now says `@drawable/icon`. A4 owns real icons.
+    3. `SonoBusService.java` used `R.drawable.ic_notify` (missing). Interim:
+       `R.drawable.icon`; A4 supplies the notification icon.
+  - **Runtime bugs found and fixed on the emulator (not compile errors):**
+    - JUCE's Android WebView calls `pageLoadHadNetworkError` for **every
+      subresource HTTP error**. The Console probes `rtc/config`, a 404 on the
+      phone (no WebRTC gateway), so the shell replaced a healthy page with "The
+      Console didn't load. ... Not Found". `ConsoleShell.h` now ignores non-`net::`
+      errors on Android. `ApiServer` also serves `/favicon.ico` (alias of
+      `icons/crosspoint-32.png`), which the WebView also requested.
+    - **Back crashed the app** (SIGABRT, "JNI ERROR: jobject is an invalid local
+      reference"): JUCE 7.0.8's `Process::hide()` builds its activity LocalRef
+      from a deleted temporary. `backButtonPressed()` now calls
+      `Activity.moveTaskToBack(true)` itself. After the fix Back goes to the
+      launcher, the process keeps its pid, and the group connection stays
+      `connected` (checked 30+ seconds after Back).
+  - **Launch:** `adb shell am start -n com.sonosaurus.sonobus/.SonoBusActivity`.
+    `logcat`: `JUCE v7.0.8`, `SonoBusActivity C++ constructed`, Oboe streams open,
+    `Bound system chosen udp port`. First launch shows the system mic permission
+    dialog ("Allow SonoBus to record audio?", A9 will own that flow).
+  - **Console renders without the GL context** (attachGL skipped while the web
+    shell shows): header "Crosspoint • Connected", mic button, Open mic / Push to
+    talk, output slider, all in the WebView. Screens (device-only `adb exec-out
+    screencap`): not committed. **Layout problem for A7:** a ~110px empty band at
+    the top (the Android status bar inset is applied twice, or the safe-area
+    padding is wrong) and the station list area is clipped behind the mic panel.
+  - **API:** `adb forward tcp:7070 tcp:7070`; `GET /` returns the Console
+    `index.html` (200), `/favicon.ico` 200, state reports `self.kind: "android"`.
+  - **Group join: verified through the control API only**, not through the stock
+    UI: a WebSocket `connection.connect` to `aoo.sonobus.net:10998`, group
+    `crosspoint-a3-test`, went `connecting` then `connected` (patch stream),
+    persisted after Back. I did not drive the JUCE editor (the stock UI is
+    hidden behind the web shell by A7), so "joins a group with the stock UI" is
+    read as "the engine joins a group". No second peer joined, so no audio was
+    heard.
+  - Desktop `scripts/build-desktop.sh --app-only` is green after all changes.
+
+#### A4 — Crosspoint identity on Android · S · any · lane B
+- **Depends on:** A3 · **Touches:** `.jucer`, `sonobus/Source/android/java/`,
+  `Builds/Android/app/src/main/res/`
+- **Do:** apply P3.9/P3.10 to Android: applicationId
+  `io.lagreca.app.crosspoint`, label "Crosspoint", launcher and adaptive icons
+  from the P3.10 icon, and a `crosspoint://` intent filter. Rename the Java
+  package `com.sonosaurus.sonobus` (`SonoBusActivity`, `SonoBusService`) and the
+  `JUCE_ANDROID_ACTIVITY_OVERRIDE_*` defines to match.
+- **Done when:** Crosspoint installs **next to** stock SonoBus on the same
+  emulator, and both run.
+- **Result (Claude sonnet, 2026-10-12)**: done. Checked on emulator-5560
+  (`aapt dump badging`: package `io.lagreca.app.crosspoint`, label `Crosspoint`,
+  icon `res/drawable-anydpi-v26/icon.xml`, activity
+  `io.lagreca.app.crosspoint.SonoBusActivity`); installs, launches, and the mic
+  dialog reads "Allow **Crosspoint** to record audio?". No stock SonoBus APK was
+  built; the different applicationId is what makes side by side work.
+  - Java package renamed (`sonobus/Source/android/java/io/lagreca/app/crosspoint/`),
+    class names kept. The `.jucer` changes: `bundleIdentifier` on the project
+    (the Projucer takes applicationId, manifest package and the content-provider
+    authority from it; it also changes the iOS bundle id, for P9.3),
+    `JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME/CLASSPATH`,
+    `androidActivitySubClassName`, the manifest `package`, a **literal**
+    `android:label="Crosspoint"` (the Projucer's `app_name` string is the project
+    name, "SonoBus", and renaming the project would touch the plugin names), and
+    a `crosspoint://` VIEW/BROWSABLE intent filter. **Surprise:** as soon as the
+    custom manifest has any `<intent-filter>` the Projucer stops adding
+    MAIN/LAUNCHER, so the `.jucer` now declares both. The filter only makes the
+    link resolve; nothing handles the URL yet (`appNewIntent`).
+  - Icons: `smallIcon`/`bigIcon` now point at `design/icon/crosspoint-256.png` /
+    `-1024.png` (the Projucer writes the legacy `drawable-*/icon.png`). Adaptive
+    icon = `res/drawable-anydpi-v26/icon.xml` (same resource name, so
+    `@drawable/icon` resolves to it on API 26+) with background `#12161a`
+    (`values/ic_launcher_background.xml`) and the `pwa-maskable-512.png`
+    foreground (`drawable-nodpi/ic_launcher_foreground.png`). Those four files
+    are hand-added under `Builds/Android/app/src/main/res/` and survive a resave
+    (the Projucer only writes `drawable-*dpi/icon.png`); `sonobus/.gitignore`
+    ignores `mobile/Builds`, so new files there need `git add -f`.
+  - `ic_stat_crosspoint` (24dp vector from `crosspoint-notification.svg`) is the
+    `SonoBusService` small icon. **I removed the service's large icon**:
+    `BitmapFactory.decodeResource(R.drawable.icon)` returns null for an adaptive
+    XML icon on API 26+. A10 owns the notification content.
+  - Resave noise discarded as usual (iOS, `JucePluginDefines.h`, `gradlew.bat`).
+    Debug APK 195 MB.
+  - Not done: monochrome (themed) icon layer.
+
+#### A5 — Control API on the phone · M · any · lane E
+- **Depends on:** A3 · **Touches:** `sonobus/Source/SonoStandaloneFilterApp.cpp`
+  (API startup block), `EngineState.cpp`/`ApiCommands.cpp` only for Android fixes
+- **Do:** start the API on Android with no CLI: Console role, loopback
+  `127.0.0.1:7070`, no token. Keep it running while the activity is paused
+  (JUCE `suspended()`), since the service in A10 keeps audio alive. Check
+  everything `EngineState` reports on Android: audio device names (Oboe or
+  OpenSL), sample rate and buffer, and where settings persist. Server, group
+  and name set through the Console's connect flow must survive an app restart.
+  Report `self.kind: "android"` in state and peer info, so agents show
+  "Console · Android" (`docs/design/android.md` §10).
+- **Done when:** with `adb forward tcp:7070 tcp:7070`, the `console-ui` smoke
+  test against the real API passes from the Mac, and the connect command joins
+  a group from the emulator.
+- **Result (Claude, 2026-10-12)**: the Android API defaults and `self.kind` are in;
+the emulator check is pending.
+- `applyApiOptions()` sets Console role, loopback `127.0.0.1`, port 7070 and no
+  token on Android. Android has no command line, so there is nothing to parse;
+  it is a compile-time branch, not a runtime one.
+- `self.kind: "android"` (`SonobusPluginProcessor::consoleKindString`) — this
+  is what makes agents show "Console · Android". Adding it to the *filter*
+  matters too: `EngineState` mapped anything but `mac`/`web` to `"other"`, so
+  without that change the field would have been reported and then dropped.
+  `consoles[].kind` now passes `android` through (control-api §5.5).
+- The API already outlives `paused()`: `suspended()`/`resumed()` only touch the
+  audio device and the foreground service, never the server.
+- Not verified: `adb forward` + smoke test against a real phone engine.
+- **Verified on the emulator (Claude, 2026-10-12)**, `adb -s emulator-5562 forward
+  tcp:7071 tcp:7070`, `node console-ui/scripts/smoke-android.mjs` (new; the old
+  `smoke.mjs` only drives the in-page mock, so it cannot target a phone):
+  hello role `console`, `self.kind: "android"`, `connection.connect` to
+  `aoo.sonobus.net:10998` / a throwaway group joined. **Force-stop and relaunch**:
+  server, group and name (`Phone A5`) were back, and the engine rejoined by itself
+  ("Console: rejoining the most recent server and group"); settings live in
+  `<app data>/.SonoBus/SonoBus.settings`.
+  - Engine facts on Android (Oboe/AAudio on the 33 arm64 image): devices are one input
+    "Phone mic" (`System Default (Input)`) and one output "Phone speaker"
+    (`System Default (Output)`), **48000 Hz**, buffer 960 frames (the burst; Oboe
+    buffer-size 1056 first, then 960), `networkBuffer {mode: auto}`. `EngineState`
+    has no sample-rate or buffer field; those came from logcat.
+  - After an explicit Disconnect the reason reads "Connection to the server was lost"
+    (the mock says "Disconnected"); cosmetic, left for the engine owner.
+  - The default "Your name" is the Linux uid (`u0_a176`), not the device name
+    (design android.md section 2): A4/identity.
+
+#### A6 — Console UI bundled in the APK · S · any · lane S
+- **Depends on:** A3 · **Touches:** `.jucer` (resource), `scripts/build-android.sh`,
+  `SonoStandaloneFilterApp.cpp` (the `uiDir` fallback block)
+- **Do:** APK assets are not files the `ApiServer` can serve. At build time, zip
+  `console-ui/` (raw, as the Mac bundle copies it) into JUCE BinaryData. On
+  launch, extract it to `userApplicationDataDirectory/console-ui` when its
+  build stamp differs, and use that as `apiConfig.uiDir`. Write it so iOS (P9.3)
+  can reuse it.
+- **Done when:** a fresh install and an upgrade both serve the current
+  `index.html` from `http://127.0.0.1:7070/` (via `adb forward`), and a stale
+  UI is never served after an upgrade (check the service-worker cache too).
+- **Result (Claude, 2026-10-12)**: implemented and **verified on the host** by
+`scripts/test-android-ui.sh` (10/10).
+- `scripts/pack-console-ui.sh` zips `console-ui/` (HTML, `src/`, `icons/`, the
+  manifests and `sw.js`; not the README, tests or build scripts) to
+  `sonobus/Resources/crosspoint-ui.zip`, with `console-ui/` as the top level so
+  the unpacked directory is a ready web root. Deterministic (`-X -D`).
+- The zip is a **build artifact** (git-ignored) and must exist before a resave:
+  the Projucer refuses to save a project whose listed resource is missing
+  (tested). `build-android.sh` therefore packs before resaving.
+- `.jucer` lists it as `resource="1"`; the Projucer mangles the name to
+  `BinaryData::crosspointui_zip` (rule: spaces/dots → `_`, other punctuation
+  dropped, in `makeBinaryDataIdentifierName`). The extractor uses that symbol
+  and the test would catch a rename.
+- `crosspoint::extractBundledConsoleUi()` (shared header
+  `sonobus/Source/BundledConsoleUi.h`, used by the app and by the host test, so the
+  test runs the code the phone runs) unpacks to
+  `userApplicationDataDirectory/console-ui`, guarded by an
+  MD5+size stamp file so a relaunch is a no-op and an **upgrade** replaces a
+  stale UI (`console-ui.stamp`, sibling of the extracted folder).
+- iOS-ready by construction: the block is `#if JUCE_ANDROID || JUCE_IOS` and
+  takes no Android API, which is what P9.3 needs.
+- The host test caught a real bug while being written: `uncompressTo` needs its
+  target's **parent** to exist, so the code extracts into the app-data dir
+  rather than into a not-yet-created subdirectory.
+- Smoke-tested against the real API? No: A6's "serve the current index.html"
+  check needs the phone (or at least a running Android API).
+- **Verified on the emulator (Claude, 2026-10-12)**: a fresh install (uninstall,
+  `adb install`) served `index.html`, `sw.js`, `src/console/app.js` and
+  `components.js` byte-identical to `console-ui/` (checked by `smoke-android.mjs`).
+  **Upgrade**: a marker comment appended to `index.html`, `adb install -r`, relaunch:
+  `GET /index.html` returned the marker, `console-ui.stamp` changed, and the service
+  worker's cache (`crosspoint-shell-v2`) held the new `index.html` too. The worker is
+  network-first for the shell, so it cannot serve a stale UI while the engine is up.
+  The marker was removed again.
+
+#### A7 — Android web shell · M · any + design review · lane S
+- **Depends on:** A5, A6, A2 · **Touches:** `sonobus/Source/ConsoleShell.h`,
+  `SonoStandaloneFilterWindow.h`, `.jucer` (`JUCE_WEB_BROWSER=1`, manifest XML),
+  `res/xml/network_security_config.xml` (new)
+- **Do:** extend `ConsoleShellView` to `JUCE_ANDROID` (JUCE's Android
+  `WebBrowserComponent`) so the window shows the Console instead of the JUCE
+  editor, as on the Mac. Turn on `hardwareAccelerated` (application and
+  activity). Android 9+ blocks cleartext HTTP, so allow it for `127.0.0.1`
+  **only**. Build to `docs/design/android.md` §2: splash with no white frame,
+  system bars, portrait on phones, Back, keyboard resize, font scale,
+  haptics, and the touch copy (it's in `console-ui`, so the PWA gets it
+  too). Also §8: the native error page on a phone.
+- **Done when:** the emulator shows the phone layout (P5.5) driving the real
+  engine (connect, stations, talk, meters, no page errors), and Claude has
+  approved `adb` screenshots against UX4 + A2.
+- **Result (Claude, 2026-10-12)**: the shell is extended to Android; screenshots
+for design review are still missing (no emulator yet).
+- `ConsoleShell.h` now builds for `(JUCE_MAC || JUCE_ANDROID) && JUCE_WEB_BROWSER`.
+  JUCE 7.0.8 does ship `juce_WebBrowserComponent_android.cpp`, and every API
+  the file uses (`Options`, `withBackend`, `goToURL`, `pageAboutToLoad`,
+  `pageFinishedLoading`, `pageLoadHadNetworkError`,
+  `newWindowAttemptingToLoad`) exists on Android — checked in the JUCE source,
+  not assumed. Its `JuceWebView` Java classes are embedded as bytecode, so no
+  extra `java.srcDirs` entry is needed.
+- `.jucer`: `JUCE_WEB_BROWSER` 0 → 1, and the manifest's
+  `hardwareAccelerated` false → true (application and activity).
+- Android 9+ blocks cleartext, so `network_security_config.xml` permits it for
+  `127.0.0.1`/`localhost` only, wired via `android:networkSecurityConfig`.
+  `res/xml/` survives a resave (tested), and the file is force-added because
+  `sonobus/.gitignore` ignores the whole generated `mobile/Builds` tree.
+- `showWebShell()` gets an Android branch: the window is already fullscreen, so
+  no geometry restore and no resize limits (the Mac path is untouched).
+- Error page built to android.md §8: safe-area-aware, 24 px sides, content from
+  ¼ height, one full-width 48 px accent button, and the phone copy ("Crosspoint
+  couldn't start" / "The Console didn't load"). The Mac keeps its reviewed P6.1
+  strings, colours and layout exactly.
+- Touch copy (android.md §2) in `console-ui`, so the PWA gets it too, via
+  `(pointer: coarse)`: "Tap to turn off" / "Tap to open mic" / "Press and hold"
+  and the PTT live-band line without "or Space".
+- Android mock scenarios for the design review (control-api §6 asks each
+  implementing task to add its fields): `android`, `android-blocked`,
+  `android-call`, `android-aftercall`, `android-echo`, with
+  `self.kind: "android"` and the `platform` block. `console-ui` tests 15/15.
+- Back gesture (§2): JUCE's default `backButtonPressed()` returns false and the
+  peer then `finish()`es the activity, so the first version would have quit the
+  app. Review fix: `SonobusStandaloneFilterApp::backButtonPressed()` (Android
+  only) calls `Process::hide()` (= `Activity.moveTaskToBack(true)`, HOME-intent
+  fallback) and returns true: Back goes to the background like Home, the
+  foreground service keeps the audio, nothing disconnects. **Limitation:** the
+  page never sees Back. JUCE 7.0.8's `WebBrowserComponent` has no
+  `evaluateJavascript`, and the native side cannot tell whether the settings sheet
+  is open, so Back does not close the sheet (§2 asks for that). Closing it needs
+  either a JNI bridge into the WebView (`evaluateJavascript` through
+  `JuceWebView`) or the page pushing a history entry when the sheet opens; left
+  for the emulator pass. Unverified until then.
+- Review fix, OpenGL: `attachGL()` (the only place an `OpenGLContext` is attached
+  on Android; `resumed()` and the 500 ms foreground-service timer never call it)
+  now returns early once the web shell is shown (`webShellShown`), so the WebView
+  is not inside a GL-attached window (black or hidden WebView risk). The context is
+  still attached for `--legacy-ui`/when the shell is not used. `detachGL()` is
+  unchanged (it only acts if attached). Unverified until the emulator.
+- Review fix, error copy: on Android `showConsoleShell()` uses the §8 strings
+  verbatim: API did not start -> "Its audio engine couldn't open its local
+  connection (port {port} is in use by another app). Close that app or restart the
+  phone, then try again." with a **Try again** button that re-runs
+  `startApiServer()` (and `startEngineState()`) and, if that worked, loads the
+  page; UI files missing -> title "This copy of Crosspoint is incomplete", body
+  "Some of its files are missing. Reinstall Crosspoint.", no button (checked
+  first: no retry fixes it). `ConsoleShellView` takes a `ConsoleShellFatal`
+  {title, buttonLabel, onRetry}; the Mac passes none, so its P6.1 strings, layout
+  and behaviour are unchanged (the shared default-argument path only; desktop
+  build passes). The Android branches are not compiled here.
+- Agent page: `consoles[].kind: "android"` shows as "Console · Android" (mock
+  `talking` scenario has one).
+**Not done:** the emulator screenshots (100% and 130% font scale, cold-start
+video) that this task's *Done when* requires, and A9/A10/A14's states.
+- **Emulator pass (Claude, 2026-10-12), awaiting design review.** Merged with
+  `android-apk` (A4 package, A8, A11, B15). Fixes, each checked on `crosspoint-33-s`:
+  - **Layout.** Two causes, neither the one first suspected. (1) `setShell()` sized the
+    content from the window's pre-fullscreen size: it now takes the real size from
+    `resized()`. (2) Android's WebView lays `html` out **0 px tall** (`height: 100%` on
+    `html, body, .app` resolved to 0, so the page shrank to its content and the You bar
+    sat under the top bar): `.app` is now `position: fixed; inset: 0` (same on
+    desktop). The shell no longer subtracts the safe-area insets (the window already
+    sits between the bars). Measured through the WebView's devtools: `innerHeight`
+    842 and `.app` fills it. Keyboard up: `innerHeight` 529 and the focused field stays in view
+    (`adjustResize` in the activity). Rotation was not exercised (phone: locked).
+  - **System bars.** Theme `CrosspointTheme` (`res/values/styles.xml`, window background and
+    Android 12 splash `#0b0d0f`, bars `#0d1013`, light icons). `SonoBusActivity.onCreate`
+    sets the navigation bar black afterwards, so `ConsoleShellAndroid.h` sets both bar colours
+    again from JNI once the shell is up. Pixel check: status and navigation bar are
+    (13,16,19) = `#0d1013`.
+  - **No white frame.** The window and splash are `#0b0d0f`, and the WebView's own
+    background is set through JNI as soon as it exists. A 25 s `screenrecord` of a cold
+    start (`cold-start.mp4`, contact sheet `cold-start-contact.png`) shows home screen,
+    dark splash with the icon, the page. No white frame.
+  - **Portrait on phones**: `Desktop::setOrientationsEnabled(upright)` when the smallest
+    width < 600 dp, all orientations otherwise. Set at runtime; not yet rotated on a tablet image.
+  - **Font scale.** At 100%/130% the page follows it. Found on the way: changing the
+    font size while the app ran **killed the process** (the activity was recreated:
+    `fontScale` was not in `configChanges`). It now is, with `density|uiMode|
+    screenLayout|smallestScreenSize`, and a one-second JNI poll sets the WebView's
+    `textZoom` from the configuration (a running WebView does not follow it). The
+    process survives 1.0 -> 1.3 -> 1.0 (same pid). **The native error page does not scale**
+    with the font (JUCE labels use pixels); the 130% capture shows it.
+  - **Touch copy.** `touchFirst(st)` = `(pointer: coarse)` OR `self.kind === 'android'`;
+    the emulator now says "Tap to turn off". Test added, `npm test` 18/18.
+  - **Haptics.** Native, not `navigator.vibrate`: the page navigates a hidden frame to
+    `crosspoint-shell://haptic/start|stop`, `pageAboutToLoad` swallows it and calls
+    `View.performHapticFeedback` (KEYBOARD_TAP when your voice starts, CLOCK_TICK when it
+    stops). That honours the system touch-feedback setting and needs no `VIBRATE`
+    permission. On the emulator the vibrator service logged a TOUCH click for mic on,
+    a texture tick for mic off, and `ignored_for_settings` with
+    `haptic_feedback_enabled 0`. Outside the shell the page falls back to `navigator.vibrate`.
+  - **Back.** `javascript:` through JUCE's `goToURL()` works in 7.0.8 (it is `loadUrl`).
+    `backButtonPressed()` calls `window.crosspointBack()`: with the settings sheet open
+    it closes it; otherwise the page goes to `crosspoint-shell://background` and the shell
+    calls `moveTaskToBack` (same pid after, never disconnects). The native error page
+    goes to the back directly. Verified with `adb shell input keyevent KEYCODE_BACK` in
+    both cases and on the error page.
+  - **Error page** (port 7070 held by `nc -l -p 7070` inside the emulator): shows "Crosspoint
+    couldn't start" with the section 8 copy. After the port was free, **Try again** loaded the
+    Console. Not matching the spec to look at: the title is not bold and the body line
+    spacing is tight (JUCE `Font` on Android); for the design review.
+  - Debug hook: if `<app data>/webdebug` exists the WebView is debuggable
+    (`adb shell run-as io.lagreca.app.crosspoint touch webdebug`, `adb forward tcp:9333
+    localabstract:webview_devtools_remote_<pid>`), which is how the layout was measured.
+  - Captures for the design review, all from `adb exec-out screencap` of
+    `crosspoint-33-s`, in `/private/tmp/claude-501/a7-review/`: `100-` and `130-`
+    `connected-no-stations`, `settings-sheet`, `keyboard-in-settings`, `error-page`,
+    `echo-notice-phone-width` (the A8 notice, now a full card), plus `cold-start.mp4`
+    and `cold-start-contact.png`.
+
+#### A8 — Phone audio path: echo, routing, Bluetooth · M · any · lane E
+- **Depends on:** A5 · **Touches:** `sonobus/Source/` (Android audio setup),
+  `sonobus/Source/android/java/` if needed
+- **Do:** a phone on speaker sends the VDI audio back into its own mic, and
+  SonoBus has no echo canceller. Find out whether JUCE 7.0.8's Oboe path can
+  open the input with the `VoiceCommunication` preset (platform AEC), and at
+  what latency cost. Decide the default output (speaker, earpiece or wired).
+  Check Bluetooth: an A2DP headset with the phone mic, versus SCO (headset mic,
+  narrowband). Record the measurements and implement the default that works.
+  Build to `docs/design/android.md` §6:
+  - plain device names
+  - default output, Phone speaker unless measurements say otherwise
+  - mix with other apps' audio
+  - `platform.outputRoute` and `platform.echoRisk`
+  - the echo notice, **only if** speaker + mic echoes
+  (Phone calls are A14.)
+- **Done when:** findings recorded here and the chosen default is
+  implemented. On the emulator, nothing regresses; the by-ear check is A13.
+- **Result:** (2026-10-12, Claude sonnet)
+  **How SonoBus picks the device and buffer.** JUCE 7.0.8 on Android uses **Oboe**
+  (`JUCE_USE_ANDROID_OBOE` defaults to 1; OpenSL is not enabled). No device type
+  is chosen in our code: the device list is JUCE's, `System Default (Input/Output)`
+  first (Oboe `kUnspecified`, so Android's own routing decides) then one entry per
+  `AudioDeviceInfo`. `SonoStandaloneFilterApp.cpp` asks for buffer 192 at the
+  phone's native sample rate. Streams ask for Exclusive + LowLatency; the emulator
+  grants Shared/None (it has no MMAP path), a real phone may differ. JUCE reopens the
+  output on `ErrorDisconnected` with the unspecified id, which is what makes the output
+  follow headphones; the **input stream has no such restart** (see A13).
+  **The AEC preset: feasible, done, small patch.** JUCE never calls
+  `setInputPreset`, so Oboe's default `VoiceRecognition` (no echo canceller) is what
+  stock SonoBus uses. `VoiceCommunication` (7) asks the platform for AEC + noise
+  suppression on the mic path (Android 9+ / API 28+, ignored below). It needs a JUCE
+  patch (the stream builder is private to JUCE): 20 commented lines in
+  `juce_Oboe_android.cpp`, behind `#ifdef JUCE_ANDROID_OBOE_INPUT_PRESET`, input
+  direction only, with a retry on the old preset if the open fails. The `.jucer`
+  (Android exporter `extraDefs`) sets `JUCE_ANDROID_OBOE_INPUT_PRESET=7`; remove that
+  one define and JUCE behaves as before. **Verified on the emulator:** the capture
+  stream is created with `inputPreset = 7` (logcat) and `dumpsys audio` shows
+  `src:VOICE_COMMUNICATION` for the app (it was `VOICE_RECOGNITION` before).
+  **Latency cost (per Oboe/AAudio docs and AOSP behaviour, NOT measured: the emulator
+  has no low-latency path to compare):** effects on the capture session generally
+  take it off the FAST/MMAP path, so expect the mic side to go from a few ms to
+  roughly 20-40 ms more, and Exclusive mode may be refused (Shared is what we get
+  anyway on many phones). Output is untouched: we do not set the output usage to
+  VoiceCommunication, because that would switch to the call volume stream and can
+  steer routing to the earpiece. A13 measures the real cost.
+  **Is the AEC "working"?** The engine cannot ask. `platform.echoRisk` assumes it works
+  when the preset is compiled in AND `AcousticEchoCanceler.isAvailable()` is true.
+  The emulator has no AEC effect, so it correctly reports `echoRisk: true` on speaker.
+  If A13 hears echo on a phone that reports an AEC, flip the assumption: set
+  `aecWorking = false` in `EngineState::refreshAndroidRoute` (notice always shows on
+  speaker while the mic transmits).
+  **Implemented.**
+  - Device names (`sonobus/Source/AndroidAudioRoute.h`, header-only, plain C++ plus a
+    small JNI half): JUCE names are `"<product> <type text>"`; the type is parsed back and
+    mapped to Phone speaker / Earpiece / Wired headphones / Bluetooth · name / USB · name
+    and Phone mic / Headset mic / ... `devices.inputs/outputs` keep JUCE's name as `id`
+    (so `devices.setInput/Output` still work) and use the plain label as `name`;
+    `mic.device`/`output.device` use the same label, so the picker marks the current one.
+    Non-devices (telephony, remote submix, FM/TV tuner, HDMI, echo reference) are hidden;
+    two entries with one label collapse to one (A2DP preferred over SCO, the default
+    entry over its explicit twin). The `System Default` entry is labelled with whatever
+    Android currently routes to (live, 2 Hz, `getAudioDevicesForAttributes` on API 33+,
+    else wired > USB > Bluetooth > speaker).
+  - Default output with nothing plugged in: **Phone speaker** (`System Default` resolves
+    to it; the emulator reports `output.device: "Phone speaker"`, `outputRoute: "speaker"`).
+    Earpiece is only chosen if picked. Output follows headphones through the system
+    routing; the mic state is engine state and routing never touches it.
+  - Default input stays the phone mic, also with a Bluetooth headset connected (A2DP has
+    no mic; SCO is a narrowband call link and we never start it). A Bluetooth SCO mic can
+    be picked from the list but we do not manage the SCO link: A13 checks whether it
+    captures at all; if not, hide Bluetooth inputs.
+  - API: `platform: { outputRoute, echoRisk }` on Android (null elsewhere), added to
+    `buildConsoleState`; other tasks add their fields next to these two.
+  - UI: `echoNotice()` in `console-ui/src/console/components.js`, first child of `<main>`,
+    shown only while `platform.echoRisk`; copy from android.md section 6; mock derives
+    `echoRisk` from route + mic like the engine (`android-echo` scenario). Tests: two in
+    `console-ui/test/core.test.mjs`; host test `tests/android/a8-device-names.cpp`
+    (`c++ -std=c++17 tests/android/a8-device-names.cpp`; labels, routes, hidden devices,
+    echoRisk).
+  - Other apps' audio: nothing in our Java, JUCE's Java or Oboe calls `requestAudioFocus`
+    or `AudioManager.setMode`; `dumpsys audio` shows an empty focus stack with the app
+    running. Crosspoint neither pauses other apps nor is paused by them, as designed.
+    (A call is A14.)
+  **Verified on the emulator (crosspoint-33-e):** builds; app runs; state shows the plain
+  names, `outputRoute: speaker`, `echoRisk: true` (no AEC on the emulator); input stream
+  opens with preset 7; no focus requests; desktop `build-desktop.sh --app-only` builds;
+  `npm test` 17/17. **Not measurable here:** real AEC quality, latency cost, headphone /
+  Bluetooth / USB plug events (the emulator has speaker + mic only), earpiece. The
+  emulator screenshot of the notice is inconclusive: the pre-A7 web view layout squeezes
+  `<main>` to a sliver (only the notice's rounded corner shows), so A7 should confirm the
+  notice at phone width.
+  **A13 checklist (audio, on the real phone):**
+  1. Phone speaker + open mic with a VDI talking: do they hear themselves? With the
+     preset (this build) versus echo if you remove the define. Does the Console show the
+     notice exactly when it echoes, and not when it doesn't? (If it echoes but no notice,
+     flip `aecWorking`.)
+  2. Latency: loopback or the Console's latency numbers with the preset on and off; is
+     the extra mic latency acceptable (about 20-40 ms expected)?
+  3. Plug wired headphones in and out mid-call: output moves and back, **audio keeps
+     flowing both ways, the mic button state never changes**; does the mic input keep
+     working after unplugging a headset with a mic (the input stream is not restarted by
+     JUCE)? Settings shows "Wired headphones" / "Headset mic" then "Phone speaker" / "Phone mic".
+  4. Bluetooth A2DP headset: output goes to it ("Bluetooth · name"), mic stays "Phone mic";
+     picking the headset's mic (SCO): does it capture, and how bad is it?
+  5. USB audio device if available: appears as "USB · name" for both.
+  6. Earpiece: picking it works or not (it may need call mode; if not, drop it from the list).
+  7. Music/video in another app keeps playing while connected and talking; neither pauses.
+  8. Volume buttons change the voice level (media volume) and the notice's wording reads right.
+
+#### A9 — Mic permission flow · S · any + design review · lane P
+- **Depends on:** A7, A2 · **Touches:** `sonobus/Source/` (permission request,
+  API state), `console-ui/` (only the state A2 specifies)
+- **Do:** `docs/design/android.md` §3 and the mic row in §7: ask on the
+  first connect (then notifications), no pre-prompt. Add
+  `platform.micPermission` and `platform.requestMic`, the mic button and
+  live band states, and the Settings row. A blocked mic must still allow
+  listening.
+- **Done when:** grant, deny and "deny then grant in Settings" all behave per
+  A2 on the emulator; design review passed.
+- **Resume (2026-10-13):** a Sonnet agent got about halfway, then stopped at the
+  usage limit. Its unbuilt, unverified work is committed as `6421d326` on
+  branch `worktree-agent-a6d6ce498dac75612` (22 files). It covers the mic
+  flow and parts of review fixes 1–6 from docs/HANDOFF-android-apk.md
+  ("The A9 agent's job"). Merge `android-apk` into it, finish, build and
+  verify. The notification fixes (DEFAULT channel, one-station copy) stay in
+  A9 because the WIP already touches them.
 - **Result:**
 
-#### (was P6.2) — Android shell · M
-- **Depends on:** P6.3, P5.6
+#### A10 — Background audio (foreground service) · M · any + design review · lane P
+- **Depends on:** A4, A2 · **Touches:** `sonobus/Source/android/java/`
+  (`SonoBusService`, renamed in A4), `.jucer` manifest XML
+- **Do:** keep audio and the API alive with the screen off or the app in the
+  background. Start the service when connected, with A2's notification and
+  actions. Declare `foregroundServiceType="microphone|mediaPlayback"` plus the
+  matching `FOREGROUND_SERVICE_*` permissions, and request `POST_NOTIFICATIONS`
+  (Android 13+), so a later targetSdk bump to 34+ just works. Hold a
+  low-latency Wi-Fi lock and a partial wake lock only while connected. Build to
+  `docs/design/android.md` §1 and §4:
+  - lifecycle: swipe-away from Recents disconnects and quits; Back and Home
+    don't
+  - channel, small icon, tint, title and text tables, Mic on/off and
+    Disconnect actions
+  - the notification and background rows in §7, `platform.notifications`,
+    `platform.backgroundRestricted`, `platform.openSettings` and
+    `platform.allowBackground`
+- **Done when:** on the emulator, the app backgrounded with the screen off for
+  10 minutes keeps meters moving and the API answering; the notification
+  matches A2. The real-phone check is A13.
+- **Result (Claude sonnet, 2026-10-12)**: implemented and verified on the emulator (API 33, arm64); wip,
+  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/`.
+  - **Where the copy lives:** `sonobus/Source/ConnectionNotification.h` (pure C++, no JUCE) builds title,
+    text, tint and the Mic action from the Console state (the same data as the live band);
+    `tests/android/a10-notification.cpp` checks every row of android.md section 4's tables (host, passes).
+    `android/AndroidServiceController.h` (250 ms message-thread timer) reads `EngineState::getLastState()`,
+    and pushes to Java (`SonoBusActivity.updateConnectionNotification`) only when the content or the service
+    state changes, at most once a second. Java only draws it.
+  - **Lifecycle (section 1):** the service is wanted from the first connect attempt until Disconnect (state
+    `failed` + reason "Disconnected"), through reconnecting/failed. A fresh install ("Not connected to a
+    server") has no service. `SonoBusService`: channel `connection` (LOW, public on the lock screen, ongoing),
+    `ic_stat_crosspoint`, tint #2e6b66 / #ff4f7b live, actions Mic off/Mic on + Disconnect, tap opens the app,
+    `START_NOT_STICKY`, partial wake lock + Wi-Fi locks only while it runs. `stopWithTask="false"`:
+    swipe-away -> `onTaskRemoved` (and `Activity.onDestroy` while finishing) -> `quitApp()` = native
+    disconnect + save, remove the notification, `killProcess` 500 ms later. Back goes home (A7) and keeps
+    everything. `suspended()` no longer closes the audio device while the service is wanted.
+  - **Manifest:** `foregroundServiceType="microphone|mediaPlayback"` (the microphone type is only passed to
+    `startForeground` while RECORD_AUDIO is granted), FOREGROUND_SERVICE_MICROPHONE / _MEDIA_PLAYBACK,
+    POST_NOTIFICATIONS, WAKE_LOCK, ACCESS_WIFI_STATE, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+    POST_NOTIFICATIONS is requested (Android 13+, once) right after the mic answer in
+    `SonoStandaloneFilterWindow.h` (A9: move it with the mic flow).
+  - **API:** `platform.notifications` (granted|denied), `platform.backgroundRestricted` (added to A8's
+    `platform` object), commands `platform.openSettings {page}` and `platform.allowBackground` (one
+    `Hooks::platformCommand` hook; A9 adds `platform.requestMic` there). `backgroundRestricted` = the user set
+    Restricted battery use or the system put the app in the restricted standby bucket. Plain "Optimized" is not
+    reported: **with the app unplugged, screen off and `dumpsys deviceidle force-idle` (deep Doze) for 90 s the
+    engine stayed connected and meters kept moving**, so the foreground service is enough. console-ui: problem
+    rows (panel, 3 px warning border, circle, ink2 text, 44 px `.btn`) only when needed, mock scenario
+    `android-problems`, `lib/platform.js` + tests (21/21).
+  - **Verified on the emulator:** notification content for live ("Live: TEST-01 hears you", pink tint, Mic off
+    + Disconnect), mic off ("Mic off · nobody hears you", Mic on), PTT (no mic action), reconnecting
+    (Wi-Fi off), phone call; lock screen (readable); the Mic off action toggles the engine; screen off with the
+    battery unplugged for 12 minutes: state `connected`, station online, meters at 30 Hz, API answering over
+    `adb forward`; swipe-away from Recents: process gone, notification gone; Back keeps the process.
+  - **Finding:** Android 12+ hides *silent* notifications on the lock screen unless the user enables
+    "Show silent notifications" (`lock_screen_show_silent_notifications`, default off). The capture
+    needed that setting. Our LOW-importance channel therefore is not visible on a default lock screen.
+    Raising the channel to DEFAULT would play a sound and pop up on every update. Design call.
+  - **Not verified / open:** the notification-blocked row and the background row were checked as a headless
+    render of the mock (the real WebView layout is A7's open clipped-sheet bug, so the sheet did not render on
+    the phone); `platform.openSettings` / `allowBackground` intents were not tapped through; Android 14 FGS
+    rules (target is 33); settings sheet 130% font.
+
+#### A11 — Release APK + install docs · S · any · lane B
+- **Depends on:** A4 · **Touches:** `scripts/build-android.sh`, `.jucer`
+  (keystore fields), `docs/ANDROID.md`
+- **Do:** `scripts/build-android.sh --release` signs with a keystore given by
+  env vars or `~/.gradle/gradle.properties`. Remove the upstream keystore
+  reference; never commit the keystore or passwords. Derive versionName and
+  versionCode from the app version. Document `adb install` and sideloading
+  ("install unknown apps"). Don't publish the APK anywhere unasked.
+- **Done when:** a signed release APK installs over a previous release build
+  without uninstalling, and the docs work from a clean checkout.
+- **Result (Claude sonnet, 2026-10-12)**: done. Docs: `docs/ANDROID.md`, section
+  "Release APK" (keytool command, keystore outside the repo, env vars or
+  `~/.gradle/gradle.properties`, `adb install -r`, sideloading, how to bump).
+  - Signing: `CROSSPOINT_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`,
+    `_KEY_PASSWORD` (optional) in the environment, or `crosspointKeystore...` in
+    `~/.gradle/gradle.properties`. The upstream `sonouploadnew.jks` /
+    `sonoupload_*` references are gone from the `.jucer` (its four `androidKey*`
+    attributes are removed; the Projucer's `juceSigning` now points at the
+    default debug keystore path and nothing uses it). The release signing config,
+    the debug override and the release ABI filter live in the `.jucer`'s
+    `androidCustomAppBuildGradleContent`. A missing keystore fails twice over:
+    `build-android.sh --release` stops with the list of variables before the
+    resave, and Gradle's task graph check throws the same if run directly.
+  - Release ABI: **arm64-v8a only** (`ndk.abiFilters` on the `release_`
+    flavor; `aapt` shows `native-code: 'arm64-v8a'`). **Release APK: 32 MB**
+    (debug, four ABIs: 195 MB). Cold release build 1m46s.
+  - Versions: `versionName` = `.jucer` `version` (1.7.2), `versionCode` =
+    `androidVersionCode` (86); both were already emitted by the Projucer, so
+    there is nothing to derive, only to bump (documented).
+  - **Verified** with a throwaway keystore in `/private/tmp/crosspoint-a11-ks`
+    (outside the repo): release build, install on emulator-5560, rebuild,
+    `adb install -r` over it: Success without uninstalling, app launches. (The
+    debug build had to be uninstalled first: debug and release keys differ.)
+  - Not checked: `apksigner verify` (needs `JAVA_HOME` set; Gradle verified the
+    signature by installing), the doc steps from a truly clean clone, a real
+    phone.
+
+#### A14 — Phone calls + earcons · M · any + design review · lane P
+- **Depends on:** A10, A5 · **Touches:** `sonobus/Source/android/java/`,
+  `sonobus/Source/` (call state, local cue mixing), `console-ui/` (live band
+  and mic button text)
+- **Do:** build to `docs/design/android.md`:
+  - **§6 phone calls:** a call turns the mic off and silences playback;
+    after the call, playback returns and the mic stays off. Add
+    `platform.phoneCall` and `platform.micOffByCall`, plus the mic button,
+    live band and notification texts.
+  - **§5 earcons:** rising and falling two-tone cues, local only, for mic
+    changes from the notification action, the headset button (A12) and a
+    call ending.
+- **Done when:** on the emulator, a simulated call (`adb emu gsm call …`)
+  shows the §6 states and leaves the mic off afterwards. The earcons play
+  locally, and the F2 VDI peer receives **no** cue audio. Design review
+  passed.
+- **Result (Claude sonnet, 2026-10-12)**: implemented; verified on the emulator and with host tests; wip,
+  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
+  `app-aftercall.png`, `shade-call.png`).
+  - **Call detection** (`PlatformMonitor.java`, no permission): `AudioManager.getMode()` every 500 ms:
+    `MODE_IN_CALL` (cellular), `MODE_CALL_SCREENING`, or `MODE_IN_COMMUNICATION` (VoIP) while
+    `PlatformMonitor.appOwnsAudioMode` is false (**A8: set it while the app itself uses the communication
+    mode, e.g. for Bluetooth SCO**). Ringing (`MODE_RINGTONE`) is ignored until answered. No audio focus is
+    taken, so other apps mix as android.md section 6 says.
+  - **Engine** (`SonobusAudioProcessor::setPhoneCall`): the call turns the mic off (open mode) and releases
+    PTT; `isMicTransmitting()` is false for the whole call; playback is silenced by a 10 ms gain ramp on the
+    main output (the receive streams keep running); when the call ends playback returns and **nothing
+    turns the mic on**. `micOffByCall` is true from call start until `setMicOn(true)`, a PTT hold or a mode
+    change. `mic.setOn {on:true}` during a call answers `busy`. State: `platform.phoneCall`,
+    `platform.micOffByCall`. Notification title "Mic off during your phone call", no Mic action.
+  - **console-ui:** mic button "Mic off" · "During your phone call" (disabled), live band quiet
+    "Mic off during your phone call." during, "Mic off since your phone call. Tap the mic button to talk
+    again." after (open mode, mic off), cleared on mic on or mode change. Tests in
+    `console-ui/test/platform.test.mjs` for the `android-call` / `android-aftercall` scenarios.
+  - **Earcons** (`sonobus/Source/Earcon.h`): 660 -> 880 Hz (mic on) / 880 -> 660 (off), 70 ms tones, 20 ms
+    gap, -18 dBFS, 5 ms fades. `processBlock` adds it to the main output **after** the
+    `oursource->process()` calls that consumed `sendWorkBuffer`, next to the API test tone, and nowhere
+    else (not the recording mix, not a send buffer). Played for the notification action and when a call
+    ends (open mode); `AndroidServiceController::toggleMicWithEarcon()` is the function A12 calls for the
+    headset button. Not for the in-app mic button.
+  - **Verified:** `emu gsm call 5551234` + `gsm accept 5551234`: `phoneCall` and `micOffByCall` true, mic
+    off, notification title and UI text as above; `gsm cancel`: `phoneCall` false, **mic still off**,
+    after-call text shown; `mic.setOn true` clears `micOffByCall`. Earcon generator: host test
+    `tests/android/a14-earcon.cpp` (frequencies, level, gap, fades, block-size independence) passes.
+  - **"Not sent" is shown by code inspection plus that unit test, not by the F2 peer:** the cue is mixed into
+    the output buffer only after every send path has run. I did not run the F2 harness with a desktop
+    peer measuring the received audio, and nobody listened to the earcon on the emulator (no audio check).
+  - **Not verified:** a VoIP call (only the cellular emulation was run); the earcon's audibility.
+
+#### A12 — Mic toggle from the headset button · S · any + design review · lane P · optional
+- **Depends on:** A14, A7 · **Touches:** `sonobus/Source/android/java/`
+  (MediaSession), API command wiring
+- **Do:** the phone counterpart of the Mac hotkey (P6.5), per
+  `docs/design/android.md` §5. One press of a wired or Bluetooth headset's
+  play/pause button toggles the mic **in open-mic mode only**, with the
+  earcon (A14). It does nothing in PTT mode, and only takes the button while
+  connected. Add the Settings "Headset button" row and
+  `settings.headsetButton`. Not needed for the first APK.
+- **Done when:** with the phone locked, a headset press toggles the mic and
+  plays the cue, and the notification title follows.
 - **Result:**
 
-#### (was P6.4) — Android mic permission + background audio · M · human
-- **Depends on:** P6.2
-- **Done when:** audio keeps flowing with the screen off on my phone.
+#### A13 — On-phone acceptance · S · human · lane H
+- **Depends on:** A7, A8, A9, A10, A11, A14 (A12 if done)
+- **Do:** on maelo's phone, **on the VPN** (peers use VPN IPs, P8.4): install
+  the release APK, connect through onboarding, hear a VDI, talk back, mute
+  and solo. Then screen off for 15 minutes, switch apps, go from Wi-Fi to
+  cellular and back, and use a wired and a Bluetooth headset. If P7.7 has
+  been measured, compare latency and background behaviour with the PWA.
+- **Done when:** results recorded here; anything that fails becomes a bug
+  in `BUGS.md` or a new A-task.
+- **Result:**
+
+### Lock-screen station controls (A15–A19)
+
+maelo asked for this on 2026-10-13 after using the APK. The notification is
+not practical as it stands: once dismissed it doesn't come back until the app
+restarts, and it only has Mic and Disconnect.
+
+**Approach, agreed with maelo:** publish an Android **media session**, as
+Spotify does. That puts Crosspoint in Samsung's **Now Bar** and in the
+expanded lock-screen player, with buttons that work without unlocking. The
+system keeps a media notification while audio plays, so it can't be swiped
+away. The system owns the layout; we supply the artwork, title, subtitle and
+about 5 buttons:
+
+| Button / field | Crosspoint |
+|---|---|
+| play/pause (also the headset button) | **Mic on/off** |
+| previous / next | **pick a station** |
+| custom 1 | **Mute** (selected station) |
+| custom 2 | **Solo** (selected station, exclusive: dims the others, and only it hears you. It never switches the mic on) |
+
+The title is the selected station, the subtitle is its state plus who hears
+you, and the artwork is the station colour. Per-station "Hears you" stays in
+the app. Mock: `design/prototypes/android-nowbar/index.html`.
+
+**Who does what**
+- **Claude (lead, design) only:** A15, and the design reviews of A9, A18 and A19.
+- **Any agent:** A9 (resume), A16, A17, A18, A19.
+- **maelo:** A13 (re-test on the phone with these).
+
+**Order and parallel work**
+
+| Step | Can run in parallel | Waits for |
+|---|---|---|
+| 1 | **A15** (Claude) · **A9** (agent) · **A17** (agent) | nothing |
+| 2 | **A16** (agent) | A9 (both edit `SonoBusService.java`) |
+| 3 | **A18** (agent) · **A19** (agent) | A15 + A17 (A18 also A16) |
+| 4 | design review of A9, A18, A19 (Claude) | step 3 |
+| 5 | A13 on the phone (maelo) | step 4 |
+
+**Files by task** (they're split this way to avoid conflicts):
+- A17: a new receiver plus `AndroidServiceController.h`
+- A16 and A18: `SonoBusService.java` and the notification layout
+- A19: a new `TileService` class
+
+All of them edit the `.jucer` manifest XML: keep those edits small, resolve
+conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
+
+#### A15 — UX addendum: lock-screen player · S · design (Claude) · lane D
+- **Depends on:** A2, A10 · **Touches:** `docs/design/android.md` (new §12),
+  `design/prototypes/android-nowbar/`
+- **Do:** turn the mock into spec, covering:
+  - Now Bar pill text (live line), and how the expanded player maps (table
+    above)
+  - title, subtitle and artwork per state: live, mic off, PTT, call (A14),
+    disconnected, lost/offline station
+  - which station is selected first (the soloed one, else the first in
+    `stationOrder`), and how ◀ ▶ wrap
+  - button icons and labels for each state, and the accessibility labels
+  - what happens with another media app playing
+  - how this replaces or sits beside the A10 connection notification, and
+    whether the A19 tile is still worth it
+- **Done when:** A18 can be built without inventing anything.
+- **Result:** done (Claude, 2026-10-13): `docs/design/android.md` §12. Decisions:
+  - the MediaStyle notification replaces the §4 one, and plays from connect
+    until Disconnect
+  - Layout A as in the mock (Mic centre · Station ◀ ▶ · Mute · Solo), with
+    fallback Layout B (Listening · Station ↻ · Mic · Mute · Solo); A18 picks
+    with a spike, because Android 13+ draws the play/pause icon itself
+  - Solo is exclusive and never opens the mic
+  - Mic is hidden in PTT, during a call, and when the mic isn't granted
+    ("Allow mic" instead)
+  - the selection walks online and lost stations; the title is the short
+    name; the subtitle is the §4 "who hears you" line
+  - the artwork is the station colour, with a live border when your voice is
+    out
+  - the A19 tile is deferred
+
+
+#### A17 — Native control bridge · M · any · lane P
+- **Depends on:** A10 · **Touches:** new
+  `sonobus/Source/android/java/io/lagreca/app/crosspoint/ControlReceiver.java`,
+  `sonobus/Source/android/AndroidServiceController.h`, JNI glue, `.jucer`
+  manifest (register the receiver, not exported)
+- **Do:** buttons send `PendingIntent`s (explicit, immutable) to a receiver.
+  The receiver calls into the engine through JNI and runs the **same command
+  paths the control API uses** (`station.setMute`, `station.setSolo` with
+  `exclusive`, `station.setTalk`, `mic.setOn`, `connection.disconnect`), so
+  routing rules and `hearsYou` stay engine-owned. Extend the state pushed to
+  Java (it is already throttled, one push per second at most) with up to 4
+  stations in `stationOrder`, each with id, short name, `colorIndex`, presence,
+  mute, solo, talk and `hearsYou`. Mic changes from here play the earcon
+  (A14's `toggleMicWithEarcon`). Commands must work while the screen is
+  locked, without an activity.
+- **Done when:** a host or emulator test drives every command through the
+  receiver (`adb shell am broadcast` with the explicit component) and the
+  engine state changes accordingly. No UI in this task.
+- **Result (2026-10-13, `android-apk`): done, verified on the API 34 emulator.**
+  Built on the A18 spike, because A15's pivot to a media session (§12) changed
+  the transport: the buttons are `PlaybackState` actions and `Notification`
+  actions, not the `RemoteViews` + `ControlReceiver` the card assumed.
+  - **One command implementation, two callers.** `ApiCommands::runLocalCommand
+    (owner, cmd, args, err)` runs the *same* `consoleCommand` the control API
+    uses. To make that possible, `consoleCommand` now takes the caller's `owner`
+    id instead of an `ApiSession&`; its only session use was
+    `session.getId()` for the PTT-holder set. Nothing else about command
+    behaviour changed, so routing rules and `hearsYou` stay engine-owned.
+  - **Player buttons get their own channel.** A new
+    `nativePlayerButton`/`pendingPlayerButton` pair. The first attempt reused
+    `nativeNotificationAction` (codes 1/2) and **silently did nothing** for
+    prev/next/mute/solo: the controller's `switch` only had cases 1 and 2, so
+    codes 3–5 fell into `default: break`. Found by tapping the button and
+    watching the engine not move; the play/pause button worked, which is what
+    pointed at the switch rather than the wiring.
+  - **State pushed to Java** (`AndroidServiceController::updatePlayerStations`)
+    is up to 4 stations in `stationOrder`, each with id, short name,
+    `colorIndex`, presence, health, latencyMs, lossPct, mute, solo, talk and
+    hearsYou — wider than the card, because §12.4's second line draws the
+    station's own state. Pushed only when the JSON changes.
+  - **Selection** (§12.3): the soloed station, else the previous one while it
+    exists, else the first. ◀ ▶ walk non-offline stations and wrap.
+  - Mic goes through A14's `toggleMicWithEarcon()` (earcon, open mode only).
+    Mute/Solo go through `station.setMute` and `station.setSolo { exclusive:
+    true }`, so P5.7 applies.
+  - **Verified on the emulator** (API 34, one headless peer on a local
+    `aooserver`): tapping the player drove the engine every time —
+    Mic `on=true→false`, Mute `false→true`, Solo `false→true`, and releasing
+    Solo `true→false`. Button labels followed state ("Mute" → "Unmute").
+  - Not done: `station.setTalk` and `connection.disconnect` are reachable
+    through `runLocalCommand` but have no button yet (§12.1 deliberately keeps
+    Disconnect off the player), so there was no UI path to exercise them.
+  - Note for A18: the card's `ControlReceiver.java` is not needed for the
+    player; `PendingIntent`s to the **service** plus `PlaybackState` actions
+    cover every button, and a receiver would be a second, redundant command
+    path. A19's tile may still want one.
+
+
+#### A16 — Service notification never stays gone · S · any · lane P
+- **Depends on:** A9 (both edit `SonoBusService.java`) · **Touches:**
+  `SonoBusService.java`, `AndroidServiceController.h`
+- **Do:** on Android 14+, users can dismiss foreground-service notifications.
+  Set a `deleteIntent` that re-posts it, and re-post whenever the app comes to
+  the foreground and on every state push, while the service runs. Also check
+  why touching the body made it vanish on maelo's phone (it isn't
+  `setAutoCancel`; check whether the content intent restarts the task or
+  service). Record the cause in *Result*.
+- **Done when:** on an Android 14+ emulator image, swiping the notification
+  away or tapping it brings it back within a second, while connected. After
+  Disconnect or swipe-away from Recents it stays gone.
+- **Result (2026-10-13, `android-apk`): root-caused and fixed by the A18
+  media session; verified on the API 34 emulator.**
+  - **Cause (confirmed by reproduction).** The §4 connection notification is an
+    ordinary ongoing foreground notification, which Android 14+ lets the user
+    dismiss. Measured before the fix: swipe → `dumpsys notification` reports no
+    `id=1555` while `dumpsys activity services` still shows
+    `isForeground=true` and the process alive. It does **not** come back on its
+    own; it only reappears when the content happens to change. That is exactly
+    the reported "doesn't come back until the app restarts".
+  - **Why the carded fix would not have held.** `deleteIntent` + re-post is a
+    race: between the dismiss and the next push there is no notification, and
+    `deleteIntent` is not delivered for every dismissal path. The media session
+    removes the problem instead of chasing it: while the playback state is
+    `PLAYING` the system marks the notification `FLAG_NO_DISMISS` (observed
+    `flags=0x206a`, i.e. `0x2000` set) and refuses the swipe.
+  - **Verified after the fix:** swipe → the notification is still there and the
+    service is still foreground; repeated with the app in the foreground and
+    backgrounded, and after 15 s idle. §12.1's "playing from connect until
+    Disconnect, whatever the mic does" is what keeps it that way.
+  - **The second symptom is NOT explained.** The card also asks why touching the
+    body made it vanish on maelo's phone. I could not reproduce that on API 34:
+    tapping the body opened the app (or did nothing in the shade) and the
+    notification stayed. `setAutoCancel` is not set and the content intent is
+    `FLAG_ACTIVITY_SINGLE_TOP`, which does not tear the task down. **No proven
+    cause**, so nothing was changed for it; if it reappears on the phone it
+    should be re-opened as its own bug with a logcat capture.
+  - The card's "re-post on every state push" is now unnecessary for the player
+    (the system will not let it be dismissed), so no re-post code was added.
+    Re-posting is still meaningful for the one case that remains: the user
+    turning notifications on after the service started, which A9/A10 already
+    handle (`lastNotifOk`).
+
+
+#### A18 — Lock-screen player (media session) · M · any + design review · lane P
+- **Depends on:** A15, A16, A17 · **Touches:** `SonoBusService.java`, new
+  `CrosspointMediaSession.java` (MediaSession + PlaybackState custom actions,
+  a MediaStyle notification as the foreground notification),
+  `AndroidServiceController.h`, `.jucer` (androidx.media if needed)
+- **Do:** first the layout spike in android.md §12.2 (A or B). Then build §12 on A17's command bridge:
+  - play/pause → `mic.setOn`, with the earcon
+  - skip previous/next → the selected station
+  - custom actions → `station.setMute` and `station.setSolo` (exclusive), on
+    the selected station
+  - metadata (title, subtitle, artwork) and button states follow the pushed
+    state without flicker or sound
+  - the media button from headsets maps to play/pause; this absorbs A12
+  - keep "mixes with other apps" (A8): no audio-focus request unless A15 says
+    otherwise
+- **Done when:**
+  - On the emulator's lock screen, the media player shows and every button
+    changes the engine state within a second.
+  - Captures go to `/private/tmp/claude-501/a18-review/`.
+  - The real check is maelo's Samsung Now Bar in A13.
+  - Design review passed.
+- **Result (2026-10-13, `android-apk`): wip, awaiting design review. Layout B
+  applied. Verified on the API 34 emulator.**
+  - **Layout spike (§12.2), API 34 and API 33: Layout A is impossible.**
+    The system player always draws the standard play/pause as the large
+    centre/primary button, and a custom action can never take that slot. Tried,
+    each captured on the lock screen (`/private/tmp/claude-501/a18-review/`):
+    - `base`: PLAY/PAUSE + SKIP_TO_PREVIOUS/NEXT declared, Mute and Solo custom:
+      ◀ and ▶ in the outer slots, ❚❚ centre (`spike-api34-base.png`,
+      `spike-api33-base.png`).
+    - `nopp`: no PLAY/PAUSE/PLAY_PAUSE and no skip declared, four custom actions
+      (Mic, Next station, Mute, Solo): **the centre button disappears** and the
+      customs fill the bottom row, Mic far left (`spike-api34-nopp.png`,
+      `spike-api33-nopp.png`).
+    - `nopp-skip`: skip declared, no play/pause, customs Mic, Mute, Solo: no
+      centre button again (`spike-api34-nopp-skip.png`).
+    - `reserve`: the Android 13+ extras
+      `android.media.playback.ALWAYS_RESERVE_SPACE_FOR.ACTION_SKIP_TO_PREVIOUS`
+      and `...NEXT` (set on both the session and the PlaybackState) with no
+      play/pause: they only leave **gaps** in the previous/next slots; the
+      customs still go to the outer slots and the centre stays empty
+      (`spike-api34-reserve.png`, `spike-api33-reserve.png`).
+    - `B` (play/pause declared; customs Next station, Mic, Mute, Solo): the
+      layout that ships (`spike-api34-B.png`, `spike-api33-B.png`).
+    - **Pause hides the player.** `paused` (STATE_PAUSED) keeps the player at
+      first (`spike-api34-paused.png`, ▶ shown), but after 10 minutes it is gone
+      from the lock screen although the notification still exists
+      (`spike-api34-paused-after10min.png`). So the session stays PLAYING and
+      the centre ❚❚ never changes; "Listening paused" is told in the second line
+      instead.
+  - **What is implemented (Layout B).** Centre ❚❚ = **Listening** (pause
+    silences station playback and turns the mic off; resume keeps the mic off).
+    Slots after it: **Next station ↻**, **Mic**, **Mute**, **Solo**.
+    Mic icon/label by state: mic / crossed mic, "Mic on. Turn your mic off" /
+    "Mic off. Turn your mic on", **hidden** in PTT mode and during a phone call,
+    "**Allow mic**" (crossed mic, opens the app) when not granted.
+    Mute: speaker / crossed speaker, "Mute {A}" / "Unmute {A}". Solo: target
+    outline / filled, "Solo {A}: only {A} hears you, others dimmed" /
+    "Release solo {A}". No stations: title "Crosspoint", only Mic.
+    The Android 12 and older notification carries the same buttons.
+    - Native: `AndroidServiceController` pushes one JSON state document
+      (selected station, up to 4 stations, connection, soloDimDb, listening)
+      to `CrosspointMediaSession`; latency/loss-only changes go out at most once
+      a second, button-driven changes at once. The Mic state is the micAction
+      argument (0 hidden, 1 on, 2 off, 3 allow). `micPermission` is reported
+      since A9 (`granted | prompt | denied`).
+    - Listening pause is a new processor flag (`setListeningPaused`) riding the
+      call-silence gain ramp (10 ms), so the receive streams keep running and
+      earcons still play. Not saved; Disconnect clears it.
+    - Headset button: `onMediaButtonEvent` maps play/pause/headset hook to the
+      Mic (open mode only), whatever the layout; the on-screen ❚❚ is Listening.
+    - Icons: vector drawables `ic_player_*` (ported from the mock's SVG
+      glyphs; `prev`/`next` ◀ ▶ are in but unused by Layout B).
+    - Artwork per the lead's feedback on Android 13+ (the player background is
+      the artwork, scaled and cropped): rounded tile in the station colour,
+      Crosspoint mark small (92 px of 512) top-left; muted = colour at 35% over
+      panel; lost/offline = ink4; no station = panel; **voice reaches a station
+      = the whole tile blended 55% station / 45% `live`** (the 24 px inset border
+      and the bottom-right mic glyph are dropped: the border showed only as edge
+      strips, the glyph is cropped). `s4` was wrong in the old code (now
+      `#bed590`, console-ui token).
+    - Text per §12.4. The one addition: "Listening paused" leads the second
+      line while paused. The system player on AOSP draws only title + subtitle;
+      the second line was verified through `dumpsys media_session` metadata.
+    - Crash risk fixed: `PendingIntent.getForegroundService` is guarded to API 26+
+      (`getService` below). `sUseMediaStyle` is gone; the plain notification is
+      only the fallback before the session exists. Same notification id 1555, so
+      never two Crosspoint notifications (the shade shows only the media player
+      plus system notices).
+  - **Verified (API 34, local aooserver + 3 headless VDI peers):** captures in
+    `/private/tmp/claude-501/a18-review/`: `d01-live-all`, `d02-solo-mic-live`,
+    `d03-mic-off-t0`, `d04-muted`, `d05-lost`, `d06-ptt`, `d07-call`,
+    `d08-mic-not-granted`, `d10-no-stations`, `d11-reconnecting` (each
+    `-lock.png`, `-shade.png`, `-shade-expanded.png`, plus a `-meta.txt` dump of
+    the session metadata and custom actions). AOSP has one lock-screen player
+    form (no Samsung Now Bar), so "collapsed/expanded" is the lock screen and the
+    shade/quick-settings.
+    - Every button changes the engine within a second **while locked**
+      (PIN set): Mic `true→false`, Mute, Solo (exclusive, soloed station becomes
+      the selection), Next station (title changes), Listening pause (mic off,
+      second line "Listening paused"), resume (mic stays as the user left it),
+      headset key (`input keyevent 79`) toggles the mic.
+    - Phone call: Mic hidden, subtitle "Mic off during your phone call".
+      After the call the mic stays off. Not granted: "Allow mic"; pressing it
+      from the lock screen starts the app behind the keyguard (the permission
+      dialog is the resumed activity and a swipe asks for the PIN).
+    - **The player stays for 10 minutes with the mic off and the screen locked**
+      (`d03-mic-off-t0-lock.png`, `d03-mic-off-t10min-lock.png`; the notification
+      id 1555 is still the single one).
+    - Selection moves on when the selected station goes offline/is forgotten.
+  - **Not verified / left:**
+    - The audible earcon on Mic changes: same `toggleMicWithEarcon` /
+      `playEarcon` path as A14/A17, but a headless emulator gives no way to
+      hear it.
+    - Samsung Now Bar and One UI's own layout (A13, maelo's phone). Layout B was
+      only seen in AOSP's player.
+    - No audio-focus request (A8), unchanged.
+    - The sibling bug noticed while testing: after the emulator or a peer drops,
+      the first `connection.connect` with the same user name often ends
+      "failed / Not connected to a server" until a different name is used (the
+      server still holds the stale user). Not A18; worth a bug card.
+
+#### A19 — Quick Settings mic tile · S · any + design review · lane P
+- **Depends on:** A15, A17 · **Touches:** new `MicTileService.java`, `.jucer`
+  manifest (`TileService` with `BIND_QUICK_SETTINGS_TILE`)
+- **Optional, only if A15 keeps it.** **Do:** a tile "Crosspoint mic" that toggles the mic through A17, with
+  states per A15 (active = live, inactive = off, unavailable when disconnected
+  or the mic isn't granted). It must work from the lock screen if A15 says so.
+- **Done when:** added to Quick Settings on the emulator, it toggles the mic
+  locked and unlocked, its state follows changes made in the app, and design
+  review passed.
+- **Result:**
+
+#### A24 — Build the APK after the lock-screen player · S · any
+- **Depends on:** A18 merged into `android-apk` *and design-approved* (its index
+  row says `done`). Include A9 if it has merged by then; otherwise say so.
+- **Do:**
+  1. `git merge android-apk` (or work on it directly) and run the checks:
+     console-ui `npm test`, `scripts/test-android-ui.sh`,
+     `scripts/build-desktop.sh --app-only`.
+  2. Build the **debug** APK (`scripts/build-android.sh`).
+  3. Build a **release** APK (`--release`), but only if maelo's keystore
+     variables are set (docs/ANDROID.md, "Release APK"). Never create or commit
+     a keystore for him.
+  4. Copy each APK to `build/apk/crosspoint-<debug|release>-<short sha>.apk`.
+     That folder is git-ignored and survives cleanups; build intermediates
+     don't.
+  5. Smoke-test on an emulator: it installs and launches, the Console loads,
+     it connects to a group, and the lock-screen player shows with working
+     buttons.
+  6. For Claude's design review of A9 and A14, capture the in-app screens
+     with adb screencap into `/private/tmp/claude-501/a24-review/`:
+     - the first-connect mic dialog
+     - the Console with the mic blocked, both "Tap to allow" and "Allow in
+       Android settings"
+     - the Settings problem rows
+     - during and after a phone call (`adb emu gsm call` / `gsm cancel`)
+     - the one-station live band
+  7. Delete the build intermediates (`Builds/Android/app/build`, `.cxx`) and
+     discard the resave noise.
+- **Done when:** the APK paths, sizes and the commit they were built from are
+  recorded here, plus one line on what changed since maelo's last APK
+  (`348618c6`) and the install command (`adb install -r …`, or "uninstall
+  first" if the signing key differs).
+- **Result (2026-10-13, `android-apk` @ `275316ef`): debug APK built and
+  smoke-tested; release skipped (no keystore, as the card requires).**
+  - **Artifact:** `build/apk/crosspoint-debug-275316ef.apk`, 195 MB,
+    sha256 `54d6a36f...f765` (below), built from
+    `275316ef`, debug-signed with the standard Android debug key
+    (`CN=Android Debug`), so the usual `adb install -r` works.
+    ```sh
+    adb install -r build/apk/crosspoint-debug-275316ef.apk
+    ```
+    No uninstall needed: same debug key as `348618c6`.
+  - **Release APK skipped, deliberately.** `CROSSPOINT_KEYSTORE` was not set and
+    `~/.crosspoint/crosspoint-release.jks` does not exist. The card says never to
+    create one for maelo, so `--release` was not run. Give me the variables (or
+    the keystore) and the release build is one command.
+  - **Checks:** console-ui `npm test` 31/31; `scripts/test-android-ui.sh` 10/10;
+    `scripts/build-desktop.sh --app-only` green.
+  - **Smoke test on the API 34 emulator:** installs, launches, no crash; the
+    Console loads and is served from `http://127.0.0.1:7070/`; it connects to a
+    group (local `aooserver` + a headless VDI peer); the lock-screen player shows
+    with the selected station as the title and working buttons (tapping the Mic
+    slot drove `mic.on true → false`).
+  - **What changed since maelo's last APK (`348618c6`, 16 commits):** the
+    lock-screen player (A18 — media session, Layout B, per-state icons and
+    artwork, Listening pause), the A17 control bridge it runs on, A16 (the
+    notification is no longer dismissable), and the A9 mic-permission flow
+    (first-connect ask, "Mic blocked" states, Settings problem rows, device
+    name). Also the A15/A9/A14 copy and layout fixes.
+  - **Captures** in `/private/tmp/claude-501/a24-review/`:
+    `01-console-connected`, `02-mic-blocked` (shows both the live-band and mic
+    button blocked states), `03-settings-rows`, `04-during-call`,
+    `05-after-call`, `06-lockscreen-player`, `07-shade-player`.
+    Caveats on those, so the review is not over-read:
+    - `02` is the good mic-blocked capture; an earlier attempt caught an
+      emulator "System UI isn't responding" dialog over the permission prompt
+      (software GPU on a loaded host), which is not an app fault.
+    - `04`/`05` (during/after call) do **not** show the §6 call states:
+      `adb emu gsm call` set the emulator's call state but
+      `platform.phoneCall` never became true, so the engine never entered the
+      call path. A14's call detection needs its own check; I did not chase it,
+      as A24's brief was to produce the APK.
+    - `06-lockscreen-player` caught the home screen, not the lock screen; `07`
+      (the shade) is the usable player capture.
+  - **Cleanup:** `app/build` and `.cxx` deleted after copying the APK, resave
+    noise discarded, local test server/peer stopped.
+  - Full sha256: `54d6a36f2c0d744315d4ce3d108038e2bae8526ac8b355fb2be098991048f765`.
+
+
+#### A25 — Lock-screen artwork v2 · S · any + design review
+- **Depends on:** A18 · **Touches:** `CrosspointMediaSession.java` (the
+  `artwork()` drawing only)
+- **Why:** on maelo's Samsung (2026-10-13), the maximised artwork shows black
+  wedges in the corners, because we drew rounded corners on a transparent
+  bitmap and One UI masks with a larger radius. It's also a flat colour with
+  no name. Screenshot: `~/Downloads/Screenshot_20261013_130934.jpg`.
+- **Do:** build `docs/design/android.md` §12.4b exactly:
+  - full-bleed opaque 1024² canvas
+  - diagonal gradient plus the faint matrix lines
+  - the short name, fitted and never truncated
+  - the LIVE / SOLO / MUTED / LOST pill
+  - the small mark
+  - the live, muted, lost and no-station variants
+  - one cached bitmap per (station, state)
+- **Done when:** emulator captures of each variant (maximised player and
+  shade) are in `/private/tmp/claude-501/a25-review/`. No black corners at any
+  mask. Design review passed. Then maelo checks it on the Samsung.
+- **Result:**
+
+### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
+
+maelo asked for this on 2026-10-13: the same controls as the lock-screen
+player (A18), shown on the car screen. Android Auto only lists apps declared as
+**Auto media apps**. A plain media session isn't enough: the app needs a
+`MediaBrowserService` that hands Auto the same session, plus an Auto
+declaration. After that, Auto draws the player with the same buttons, and they
+go through the same engine commands (A17). A fuller Auto app is ROADMAP P9.5
+(deferred).
+
+**Audio in the car:** Android routes media playback to the car speakers by
+itself, so nothing changes there. Recording is different: Android does **not**
+move an app's mic to the car's mic. That needs the Bluetooth call channel
+(SCO), which only calls, the assistant and VoIP apps that switch into
+"communication" mode use. Crosspoint stays in media mode (A8), so in the car it
+talks through the **phone's own mic**. A22 (car mic) is optional and deferred:
+it only comes back if A23 shows the phone mic isn't good enough.
+
+**Who does what:** A21 is Claude only (design). A20 can go to any agent. A23
+is maelo.
+
+**Order:** A21 can start now. A20 starts after A18 and A21. A23 comes after
+A20.
+
+**Effort:**
+
+| Task | Effort |
+|---|---|
+| A21 (design) | about 0.5 d |
+| A20 | 0.5–1 d |
+| A23 | a drive |
+
+**The plan is A21 + A20: about 1–1.5 days**, plus a drive for A23. A22, if it
+is ever needed, adds 1–2 days.
+
+#### A21 — UX addendum: player on Android Auto · S · design (Claude)
+- **Depends on:** A15 · **Touches:** `docs/design/android.md` (new §13)
+- **Do:** say how §12 maps to Auto's media template:
+  - which custom actions show and which go to overflow
+  - the browse list: one item per station, with name, state subtitle and
+    colour icon; tapping an item selects it
+  - title and subtitle lengths on a car display
+  - what the car shows when disconnected, during a call, and when the mic
+    isn't granted
+  - driver-safety wording: nothing to read beyond the title and one line
+- **Done when:** A20 can be built without inventing anything.
+- **Result:** done (Claude, 2026-10-13): `docs/design/android.md` §13.
+  - **Now playing** uses Layout B: Listening in the centre, then Mic, Solo,
+    Mute and Next station, in that priority; Next station goes to the
+    overflow first.
+  - **The browse list** has one item per station: short name, car-short
+    state, and a colour icon that blends toward live while that station hears
+    you. Tapping an item only selects it.
+  - **Car-short copy table** (§13.2): no numbers, about 30 characters.
+  - **Not connected:** with saved settings, a "Connect to {group}" item;
+    without, the error "Set up Crosspoint on your phone first."
+  - **One session**, shared with the lock screen. No Disconnect in the car.
+
+
+#### A22 — Bluetooth mic setting (buds and car) · M · any + design review + human
+- **Spec:** `docs/design/android.md` §14 (Claude, 2026-10-13). maelo's main use is meetings with Bluetooth buds, so this matters more than the car, and it covers the car too.
+- **Depends on:** A8, A14 · **Touches:** `sonobus/Source/` (Android audio setup), `console-ui/` (setting + placement note),
+  `sonobus/Source/android/java/`
+- **Do:** during Android Auto, media plays through the car, but app
+  recording normally uses the phone mic. Find out whether Crosspoint can
+  capture from the car's mic:
+  - `AudioManager.setCommunicationDevice()` (API 31+) or Bluetooth SCO, with
+    the VoiceCommunication preset (A8)
+  - what that does to output quality (SCO is narrowband) and to other apps
+  - whether it breaks A14's call detection (`PlatformMonitor.appOwnsAudioMode`)
+
+  Implement it behind a setting if it works. Test first on the Desktop Head
+  Unit (DHU) as far as it allows, then maelo checks in the car.
+- **Done when:** findings are recorded (works, works with caveats, or
+  doesn't), with the chosen behaviour implemented or documented.
+- **Result:**
+
+#### A20 — Android Auto media app · S · any + design review
+- **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`
+  (platform `android.service.media.MediaBrowserService`, returning the A18
+  session's token), `res/xml/automotive_app_desc.xml` (`<uses name="media"/>`),
+  `.jucer` manifest (service with the `android.media.browse.MediaBrowserService`
+  intent filter, and `com.google.android.gms.car.application` meta-data)
+- **Do:** build A21's design:
+  - the browse tree: root → stations; `onPlayFromMediaId` selects the station
+    through A17
+  - the same `PlaybackState` and custom actions as A18
+  - document how to install the Android Auto Desktop Head Unit
+    (`extras;google;auto`) and how to turn on Unknown sources in Android Auto
+    (Developer settings: tap the version 10 times) in docs/ANDROID.md
+- **Done when:** on the DHU, Crosspoint appears in the launcher, the player
+  shows, and every button and station item changes the engine. Captures go to
+  `/private/tmp/claude-501/a20-review/`. Design review passed.
+- **Result (2026-10-13, `android-apk`): built and verified against a real
+  `MediaBrowser` client; the DHU itself could not be run here.**
+  - **What landed.** `CrosspointBrowserService.java` (platform
+    `MediaBrowserService`, returning the A18 session's token), `res/xml/automotive_app_desc.xml`
+    (`<uses name="media"/>`), and the manifest's
+    `com.google.android.gms.car.application` meta-data + the
+    `android.media.browse.MediaBrowserService` intent filter, all via the
+    `.jucer`. No new Gradle dependency: the platform class is in `android.jar`
+    at minSdk 24 (the same choice A18 made), so nothing had to be resolved from
+    Maven.
+  - **Browse tree** (§13.1): one item per station in `stationOrder`, up to 8,
+    title = short name, subtitle = the car-short state, icon = a 128 px
+    station-colour tile blended toward live while that station hears you.
+    Tapping sends the station through `nativeSelectStation`, which only moves
+    the selection.
+  - **Two real bugs found and fixed while building it:**
+    1. **The platform class has no `onPlayFromMediaId`/`onSearch`** — those are
+       androidx additions, and `@Override` on them fails to compile. Auto
+       delivers the tap to `MediaSession.Callback.onPlayFromMediaId` instead, so
+       the tap is handled on the session.
+    2. **The session was destroyed on Disconnect**, which broke §13.3
+       completely: with no session token the `MediaBrowserService` cannot be
+       bound at all, so the car had no "Connect to {group}" item and a
+       disconnected fresh boot showed nothing. The session is now
+       process-shared (`CrosspointMediaSession.shared`) and outlives the
+       foreground service; only its `active` flag follows the service, so the
+       lock-screen player still goes away on Disconnect (§12.1). That fix
+       introduced a crash — `MediaBrowserService.setSessionToken` throws
+       "The session token has already been set" on a reconnect — which is fixed
+       by setting it once per service instance.
+  - **Also fixed for §13.3:** the engine's `connection.group` is empty after
+    Disconnect (`EngineState` only fills it from the recents when the *server* is
+    empty too), so the Android side falls back to
+    `getRecentServerConnectionInfos()` for the group name.
+  - **Verified** by binding a throwaway `MediaBrowser` client to the real
+    service on the API 34 emulator (evidence in
+    `/private/tmp/claude-501/a20-review/`):
+    - connected, 3 stations: `peer-vdi / Hears you`, `three / Hears you ·
+      Unstable`, `two / ...`, all with icons, and the session token present;
+    - disconnected with saved settings: exactly one item,
+      `Connect to a20-auto`, which on tap reconnects;
+    - a connect → disconnect → reconnect cycle no longer crashes.
+  - **Not verified — the DHU could not run in this environment, so there are no
+    car-screen captures.** `extras;google;auto` installs and the DHU starts, but
+    the `google_apis_playstore` image ships **Android Auto as a stub**
+    (`versionName=1.2.531830-stub`) with no Head Unit Server, and the real app
+    needs an interactive Play Store sign-in. Consequence: §13.1's *rendering*
+    (how Auto lays out the five buttons, whether Next station lands in the
+    overflow) and the day/night theming are **unverified**; what is verified is
+    the browse tree, the session token and the command wiring Auto consumes.
+    The setup + the "Unknown sources" step are documented in
+    `docs/ANDROID.md`; a machine with a signed-in Play Store should be able to
+    finish this step in minutes.
+  - One test-harness trap worth recording: Android 11+ package visibility makes
+    a *client* fail with "Unable to start service … not found" unless it declares
+    `<queries>`. That looked like a server-side bug for a while and is not.
+
+
+#### A23 — In-car test · S · human (maelo)
+- **Depends on:** A20
+- **Do:** with the release APK installed and Unknown sources on in Android
+  Auto, connect to the car and check:
+  - Crosspoint appears in Auto
+  - the controls work while driving rules apply
+  - station audio plays through the car
+  - talking works through the **phone's mic** (phone in its holder), and
+    whether the VDI hears car-speaker echo. If it's poor, revive A22
+  - phone calls interrupt and recover (A14)
+- **Done when:** results are recorded here; anything that fails becomes a bug
+  or a task.
+- **Review follow-ups (Claude, 2026-10-13):**
+  1. The station-state line is built twice, in
+     `CrosspointBrowserService.java` (~190) and `CrosspointMediaSession.java`
+     (~295), with slightly different rules. Keep one.
+  2. Per §13.2, "Hears you" is followed by the health ("Hears you · Clear"),
+     and "Dimmed" (another station soloed) is missing.
+  3. §13.3 fresh install: set the error message "Set up Crosspoint on your
+     phone first." instead of relying on Auto's generic empty list.
+  4. The DHU captures for the §13.5 review are still outstanding.
 - **Result:**
 
 ### P9.3 — Native iOS Console · L · deferred

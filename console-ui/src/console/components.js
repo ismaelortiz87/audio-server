@@ -3,9 +3,10 @@
 // directly: they send commands (api §5) and re-render from the patches.
 
 import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
-import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText } from '../lib/format.js';
+import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE, allHearYouText } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, problemRows } from '../lib/platform.js';
 
 const STATION_VAR = i => `var(--s${(i % 4) + 1})`;
 const ordered = st => st.stationOrder.map(id => st.stations[id]).filter(Boolean);
@@ -13,6 +14,18 @@ const online = s => s.presence === 'online';
 const anySolo = st => Object.values(st.stations).some(s => s.solo);
 const isDimmed = (st, s) => anySolo(st) && !s.solo && !s.mute;
 const soloHeld = (st, s) => anySolo(st) && !s.solo;
+
+// android.md section 2: touch-first devices get "Tap…" copy and no keyboard
+// reference. `matchMedia` is absent under the test harness, so default to the
+// desktop copy there. `(pointer: coarse)` also covers a phone PWA (P7.7), which
+// is the point: this is not Android-specific behaviour.
+export const coarsePointer = () =>
+  typeof globalThis.matchMedia === 'function' && globalThis.matchMedia('(pointer: coarse)').matches;
+// The Android shell's emulator (and some devices with a stylus or a paired mouse)
+// report a fine pointer, so a phone engine (`self.kind === 'android'`) counts as
+// touch-first too (A7).
+export const touchFirst = st => coarsePointer() || st?.self?.kind === 'android';
+const tapCopy = (st, touch, desktop) => (touchFirst(st) ? touch : desktop);
 
 // --------------------------------------------------------------- 3.1 top bar
 export function topBar(ctx) {
@@ -47,6 +60,9 @@ export function liveBand() {
     update(st) {
       const c = st.connection.state;
       if (c === 'connecting' || c === 'failed') { el.hidden = true; return; }
+      // A14 (android.md section 6): a phone call, or the mic staying off after one, replaces the other quiet texts.
+      const callText = callBandText(st);
+      if (callText) { el.hidden = false; el.classList.add('quiet'); setText(text, callText); return; }
       // Count every known station (spec §3.2): lost/offline ones are named as
       // not hearing you, so "All n" only appears when truly everyone hears.
       const all = ordered(st);
@@ -55,10 +71,11 @@ export function liveBand() {
       let quiet = !(tx && targets.length), msg;
       if (!tx) {
         msg = st.mic.mode === 'ptt'
-          ? 'Push to talk: hold the mic button or Space. Nobody hears you now.'
+          ? tapCopy(st, 'Push to talk: hold the mic button. Nobody hears you now.',
+                    'Push to talk: hold the mic button or Space. Nobody hears you now.')
           : 'Mic off. No station hears you.';
       } else if (!targets.length) msg = 'Mic open, but no station is set to hear you.';
-      else if (targets.length === all.length) msg = `All ${targets.length} stations hear you`;
+      else if (targets.length === all.length) msg = allHearYouText(targets, all);
       else if (anySolo(st)) msg = `Solo: only ${listNames(targets.map(s => shortName(s.name)))} ${hears(targets.length)} you`;
       else {
         const rest = all.filter(s => !s.hearsYou);
@@ -196,6 +213,21 @@ export function notices() {
       const html = st.unknownPeers.map(n =>
         `<div class="notice"><span class="dot"></span><div><b>${esc(n)}</b> joined the group without a role, so no audio is exchanged with it. <em>It's probably running stock SonoBus.</em></div></div>`).join('');
       setHTML(el, html);
+    },
+  };
+}
+
+// android.md §6: the phone speaker feeds the mic and the platform has no echo canceller.
+// Not blocking, no button; the engine decides (platform.echoRisk), so it costs nothing
+// when the echo canceller works. Sits at the top of the main area.
+export function echoNotice() {
+  const el = h('div', { style: { display: 'contents' } });
+  return {
+    el,
+    update(st) {
+      setHTML(el, echoNoticeShown(st)
+        ? `<div class="notice" role="status"><span class="dot"></span><div><b>${ECHO_NOTICE.lead}</b>${ECHO_NOTICE.body}<em>${ECHO_NOTICE.hint}</em></div></div>`
+        : '');
     },
   };
 }
@@ -375,14 +407,18 @@ export function youBar(ctx) {
   out.addEventListener('pointerup', () => { out._active = false; });
 
   let st = null;
-  mic.addEventListener('click', () => { if (st?.mic.mode === 'open') ctx.client.fire('mic.setOn', { on: !st.mic.on }); });
-  mic.addEventListener('pointerdown', () => { if (st?.mic.mode === 'ptt') ctx.ptt(true); });
+  mic.addEventListener('click', () => {
+    if (!st) return;
+    if (micBlocked(st)) { ctx.client.fire('platform.requestMic'); return; }   // android.md section 3, in both modes
+    if (st.mic.mode === 'open') ctx.client.fire('mic.setOn', { on: !st.mic.on });
+  });
+  mic.addEventListener('pointerdown', () => { if (st?.mic.mode === 'ptt' && !micBlocked(st)) ctx.ptt(true); });
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) mic.addEventListener(ev, () => ctx.ptt(false));
   mic.addEventListener('contextmenu', e => e.preventDefault());
 
   ctx.client.onMeters(m => {
     if (!m.mic) return;
-    const v = m.mic[0] === null ? 0 : Math.max(0, Math.min(1, (m.mic[0] + 60) / 60));
+    const v = m.mic[0] === null || (st && micBlocked(st)) ? 0 : Math.max(0, Math.min(1, (m.mic[0] + 60) / 60));
     meterFill.style.width = `${v * 100}%`;
   });
 
@@ -404,9 +440,22 @@ export function youBar(ctx) {
       mic.dataset.state = tx && tg.length ? 'hot' : tx ? 'open-idle' : 'idle';
       setAttr(mic, 'aria-pressed', tx);
       const [icon, label, sub] = st.mic.mode === 'open'
-        ? (st.mic.on ? [ICONS.mic, 'Mic live', 'Click to turn off'] : [ICONS.micOff, 'Mic off', 'Click to open mic'])
-        : (tx ? [ICONS.mic, 'Talking…', 'Release to stop'] : [ICONS.micOff, 'Hold to talk', 'or hold Space']);
-      setHTML(mic, `${icon}<span>${label}<span class="sub">${sub}</span></span>`);
+        ? (st.mic.on ? [ICONS.mic, 'Mic live', tapCopy(st, 'Tap to turn off', 'Click to turn off')]
+                     : [ICONS.micOff, 'Mic off', tapCopy(st, 'Tap to open mic', 'Click to open mic')])
+        : (tx ? [ICONS.mic, 'Talking…', 'Release to stop']
+              : [ICONS.micOff, 'Hold to talk', tapCopy(st, 'Press and hold', 'or hold Space')]);
+      const call = callMicButton(st);     // A14: disabled during a phone call
+      const blocked = blockedMicButton(st);   // A9: the mic is not granted
+      if (blocked) {
+        mic.dataset.state = 'idle';
+        setAttr(mic, 'aria-pressed', false);
+        setHTML(mic, `${ICONS.micOff}<span>${blocked.label}<span class="sub">${blocked.sub}</span></span>`);
+      } else if (call) {
+        mic.dataset.state = 'idle';
+        setAttr(mic, 'aria-pressed', false);
+        setHTML(mic, `${ICONS.micOff}<span>${call.label}<span class="sub">${call.sub}</span></span>`);
+      } else setHTML(mic, `${icon}<span>${label}<span class="sub">${sub}</span></span>`);
+      mic.disabled = !!call;
       meter.classList.toggle('hot', tx && tg.length > 0);
       setAttr(modeOpen, 'aria-pressed', st.mic.mode === 'open');
       setAttr(modePtt, 'aria-pressed', st.mic.mode === 'ptt');
@@ -446,8 +495,10 @@ export function settingsSheet(ctx) {
 
   const closeBtn = h('button.iconbtn', { 'aria-label': 'Close settings', onclick: () => ctx.closeSettings() }, '✕');
   const scrim = h('div.scrim', { onclick: () => ctx.closeSettings() });
+  const problems = h('div.problems');   // android.md section 7: only when something needs fixing
   const sheet = h('aside.sheet', { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'true' },
     h('div.head', h('b', 'Settings'), h('span.spacer'), closeBtn),
+    problems,
     h('span.label', 'Connection'), form,
     h('span.label', 'Audio'),
     field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), pttField,
@@ -482,6 +533,16 @@ export function settingsSheet(ctx) {
       wasOpen = ui.settingsOpen;
       if (!ui.settingsOpen) return;
       const c = st.connection, s = st.settings;
+      const rows = problemRows(st);
+      const key = JSON.stringify(rows.map(r => r.id));
+      if (problems._key !== key) {
+        problems._key = key;
+        problems.replaceChildren(...rows.map(r => h('div.problem', { role: 'group', 'aria-label': 'Problem' },
+          h('span.warncircle', { 'aria-hidden': 'true' }, '!'),
+          h('div', h('p', r.text),
+            h('button.btn', { type: 'button', onclick: () => ctx.client.fire(r.command, r.args) }, r.action)))));
+      }
+      problems.hidden = !rows.length;
       const connected = c.state === 'connected';
       for (const f of [server, group, password, name]) f.disabled = connected;
       setVal(server, c.server ?? ''); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');

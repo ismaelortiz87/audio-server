@@ -41,7 +41,7 @@ No monitor fader in either role.
 | [P3](#p3--strip-jam-features) | Remove jamming features | 3–5 d | todo |
 | [P4](#p4--control-api) | Local control API on the engine | ~1 w | done |
 | [P5](#p5--console-ui-html) | Console UI, written once in HTML | 1.5–2 w | done |
-| [P6](#p6--native-shell-mac) | Native Mac shell embeds the Console UI + global PTT hotkey (Android/iOS native deferred, D9) | 3–4 d | wip |
+| [P6](#p6--native-shell-mac) | Native Mac shell embeds the Console UI + global PTT hotkey (native Android is P9.2, D9; iOS deferred) | 3–4 d | wip |
 | [P7](#p7--web-console-container) | Web Console container (replaces current `docker/`) | 1.5–2 w | wip |
 | [P8](#p8--self-hosted-connection-server-deferred) | Self-hosted `aooserver` on the VPN | ~0.5 d | done |
 | [P10](#p10--recording-and-meeting-recaps-deferred) | Per-station recording, session records (station + my mic while it hears me), transcription and meeting recaps | 2–3 w | deferred |
@@ -67,7 +67,7 @@ P8 whenever the public server becomes a problem (see P0 findings).
 | D11 | **The Console is where VDI problems show up.** VDI agents run as services from fixed YAML config, which avoids picking the wrong device by hand. They report their own health to Consoles (P1.7), and the Console remembers known VDIs so a missing one shows as offline. The VDI's localhost web UI (P2.6) is for checking and fixing a VDI when needed; the native tray (P2.9) is deferred. | maelo checks everything from the Console, not on the VDIs. |
 | D12 | **VDIs run Debian 13 (trixie), Linux only.** The agent is a native Linux build (glibc of trixie), shipped as a `.deb`, started by a **systemd user unit** with `loginctl enable-linger` (PipeWire runs per user, so a system service can't reach the user's audio). Audio goes through PipeWire: JUCE opens ALSA devices, and the agent addresses the loopback and virtual mic through named ALSA PCMs pinned to PipeWire nodes (pipewire-alsa `playback_node` / `capture_node`), not through "default". | Answer to Q1. PipeWire is trixie's default audio stack; JUCE on Linux has ALSA and JACK backends only. Building the `.deb` in a `debian:trixie` container keeps glibc and library versions matched. |
 | D13 | **TLS is the proxy's job.** The web Console is served as plain HTTP inside the VPN and published at `crosspoint.app.lagreca.io` through maelo's reverse proxy (public LE wildcard `*.app.lagreca.io`, rotated by the proxy). The app is unaware of certificates. The proxy must forward WebSocket upgrades (control API, signalling). **WebRTC media does not go through the proxy:** it is UDP between browser and container, so the container exposes a fixed UDP range on its VPN address (or a TURN server is added). | Answer to Q4. Keeps certificates out of the app; the wildcard covers the PWA origin. |
-| D9 | **Mobile is the PWA for now.** Phones (Android, and iOS via Safari "Add to Home Screen") use the web Console installed as a PWA (P7.7). Native Android and iOS apps are deferred to P9. The Mac keeps its native shell (P6.1) for direct P2P audio and the global PTT hotkey. | Saves the Android build pipeline and native shells; the PWA reuses the same UI and container. Cost: one extra hop and less control over background audio. Revisit if P7.7's background test fails. |
+| D9 | **Native Android APK, as soon as possible** (maelo, 2026-10-12; replaces "mobile is the PWA for now"). The phone runs the engine itself, like the Mac shell: direct P2P audio, the Console UI in a web view on the local API, native background audio. Plan: P9.2, tasks A1–A14. iOS stays on the PWA (P9.3 deferred). The PWA (P7.7) remains for browsers. | Direct audio with no container hop, and real control over background audio and the mic on the phone. Cost: the Android build pipeline and a second shell to maintain. |
 | D8 | **Mesh, no hub.** VDIs connect directly to Consoles. The Ubuntu Studio + Carla server is retired once P2 replaces it (P2.8). | The hub's only purpose was to emulate the VDI/Console roles; roles make it redundant, and removing it saves a network hop of latency and a machine to maintain. Scale is small: 3 VDIs today, 4 at most. |
 
 ## Open questions
@@ -246,8 +246,11 @@ design review.
 | ID | Item | Status |
 |---|---|---|
 | P9.1 | Mac menu-bar panel: station activity, talk toggles, mic state | deferred |
-| P9.2 | Native Android Console (was P6.2–P6.4): build pipeline, web-view shell, mic + background audio | deferred |
+| P9.2 | Native Android Console (was P6.2–P6.4): engine on the phone, web-view shell on its local API, mic + background audio. Tasks A1–A14 in TASKS.md | todo |
 | P9.3 | Native iOS Console: Xcode build from the monorepo, web-view shell, background audio | deferred |
+| P9.2b | Lock-screen player polish: artwork v2 (full-bleed, gradient, station name, state pill; fixes Samsung's black corners), A25 | todo |
+| P9.4 | Android Auto, **lock-screen controls on the car screen** (A20–A23): the A18 media player registered as an Auto media app (talking uses the phone mic; car mic only if needed) | todo (low priority) |
+| P9.5 | Android Auto **control panel app** (Car App Library, IoT templates): station list with Mute / Solo / Hears you toggles and health text, Mic and Disconnect. Not the full Console: Auto allows no custom UI, meters or web views while driving. About 2–4 d | deferred (non-priority) |
 
 ## P7 — Web Console container
 

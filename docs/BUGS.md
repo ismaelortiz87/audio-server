@@ -4,7 +4,7 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
 Last updated: 2026-10-10 by Claude (lead session).
 Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
@@ -466,6 +466,44 @@ fix the card layout: let the control row wrap, give the talk toggle a fixed or
 minimum width that fits its longest label, and drop to icon-only plus the key
 hint below a breakpoint (the full label stays in the tooltip). Check the solo
 and mute buttons and the level control at the same widths.
+
+## B15 — Phone layout: segmented controls are below the 44 px touch size
+
+**Found** by Claude (design), 2026-10-12, while rendering the Android
+prototype (A2). It affects every phone-width Console: the PWA now, and the
+Android APK (A7).
+**Owner:** any + design review (Claude).
+
+**Facts.** Spec §1.3 and §5: "on phone every tappable target is ≥ 44 × 44 px".
+The `.seg` buttons ("Open mic | Push to talk" in the You bar, and "Spread |
+All centre" on the placement field) render about 28–32 px tall at phone
+width. Styles: `.seg button` in `console-ui/src/styles/base.css` (padding
+5px 10px, 12 px text). The phone container query in `console.css` doesn't
+override it.
+
+**Closed** (Claude, 2026-10-12, branch `android-apk`). In the phone container
+query, `.seg button`, the placement-field buttons (Spread, All centre; they are
+`.btn.small`, not a segment) and the You bar's "Talk to all" now have
+`min-height: var(--size-touchMin)`. Checked in headless renders at 390 px
+(`everyday`, `twocalls`): the You bar wraps "Talk to all" onto its own row,
+nothing clips. Desktop is unchanged (container query only).
+
+## B16 — Reconnecting with the same name fails after a drop
+
+**Found** by the A18 agent, 2026-10-13, on the Android emulator with a local
+aooserver and headless peers. **Not yet reproduced** by anyone else.
+**Owner:** any.
+
+**Facts.** After an emulator or peer drops, the first `connection.connect`
+with the **same user name** often ends `failed` / "Not connected to a server",
+until a different name is used. The likely cause is the server still holding
+the old session for that name until it times out. Unconfirmed.
+
+**Left.** Reproduce it with the F2 harness (drop a peer without leaving the
+group, reconnect at once with the same name), check the aooserver's
+stale-client timeout, and decide between retry with backoff and "replace a
+stale session with the same name". This matters on phones, which drop often
+(network switches).
 
 ## B14 — A VDI that is also on the VPN stays offline for the Mac
 

@@ -311,6 +311,17 @@ State: `stations{}.recording: null | { "since": iso, "includesMe": bool }`,
 `GET /api/v1/sessions/{id}/audio/{station|me}`, `DELETE /api/v1/sessions/{id}`,
 `POST /api/v1/sessions/{id}/retry`.
 
+### 5.5 Android (A5–A14, additive; designed in `design/android.md` §10)
+State: `self.kind: "android"` (also in peer info; agents show "Console ·
+Android"). `platform` is `null` except on Android: `{ micPermission:
+granted|prompt|denied, notifications: granted|denied, backgroundRestricted,
+phoneCall, micOffByCall, outputRoute: speaker|earpiece|wired|bluetooth|usb,
+echoRisk }`. `settings.headsetButton: mic|off`. Commands:
+`platform.requestMic {}`, `platform.openSettings { page: app|notifications|battery }`,
+`platform.allowBackground {}`, `settings.set { headsetButton }`. Elsewhere
+they return `not_supported`. Each implementing task adds its fields to the
+mock in the same PR (§6).
+
 ## 6. Versioning
 - `v` in `hello` and `/api/v1/` in paths. Additive changes (new fields, message
   types, commands, features) stay v1; clients ignore what they don't know.

@@ -1,7 +1,7 @@
 // Control API meters (P4.3) and commands (P4.4). See ApiCommands.h.
 
 #include "ApiCommands.h"
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
  #include "PipeWireDevices.h"   // P2.11
 #endif
 
@@ -127,7 +127,7 @@ void ApiCommands::sendMeters()
             if (deviceManager != nullptr)
             {
                 auto name = deviceManager->getAudioDeviceSetup().inputDeviceName;
-               #if defined(__linux__)
+               #if defined(__linux__) && !defined(__ANDROID__)
                 name = String (pipewire::nodeForJuceName (name.toStdString(), true));   // keyed like devices.inputs[].node
                #endif
                 if (name.isNotEmpty()) devs->setProperty (name, input);
@@ -187,7 +187,28 @@ var ApiCommands::dispatch (ApiSession& session, const String& cmd, const var& a)
         throw CmdError { "bad_request", "Unknown command " + cmd };
     }
     if (cmd.startsWith ("agent.")) throw CmdError { "bad_request", "Unknown command " + cmd };
-    return consoleCommand (session, cmd, a);
+    return consoleCommand (session.getId(), cmd, a);
+}
+
+// A17: the same command paths, reached from inside the app (a lock-screen player
+// button) instead of from a WebSocket session. Kept next to dispatch() on
+// purpose: there must be exactly one implementation of "what a command does".
+bool ApiCommands::runLocalCommand (int64 owner, const String& cmd, const var& args, String& error)
+{
+    try
+    {
+        var a = args;
+        if (a.isVoid()) a = obj ({});
+        if (a.getDynamicObject() == nullptr) { error = "args must be an object"; return false; }
+
+        if (role == "vdi" && ! cmd.startsWith ("agent.")) { error = "Unknown command " + cmd; return false; }
+        consoleCommand (owner, cmd, a);
+    }
+    catch (const CmdError& e)          { error = e.message.isNotEmpty() ? e.message : e.code; return false; }
+    catch (const std::exception& e)    { error = e.what(); return false; }
+
+    state.refreshNow();       // publish the result now, as a command frame would
+    return true;
 }
 
 namespace {
@@ -266,14 +287,25 @@ void ApiCommands::setHotkeyPtt (bool down)
 void ApiCommands::applyPtt()
 {
     // A hold only counts in ptt mode (mock: pttHeld = mode == ptt && any holder).
-    processor.setPttHeld (processor.getMicMode() == Proc::MicMode::PushToTalk && ! pttHolders.empty());
+    processor.setPttHeld (processor.getMicMode() == Proc::MicMode::PushToTalk && ! pttHolders.empty() && ! processor.isPhoneCall());
 }
 
-var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const var& a)
+var ApiCommands::consoleCommand (int64 owner, const String& cmd, const var& a)
 {
     // ---- connection --------------------------------------------------------
     if (cmd == "connection.connect")    { connectionConnect (a); return {}; }
     if (cmd == "connection.disconnect") { connectionDisconnect(); return {}; }
+
+    // ---- platform (android.md section 10) ------------------------------------
+    if (cmd.startsWith ("platform."))
+    {
+        if (! hooks.platformCommand)
+            throw CmdError { "not_supported", cmd + " is only available in the Android app" };
+        String code, message;
+        if (! hooks.platformCommand (cmd, a, code, message))
+            throw CmdError { code.isNotEmpty() ? code : "internal", message };
+        return {};
+    }
 
     // ---- stations ----------------------------------------------------------
     if (cmd == "station.setLevel")
@@ -358,13 +390,16 @@ var ApiCommands::consoleCommand (ApiSession& session, const String& cmd, const v
     {
         if (processor.getMicMode() != Proc::MicMode::Open)
             throw CmdError { "wrong_mode", "mic.setOn only works in open-mic mode" };
-        processor.setMicOn (P44_VALIDATE (needBool (a, "on")));
+        const bool on = P44_VALIDATE (needBool (a, "on"));
+        if (on && processor.isPhoneCall())      // A14: the phone owns the audio during a call
+            throw CmdError { "busy", "The mic is off during your phone call" };
+        processor.setMicOn (on);
         return {};
     }
     if (cmd == "mic.ptt")
     {
         const bool down = P44_VALIDATE (needBool (a, "down"));
-        if (down) pttHolders.insert (session.getId()); else pttHolders.erase (session.getId());
+        if (down) pttHolders.insert (owner); else pttHolders.erase (owner);
         applyPtt();
         return {};
     }
@@ -637,7 +672,7 @@ var ApiCommands::agentCommand (const String& cmd, const var& a)
         // node would first have to switch to it.
         String current = deviceManager != nullptr ? deviceManager->getAudioDeviceSetup().outputDeviceName : String();
         auto* type = deviceManager != nullptr ? deviceManager->getCurrentDeviceTypeObject() : nullptr;
-       #if defined(__linux__)
+       #if defined(__linux__) && !defined(__ANDROID__)
         const String juceCurrent = current;
         current = String (pipewire::nodeForJuceName (current.toStdString(), false));   // as state.output.node
         if (node == juceCurrent) { processor.armApiTestTone (1.5); return {}; }

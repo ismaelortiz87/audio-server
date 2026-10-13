@@ -8,7 +8,7 @@ const VERSION = 'crosspoint-shell-v2';
 const SHELL = [
   './', './index.html', './agent.html', './manifest.webmanifest', './agent.webmanifest',
   './src/styles/tokens.css', './src/styles/base.css', './src/styles/console.css', './src/styles/agent.css',
-  './src/lib/boot.js', './src/lib/rtc.js', './src/lib/dom.js', './src/lib/format.js', './src/lib/patch.js', './src/lib/store.js', './src/lib/tokens.js',
+  './src/lib/boot.js', './src/lib/rtc.js', './src/lib/dom.js', './src/lib/format.js', './src/lib/patch.js', './src/lib/platform.js', './src/lib/store.js', './src/lib/tokens.js',
   './src/api/client.js', './src/api/mock.js', './src/api/scenarios.js',
   './src/console/app.js', './src/console/components.js', './src/console/activity.js',
   './src/agent/app.js',

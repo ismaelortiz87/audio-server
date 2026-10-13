@@ -42,6 +42,9 @@ public:
             persists it; returns false with a message when it cannot. Unset = the
             engine has no global hotkey, and the key answers `not_supported`. */
         std::function<bool (const String& spec, String& errMessage)> setPttHotkey;
+        /** platform.* (android.md section 10: openSettings, allowBackground, and A9's
+            requestMic). Unset = `not_supported` (every platform but Android). */
+        std::function<bool (const String& cmd, const var& args, String& errCode, String& errMessage)> platformCommand;
         /** The connection the app was started with (headless -c/-g/-n or the YAML). */
         AooServerConnectionInfo initialConnection;
         bool hasInitialConnection = false;
@@ -65,6 +68,17 @@ public:
         held while either is down). Ignored unless the mic is in push-to-talk mode. */
     void setHotkeyPtt (bool down);
 
+    /** The same as the connection.disconnect command (A10: the notification's Disconnect action). */
+    void disconnect()                            { connectionDisconnect(); }
+
+    /** A17: run a command from inside the app (a lock-screen player button) through
+        exactly the same paths the control API uses, so routing rules, `hearsYou`
+        and the state revision stay engine-owned. `owner` identifies the caller for
+        the per-holder push-to-talk logic; player buttons are not PTT holders.
+        Returns false and fills `error` when the command failed. Never throws:
+        there is no session to send an error frame to. Message thread. */
+    bool runLocalCommand (int64 owner, const String& cmd, const var& args, String& error);
+
     /** Frame builders, exposed for tests of the dB mapping. */
     static var levelPair (float peak, float rms);
 
@@ -73,7 +87,7 @@ private:
 
     void handleCommand (std::shared_ptr<ApiSession> session, const var& message);
     var dispatch (ApiSession& session, const String& cmd, const var& args);
-    var consoleCommand (ApiSession& session, const String& cmd, const var& a);
+    var consoleCommand (int64 owner, const String& cmd, const var& a);
     var agentCommand (const String& cmd, const var& a);
 
     // console helpers

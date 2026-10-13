@@ -6,6 +6,18 @@ build*/
 # Claude Code subagent worktrees
 .claude/worktrees/
 
+# A3: written by scripts/build-android.sh --resave from the local SDK path.
+sonobus/mobile/Builds/Android/local.properties
+
+# A6: built by scripts/pack-console-ui.sh from console-ui/.
+sonobus/Resources/crosspoint-ui.zip
+
+# A6: the Projucer regenerates these on every resave (build-android.sh always
+# resaves), and BinaryData.cpp embeds the UI zip, so tracking them would re-commit
+# a UI snapshot on every console-ui change.
+sonobus/mobile/JuceLibraryCode/BinaryData*.cpp
+sonobus/mobile/JuceLibraryCode/BinaryData.h
+
 # macOS / editor noise
 .DS_Store
 **/.DS_Store

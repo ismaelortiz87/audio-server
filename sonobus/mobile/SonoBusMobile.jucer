@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="ZRovAH" name="SonoBus" projectType="audioplug" companyName="Sonosaurus"
-              companyCopyright="2023 Sonosaurus LLC" companyEmail="support@sonosaurus.com"
-              pluginFormats="buildAUv3,buildStandalone,enableIAA" pluginManufacturerCode="Sono"
-              pluginCode="NBus" defines="JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1&#10;&#10;"
+<JUCERPROJECT id="ZRovAH" name="SonoBus" bundleIdentifier="io.lagreca.app.crosspoint"
+              projectType="audioplug" companyName="Sonosaurus" companyCopyright="2023 Sonosaurus LLC"
+              companyEmail="support@sonosaurus.com" pluginFormats="buildAUv3,buildStandalone,enableIAA"
+              pluginManufacturerCode="Sono" pluginCode="NBus" defines="JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1&#10;&#10;"
               pluginDesc="SonoBus - Network Audio" version="1.7.2" cppLanguageStandard="17"
               projectLineFeed="&#10;" jucerFormatVersion="1" pluginAUMainType="'aufx'"
               pluginAUIsSandboxSafe="1">
@@ -71,6 +71,8 @@
       </GROUP>
     </GROUP>
     <GROUP id="{45E6E779-87D2-18D9-1A29-7DFF68963CE8}" name="Resources">
+      <FILE id="CnslUizp" name="crosspoint-ui.zip" compile="0" resource="1"
+            file="../Resources/crosspoint-ui.zip"/>
       <GROUP id="{D7B7ACDE-8C3C-464D-61D5-CA7DC65C96D0}" name="localization">
         <FILE id="k3xnut" name="localized_de.txt" compile="0" resource="1"
               file="../localization/localized_de.txt"/>
@@ -206,6 +208,10 @@
             file="../images/sonobus_icon_ios_256.png"/>
       <FILE id="kMrPPT" name="sonobus_icon_ios_1024.png" compile="0" resource="0"
             file="../images/sonobus_icon_ios_1024.png"/>
+      <FILE id="cpIc25" name="crosspoint-256.png" compile="0" resource="0"
+            file="../../design/icon/crosspoint-256.png"/>
+      <FILE id="cpIc10" name="crosspoint-1024.png" compile="0" resource="0"
+            file="../../design/icon/crosspoint-1024.png"/>
       <FILE id="kOmbNh" name="sonobus_logo@2x.png" compile="0" resource="0"
             file="../images/sonobus_logo@2x.png" xcodeResource="1"/>
       <FILE id="O8neg6" name="sonobus_logo_96.png" compile="0" resource="1"
@@ -237,6 +243,16 @@
         <FILE id="PExtEf" name="SonoBusActivity.h" compile="0" resource="0"
               file="../Source/android/SonoBusActivity.h"/>
       </GROUP>
+      <FILE id="AgntC1" name="AgentConnect.cpp" compile="1" resource="0"
+            file="../Source/AgentConnect.cpp"/>
+      <FILE id="AgntC2" name="AgentConnect.h" compile="0" resource="0" file="../Source/AgentConnect.h"/>
+      <FILE id="ApiCmd1" name="ApiCommands.cpp" compile="1" resource="0"
+            file="../Source/ApiCommands.cpp"/>
+      <FILE id="ApiCmd2" name="ApiCommands.h" compile="0" resource="0" file="../Source/ApiCommands.h"/>
+      <FILE id="ApiSrv1" name="ApiServer.cpp" compile="1" resource="0" file="../Source/ApiServer.cpp"/>
+      <FILE id="ApiSrv2" name="ApiServer.h" compile="0" resource="0" file="../Source/ApiServer.h"/>
+      <FILE id="ApiSha1" name="ApiSha1.h" compile="0" resource="0" file="../Source/ApiSha1.h"/>
+      <FILE id="AppIdn1" name="AppIdentity.h" compile="0" resource="0" file="../Source/AppIdentity.h"/>
       <FILE id="iYcp68" name="AutoUpdater.cpp" compile="1" resource="0" file="../Source/AutoUpdater.cpp"/>
       <FILE id="TcpTNU" name="AutoUpdater.h" compile="0" resource="0" file="../Source/AutoUpdater.h"/>
       <FILE id="Rs48Iv" name="BeatToggleGrid.cpp" compile="1" resource="0"
@@ -250,6 +266,9 @@
             file="../Source/ChannelGroupsView.cpp"/>
       <FILE id="Oz4OG6" name="ChannelGroupsView.h" compile="0" resource="0"
             file="../Source/ChannelGroupsView.h"/>
+      <FILE id="CnslSh1" name="ConsoleShell.h" compile="0" resource="0" file="../Source/ConsoleShell.h"/>
+      <FILE id="BndlUi1" name="BundledConsoleUi.h" compile="0" resource="0"
+            file="../Source/BundledConsoleUi.h"/>
       <FILE id="L9mmHj" name="ChatView.cpp" compile="1" resource="0" file="../Source/ChatView.cpp"/>
       <FILE id="yV3Zd3" name="ChatView.h" compile="0" resource="0" file="../Source/ChatView.h"/>
       <FILE id="g1gcnX" name="CompressorView.h" compile="0" resource="0"
@@ -268,6 +287,8 @@
       <FILE id="GTuvGc" name="EffectParams.h" compile="0" resource="0" file="../Source/EffectParams.h"/>
       <FILE id="g9yEBK" name="EffectsBaseView.h" compile="0" resource="0"
             file="../Source/EffectsBaseView.h"/>
+      <FILE id="EngSt1" name="EngineState.cpp" compile="1" resource="0" file="../Source/EngineState.cpp"/>
+      <FILE id="EngSt2" name="EngineState.h" compile="0" resource="0" file="../Source/EngineState.h"/>
       <FILE id="Po7hA6" name="ExpanderView.h" compile="0" resource="0" file="../Source/ExpanderView.h"/>
       <FILE id="gNWF4i" name="faustCompressor.h" compile="0" resource="0"
             file="../Source/faustCompressor.h"/>
@@ -279,6 +300,13 @@
             file="../Source/GenericItemChooser.cpp"/>
       <FILE id="YQ4jbg" name="GenericItemChooser.h" compile="0" resource="0"
             file="../Source/GenericItemChooser.h"/>
+      <FILE id="GlbHk1" name="GlobalHotkey.cpp" compile="1" resource="0"
+            file="../Source/GlobalHotkey.cpp"/>
+      <FILE id="GlbHk2" name="GlobalHotkey.h" compile="0" resource="0" file="../Source/GlobalHotkey.h"/>
+      <FILE id="GlbHk3" name="GlobalHotkeyCarbon.cpp" compile="1" resource="0"
+            file="../Source/GlobalHotkeyCarbon.cpp"/>
+      <FILE id="GlbHk4" name="GlobalHotkeyCarbon.h" compile="0" resource="0"
+            file="../Source/GlobalHotkeyCarbon.h"/>
       <FILE id="R6XCcF" name="JitterBufferMeter.cpp" compile="1" resource="0"
             file="../Source/JitterBufferMeter.cpp"/>
       <FILE id="K7PT1u" name="JitterBufferMeter.h" compile="0" resource="0"
@@ -316,6 +344,7 @@
             file="../Source/RandomSentenceGenerator.h"/>
       <FILE id="HfP0yd" name="ReverbSendView.h" compile="0" resource="0"
             file="../Source/ReverbSendView.h"/>
+      <FILE id="RvbVw1" name="ReverbView.h" compile="0" resource="0" file="../Source/ReverbView.h"/>
       <FILE id="K4fw2S" name="RunCumulantor.cpp" compile="1" resource="0"
             file="../Source/RunCumulantor.cpp"/>
       <FILE id="rnucPD" name="RunCumulantor.h" compile="0" resource="0" file="../Source/RunCumulantor.h"/>
@@ -440,16 +469,14 @@
         <MODULEPATH id="juce_dsp" path="../../juce/modules"/>
       </MODULEPATHS>
     </XCODE_IPHONE>
-    <ANDROIDSTUDIO targetFolder="Builds/Android" extraDefs="USE_CODEC_OPUS=1&#10;AOO_TIMEFILTER_CHECK=0&#10;AOO_STATIC&#10;JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME=&quot;com_sonosaurus_sonobus_SonoBusActivity&quot;&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH=&quot;com/sonosaurus/sonobus/SonoBusActivity&quot;"
-                   externalLibraries="opus" smallIcon="gFXJgn" bigIcon="kMrPPT"
+    <ANDROIDSTUDIO targetFolder="Builds/Android" extraDefs="JUCE_ANDROID_OBOE_INPUT_PRESET=7&#10;USE_CODEC_OPUS=1&#10;AOO_TIMEFILTER_CHECK=0&#10;AOO_STATIC&#10;JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSNAME=&quot;io_lagreca_app_crosspoint_SonoBusActivity&quot;&#10;JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH=&quot;io/lagreca/app/crosspoint/SonoBusActivity&quot;"
+                   externalLibraries="opus" smallIcon="cpIc25" bigIcon="cpIc10"
                    androidAdditionalJavaFolders="../Source/android/java" androidRepositories="maven { url 'https://maven.google.com' }"
                    androidDependencies="implementation 'androidx.appcompat:appcompat:1.0.2'"
-                   androidCustomAppBuildGradleContent="ndkVersion &quot;22.0.7026061&quot;"
+                   androidCustomAppBuildGradleContent="// A3/A11: the upstream release keystore is not in the repo. The Projucer points every&#10;// build type at signingConfigs.juceSigning, so debug is re-pointed at Gradle's own&#10;// debug key and release at a keystore the builder supplies (never committed):&#10;// env CROSSPOINT_KEYSTORE / _KEYSTORE_PASSWORD / _KEY_ALIAS / _KEY_PASSWORD, or the&#10;// same as crosspointKeystore / crosspointKeystorePassword / crosspointKeyAlias /&#10;// crosspointKeyPassword in ~/.gradle/gradle.properties. Release is arm64-v8a only.&#10;    def cpSetting = { String env, String prop -&gt; System.getenv(env) ?: (findProperty(prop) ?: '') }&#10;    def cpKeystore = cpSetting('CROSSPOINT_KEYSTORE', 'crosspointKeystore')&#10;    def cpStorePass = cpSetting('CROSSPOINT_KEYSTORE_PASSWORD', 'crosspointKeystorePassword')&#10;    def cpKeyAlias = cpSetting('CROSSPOINT_KEY_ALIAS', 'crosspointKeyAlias')&#10;    def cpKeyPass = cpSetting('CROSSPOINT_KEY_PASSWORD', 'crosspointKeyPassword') ?: cpStorePass&#10;    signingConfigs {&#10;        crosspointRelease {&#10;            if (cpKeystore) {&#10;                storeFile file(cpKeystore.replaceFirst('&#94;~', System.properties['user.home']))&#10;                storePassword cpStorePass&#10;                keyAlias cpKeyAlias&#10;                keyPassword cpKeyPass&#10;            }&#10;        }&#10;    }&#10;    buildTypes {&#10;        debug {&#10;            signingConfig signingConfigs.debug&#10;        }&#10;        release {&#10;            signingConfig signingConfigs.crosspointRelease&#10;        }&#10;    }&#10;    productFlavors {&#10;        release_ {&#10;            ndk {&#10;                abiFilters &quot;arm64-v8a&quot;&#10;            }&#10;        }&#10;    }&#10;    gradle.taskGraph.whenReady { graph -&gt;&#10;        if (graph.allTasks.any { it.name.toLowerCase().contains('release_release') }&#10;                &amp;&amp; (!cpKeystore || !file(cpKeystore.replaceFirst('&#94;~', System.properties['user.home'])).exists()&#10;                    || !cpStorePass || !cpKeyAlias)) {&#10;            throw new GradleException('Release build needs a signing keystore: set CROSSPOINT_KEYSTORE, CROSSPOINT_KEYSTORE_PASSWORD, CROSSPOINT_KEY_ALIAS (and optionally CROSSPOINT_KEY_PASSWORD), see docs/ANDROID.md')&#10;        }&#10;    }&#10;"
                    androidMinimumSDK="24" androidTargetSDK="33" microphonePermissionNeeded="1"
-                   androidEnableContentSharing="1" androidManifestCustomXmlElements="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;&#10;&#10;&lt;manifest xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;  package=&quot;com.sonosaurus.sonobus&quot;&gt;&#10;&#10; &lt;uses-permission android:name=&quot;android.permission.FOREGROUND_SERVICE&quot;/&gt;&#10;  &lt;supports-screens android:smallScreens=&quot;true&quot; android:normalScreens=&quot;true&quot; android:largeScreens=&quot;true&quot; android:anyDensity=&quot;true&quot;&#10;                    android:xlargeScreens=&quot;true&quot;/&gt;&#10;  &#10;  &lt;application android:label=&quot;@string/app_name&quot; android:name=&quot;com.rmsl.juce.JuceApp&quot; android:icon=&quot;@mipmap/ic_launcher&quot; android:roundIcon=&quot;@mipmap/ic_launcher_round&quot; android:hardwareAccelerated=&quot;false&quot;  android:allowAudioPlaybackCapture=&quot;true&quot;&gt;&#10;&#10;      &lt;service   android:name=&quot;SonoBusService&quot;   android:enabled=&quot;true&quot;   android:exported=&quot;false&quot;  /&gt;&#10;&#10;    &lt;activity  android:label=&quot;@string/app_name&quot; android:configChanges=&quot;keyboardHidden|orientation|screenSize&quot;&#10;              android:screenOrientation=&quot;unspecified&quot; android:launchMode=&quot;singleTask&quot;  android:hardwareAccelerated=&quot;false&quot;&gt;&#10;     &#10;    &lt;/activity&gt;&#10;    &#10;  &lt;/application&gt;&#10;&lt;/manifest&gt;&#10;"
-                   androidKeyStore="${user.home}/.android/sonouploadnew.jks" androidKeyStorePass="${sonoupload_keystore_password}"
-                   androidKeyAlias="${sonoupload_key}" androidKeyAliasPass="${sonoupload_key_password}"
-                   androidTheme="@android:style/Theme.NoTitleBar" androidActivitySubClassName="com.sonosaurus.sonobus.SonoBusActivity"
+                   androidEnableContentSharing="1" androidManifestCustomXmlElements="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;&#10;&#10;&lt;manifest xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;  package=&quot;io.lagreca.app.crosspoint&quot;&gt;&#10;&#10; &lt;uses-permission android:name=&quot;android.permission.FOREGROUND_SERVICE&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.FOREGROUND_SERVICE_MICROPHONE&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.POST_NOTIFICATIONS&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.WAKE_LOCK&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.ACCESS_WIFI_STATE&quot;/&gt;&#10; &lt;uses-permission android:name=&quot;android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS&quot;/&gt;&#10;  &lt;supports-screens android:smallScreens=&quot;true&quot; android:normalScreens=&quot;true&quot; android:largeScreens=&quot;true&quot; android:anyDensity=&quot;true&quot;&#10;                    android:xlargeScreens=&quot;true&quot;/&gt;&#10;  &#10;  &lt;application android:label=&quot;Crosspoint&quot; android:name=&quot;com.rmsl.juce.JuceApp&quot; android:icon=&quot;@drawable/icon&quot; android:hardwareAccelerated=&quot;true&quot; android:networkSecurityConfig=&quot;@xml/network_security_config&quot;  android:allowAudioPlaybackCapture=&quot;true&quot;&gt;&#10;&#10;      &lt;!-- A20: tells Android Auto this app is a media app. --&gt;&#10;      &lt;meta-data android:name=&quot;com.google.android.gms.car.application&quot; android:resource=&quot;@xml/automotive_app_desc&quot;/&gt;&#10;&#10;      &lt;service   android:name=&quot;SonoBusService&quot;   android:enabled=&quot;true&quot;   android:exported=&quot;false&quot;  android:foregroundServiceType=&quot;microphone|mediaPlayback&quot;  android:stopWithTask=&quot;false&quot;  /&gt;&#10;&#10;      &lt;!-- A20: the Android Auto media app (android.md section 13). --&gt;&#10;      &lt;service android:name=&quot;CrosspointBrowserService&quot; android:exported=&quot;true&quot;&gt;&#10;        &lt;intent-filter&gt;&#10;          &lt;action android:name=&quot;android.media.browse.MediaBrowserService&quot;/&gt;&#10;        &lt;/intent-filter&gt;&#10;      &lt;/service&gt;&#10;&#10;    &lt;activity  android:label=&quot;Crosspoint&quot; android:configChanges=&quot;keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|fontScale|density|uiMode&quot;&#10;              android:screenOrientation=&quot;unspecified&quot; android:launchMode=&quot;singleTask&quot;  android:hardwareAccelerated=&quot;true&quot; android:windowSoftInputMode=&quot;adjustResize&quot;&gt;&#10;      &lt;intent-filter&gt;&#10;        &lt;action android:name=&quot;android.intent.action.MAIN&quot;/&gt;&#10;        &lt;category android:name=&quot;android.intent.category.LAUNCHER&quot;/&gt;&#10;      &lt;/intent-filter&gt;&#10;      &lt;intent-filter&gt;&#10;        &lt;action android:name=&quot;android.intent.action.VIEW&quot;/&gt;&#10;        &lt;category android:name=&quot;android.intent.category.DEFAULT&quot;/&gt;&#10;        &lt;category android:name=&quot;android.intent.category.BROWSABLE&quot;/&gt;&#10;        &lt;data android:scheme=&quot;crosspoint&quot;/&gt;&#10;      &lt;/intent-filter&gt;&#10;    &lt;/activity&gt;&#10;    &#10;  &lt;/application&gt;&#10;&lt;/manifest&gt;&#10;"
+                   androidTheme="@style/CrosspointTheme" androidActivitySubClassName="io.lagreca.app.crosspoint.SonoBusActivity"
                    androidVersionCode="86">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" headerPath="../../../../aoo/lib&#10;../../../../aoo/deps&#10;../../../deps/android&#10;"
@@ -502,7 +529,7 @@
     <WINDOWS/>
   </LIVE_SETTINGS>
   <JUCEOPTIONS JUCE_VST3_CAN_REPLACE_VST2="0" JUCE_STRICT_REFCOUNTEDPOINTER="1"
-               FF_AUDIO_ALLOW_ALLOCATIONS_IN_MEASURE_BLOCK="0" JUCE_WEB_BROWSER="0"
+               FF_AUDIO_ALLOW_ALLOCATIONS_IN_MEASURE_BLOCK="0" JUCE_WEB_BROWSER="1"
                JUCE_JACK="1" JUCE_ASIO="1" JUCE_USE_OBOE_STABILIZED_CALLBACK="1"
                JUCE_DIRECTSOUND="0"/>
 </JUCERPROJECT>
