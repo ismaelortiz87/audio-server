@@ -147,7 +147,7 @@ Ordered so that every task appears after everything it depends on.
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | todo | |
 | A9 | Mic permission flow | A7, A2 | S | any + design review | todo | |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | todo | |
-| A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | todo | |
+| A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | todo | |
 | A12 | Mic toggle from the headset button (optional) | A14, A7 | S | any + design review | todo | |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets) | A7–A11, A14 | S | human | todo | |
@@ -2299,7 +2299,32 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
   ("install unknown apps"). Don't publish the APK anywhere unasked.
 - **Done when:** a signed release APK installs over a previous release build
   without uninstalling, and the docs work from a clean checkout.
-- **Result:**
+- **Result (Claude sonnet, 2026-10-12)**: done. Docs: `docs/ANDROID.md`, section
+  "Release APK" (keytool command, keystore outside the repo, env vars or
+  `~/.gradle/gradle.properties`, `adb install -r`, sideloading, how to bump).
+  - Signing: `CROSSPOINT_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`,
+    `_KEY_PASSWORD` (optional) in the environment, or `crosspointKeystore...` in
+    `~/.gradle/gradle.properties`. The upstream `sonouploadnew.jks` /
+    `sonoupload_*` references are gone from the `.jucer` (its four `androidKey*`
+    attributes are removed; the Projucer's `juceSigning` now points at the
+    default debug keystore path and nothing uses it). The release signing config,
+    the debug override and the release ABI filter live in the `.jucer`'s
+    `androidCustomAppBuildGradleContent`. A missing keystore fails twice over:
+    `build-android.sh --release` stops with the list of variables before the
+    resave, and Gradle's task graph check throws the same if run directly.
+  - Release ABI: **arm64-v8a only** (`ndk.abiFilters` on the `release_`
+    flavor; `aapt` shows `native-code: 'arm64-v8a'`). **Release APK: 32 MB**
+    (debug, four ABIs: 195 MB). Cold release build 1m46s.
+  - Versions: `versionName` = `.jucer` `version` (1.7.2), `versionCode` =
+    `androidVersionCode` (86); both were already emitted by the Projucer, so
+    there is nothing to derive, only to bump (documented).
+  - **Verified** with a throwaway keystore in `/private/tmp/crosspoint-a11-ks`
+    (outside the repo): release build, install on emulator-5560, rebuild,
+    `adb install -r` over it: Success without uninstalling, app launches. (The
+    debug build had to be uninstalled first: debug and release keys differ.)
+  - Not checked: `apksigner verify` (needs `JAVA_HOME` set; Gradle verified the
+    signature by installing), the doc steps from a truly clean clone, a real
+    phone.
 
 #### A14 — Phone calls + earcons · M · any + design review · lane P
 - **Depends on:** A10, A5 · **Touches:** `sonobus/Source/android/java/`,
