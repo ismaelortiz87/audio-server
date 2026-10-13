@@ -156,7 +156,7 @@ Ordered so that every task appears after everything it depends on.
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
-| A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
+| A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | todo | |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
@@ -3022,7 +3022,18 @@ is ever needed, adds 1–2 days.
     isn't granted
   - driver-safety wording: nothing to read beyond the title and one line
 - **Done when:** A20 can be built without inventing anything.
-- **Result:**
+- **Result:** done (Claude, 2026-10-13): `docs/design/android.md` §13.
+  - **Now playing** uses Layout B: Listening in the centre, then Mic, Solo,
+    Mute and Next station, in that priority; Next station goes to the
+    overflow first.
+  - **The browse list** has one item per station: short name, car-short
+    state, and a colour icon that blends toward live while that station hears
+    you. Tapping an item only selects it.
+  - **Car-short copy table** (§13.2): no numbers, about 30 characters.
+  - **Not connected:** with saved settings, a "Connect to {group}" item;
+    without, the error "Set up Crosspoint on your phone first."
+  - **One session**, shared with the lock screen. No Disconnect in the car.
+
 
 #### A22 — Bluetooth mic setting (buds and car) · M · any + design review + human
 - **Spec:** `docs/design/android.md` §14 (Claude, 2026-10-13). maelo's main use is meetings with Bluetooth buds, so this matters more than the car, and it covers the car too.

@@ -423,6 +423,105 @@ Also confirm:
 - earcons on Mic changes
 - the player stays while the mic is off for 10 minutes
 
+## 13. Android Auto (A21; built in A20)
+
+The §12 lock-screen player, on the car screen. Android Auto draws its own
+media UI (day/night themed, sized for driving). We supply the same session (A18)
+plus a **browse list** of stations. Nothing here needs the phone screen while
+driving. Talking uses the phone's mic (A22 is the Bluetooth/car mic option).
+
+### 13.1 Screens
+
+**Now playing** (Auto's media screen): artwork, title, one subtitle line, the
+centre play/pause, and the custom actions. Auto shows about four action buttons
+and puts the rest in an overflow (⋯).
+
+| Element | Content |
+|---|---|
+| Centre (play/pause) | **Listening**, as §12.2 Layout B: pause silences stations and turns the mic off; play resumes and leaves the mic off |
+| Action 1 | **Mic on/off** (hidden in PTT mode and during a call, as §12.2) |
+| Action 2 | **Solo** (selected station; exclusive; never opens the mic) |
+| Action 3 | **Mute** (selected station) |
+| Action 4, or overflow | **Next station ↻**. In the car, picking from the browse list is easier, so this goes to the overflow first when space runs out |
+
+Priority if Auto shows fewer buttons: Mic, Solo, Mute, then Next station. Icons
+are the A18 `ic_player_*` vectors; Auto tints them for day and night.
+
+**Browse list** (Auto's "Stations" tab): one item per station in
+`stationOrder`, up to 8.
+
+| Field | Content |
+|---|---|
+| Title | short name ("ACCT-07") |
+| Subtitle | car-short state (§13.2), e.g. "Hears you · Clear", "Soloed", "Muted", "Lost", "Offline" |
+| Icon | a rounded square in the station colour (128 px). While that station hears you it is blended toward `live` (55/45, same rule as §12.4). Offline: `ink4` |
+| Tap | **selects** the station for the now-playing controls and opens Now playing. It doesn't change solo, mute or the mic |
+
+Offline stations are listed (so the list matches the phone), but tapping one
+only selects it.
+
+### 13.2 Car-short text
+
+Car screens truncate around 30 characters, and the driver should only glance.
+These are shortened forms of the §4 lines, used **only on Auto**.
+
+| State | Now-playing subtitle |
+|---|---|
+| live, all hear | "Live · all {n} hear you" (one station: "Live · {A} hears you") |
+| live, some hear | "Live · {A and B} hear you" (more than two names: "Live · {n} of {m} hear you") |
+| live, solo | "Live · solo {A}" |
+| mic open, nobody hears | "Mic open · nobody hears you" |
+| mic off | "Mic off" |
+| PTT | "Push to talk · hold on phone" |
+| phone call | "Mic off · on a call" |
+| mic not granted | "Mic blocked · allow on phone" |
+| listening paused | "Paused · mic off" |
+
+Station state in the browse list: "Hears you · Clear", "Hears you ·
+Unstable", "Clear" (talk off), "Soloed", "Muted", "Dimmed", "Lost",
+"Offline". Joined with " · " when several apply, health last.
+
+### 13.3 Not connected
+
+When Auto opens Crosspoint and the phone isn't connected:
+- With saved settings: the browse list shows one playable item, **"Connect
+  to {group}"**. Tapping it connects with the saved values
+  (`connection.connect {}`), and the station list follows once connected.
+- With nothing saved (fresh install): Auto shows an error state, **"Set up
+  Crosspoint on your phone first."**, with no action. Auto blocks phone setup
+  while driving.
+- **Connecting / reconnecting:** the subtitle is "Connecting to {group}…",
+  and the station list keeps the last known stations.
+- **Failed:** the subtitle is "Not connected · {short reason}" ("wrong
+  password", "server unreachable"), with the "Connect to {group}" item to
+  retry.
+
+### 13.4 Rules
+
+- **One session.** Auto and the phone's lock screen show the same session. A
+  station selected in the car is the selected station on the lock screen, and
+  vice versa.
+- **Driving safety:** nothing to read beyond the title and one line. No
+  numbers except "Clear/Unstable" words (no ms, no %), no meters, no settings.
+- **Earcons** (§5) play through the car speakers like everything else.
+- **Audio** goes through the car via Android. The mic is the phone's unless
+  A22 is set to the headset or car mic.
+- **Disconnect** isn't offered in the car. Turning off Auto doesn't
+  disconnect either: the phone keeps the session, as it does when the screen
+  turns off.
+
+### 13.5 Review (A20)
+
+DHU captures, day and night, of:
+- Now playing: live to all; solo; mic off; PTT; on a call (simulated); mic
+  not granted; listening paused
+- the browse list with 4 stations (one live, one muted, one lost, one offline)
+- the "Connect to {group}" item
+- the fresh-install error
+
+Also confirm: tapping a station selects it on the lock screen too, and every
+action changes the engine within a second.
+
 ## 14. Bluetooth mic (A22)
 
 **Why:** with classic Bluetooth earbuds or a car, Android plays media over the
