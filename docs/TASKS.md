@@ -2045,7 +2045,9 @@ the emulator check is pending.
   `BinaryData::crosspointui_zip` (rule: spaces/dots → `_`, other punctuation
   dropped, in `makeBinaryDataIdentifierName`). The extractor uses that symbol
   and the test would catch a rename.
-- `extractBundledConsoleUi()` unpacks to
+- `crosspoint::extractBundledConsoleUi()` (shared header
+  `sonobus/Source/BundledConsoleUi.h`, used by the app and by the host test, so the
+  test runs the code the phone runs) unpacks to
   `userApplicationDataDirectory/console-ui`, guarded by an
   MD5+size stamp file so a relaunch is a no-op and an **upgrade** replaces a
   stale UI (`console-ui.stamp`, sibling of the extracted folder).
@@ -2100,9 +2102,37 @@ for design review are still missing (no emulator yet).
   implementing task to add its fields): `android`, `android-blocked`,
   `android-call`, `android-aftercall`, `android-echo`, with
   `self.kind: "android"` and the `platform` block. `console-ui` tests 15/15.
-- Back gesture (§2): JUCE's Android activity already sends Back to the
-  activity, and nothing in this change makes it disconnect — but that needs the
-  emulator to confirm, so it is **not** claimed here.
+- Back gesture (§2): JUCE's default `backButtonPressed()` returns false and the
+  peer then `finish()`es the activity, so the first version would have quit the
+  app. Review fix: `SonobusStandaloneFilterApp::backButtonPressed()` (Android
+  only) calls `Process::hide()` (= `Activity.moveTaskToBack(true)`, HOME-intent
+  fallback) and returns true: Back goes to the background like Home, the
+  foreground service keeps the audio, nothing disconnects. **Limitation:** the
+  page never sees Back. JUCE 7.0.8's `WebBrowserComponent` has no
+  `evaluateJavascript`, and the native side cannot tell whether the settings sheet
+  is open, so Back does not close the sheet (§2 asks for that). Closing it needs
+  either a JNI bridge into the WebView (`evaluateJavascript` through
+  `JuceWebView`) or the page pushing a history entry when the sheet opens; left
+  for the emulator pass. Unverified until then.
+- Review fix, OpenGL: `attachGL()` (the only place an `OpenGLContext` is attached
+  on Android; `resumed()` and the 500 ms foreground-service timer never call it)
+  now returns early once the web shell is shown (`webShellShown`), so the WebView
+  is not inside a GL-attached window (black or hidden WebView risk). The context is
+  still attached for `--legacy-ui`/when the shell is not used. `detachGL()` is
+  unchanged (it only acts if attached). Unverified until the emulator.
+- Review fix, error copy: on Android `showConsoleShell()` uses the §8 strings
+  verbatim: API did not start -> "Its audio engine couldn't open its local
+  connection (port {port} is in use by another app). Close that app or restart the
+  phone, then try again." with a **Try again** button that re-runs
+  `startApiServer()` (and `startEngineState()`) and, if that worked, loads the
+  page; UI files missing -> title "This copy of Crosspoint is incomplete", body
+  "Some of its files are missing. Reinstall Crosspoint.", no button (checked
+  first: no retry fixes it). `ConsoleShellView` takes a `ConsoleShellFatal`
+  {title, buttonLabel, onRetry}; the Mac passes none, so its P6.1 strings, layout
+  and behaviour are unchanged (the shared default-argument path only; desktop
+  build passes). The Android branches are not compiled here.
+- Agent page: `consoles[].kind: "android"` shows as "Console · Android" (mock
+  `talking` scenario has one).
 **Not done:** the emulator screenshots (100% and 130% font scale, cold-start
 video) that this task's *Done when* requires, and A9/A10/A14's states.
 
