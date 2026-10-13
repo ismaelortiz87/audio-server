@@ -156,7 +156,12 @@ Ordered so that every task appears after everything it depends on.
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | todo | |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
+| A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
+| A22 | Car mic spike: can the app talk through the car's mic during Android Auto (SCO / communication device) | A8 | M | any + human | todo | |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | todo | |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, audio, mic) | A20, A22 | S | human | todo | |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
+| P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
 | P10.2 | Session record: station + my mic gated by the talk path | P10.1, P1.5 | M | any | deferred | |
 | P10.3 | UX addendum: recording + recaps | UX4 | M | design | done | Claude |
@@ -2834,6 +2839,95 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
 - **Done when:** added to Quick Settings on the emulator, it toggles the mic
   locked and unlocked, its state follows changes made in the app, and design
   review passed.
+- **Result:**
+
+### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
+
+maelo asked for this on 2026-10-13: the same controls as the lock-screen
+player (A18), shown on the car screen. Android Auto only lists apps declared as
+**Auto media apps**. A plain media session isn't enough: the app needs a
+`MediaBrowserService` that hands Auto the same session, plus an Auto
+declaration. After that, Auto draws the player with the same buttons, and they
+go through the same engine commands (A17). A fuller Auto app is ROADMAP P9.5
+(deferred).
+
+**Who does what:** A21 is Claude only (design). A20 and A22 can go to any
+agent; A22 also needs maelo in the car. A23 is maelo.
+
+**Order:** A21 and A22 can start now, in parallel (A22 only needs A8). A20
+starts after A18 and A21. A23 comes last.
+
+**Effort:**
+
+| Task | Effort |
+|---|---|
+| A21 (design) | about 0.5 d |
+| A20 | 0.5–1 d |
+| A22 | 1–2 d, the most uncertain |
+| A23 | a drive |
+
+Car-screen controls alone (A21 + A20) take about **1–1.5 days**. The whole
+set, including talking through the car mic, takes about **2.5–3.5 days**.
+
+#### A21 — UX addendum: player on Android Auto · S · design (Claude)
+- **Depends on:** A15 · **Touches:** `docs/design/android.md` (new §13)
+- **Do:** say how §12 maps to Auto's media template:
+  - which custom actions show and which go to overflow
+  - the browse list: one item per station, with name, state subtitle and
+    colour icon; tapping an item selects it
+  - title and subtitle lengths on a car display
+  - what the car shows when disconnected, during a call, and when the mic
+    isn't granted
+  - driver-safety wording: nothing to read beyond the title and one line
+- **Done when:** A20 can be built without inventing anything.
+- **Result:**
+
+#### A22 — Car mic spike · M · any + human
+- **Depends on:** A8 · **Touches:** `sonobus/Source/` (Android audio setup),
+  `sonobus/Source/android/java/`
+- **Do:** during Android Auto, media plays through the car, but app
+  recording normally uses the phone mic. Find out whether Crosspoint can
+  capture from the car's mic:
+  - `AudioManager.setCommunicationDevice()` (API 31+) or Bluetooth SCO, with
+    the VoiceCommunication preset (A8)
+  - what that does to output quality (SCO is narrowband) and to other apps
+  - whether it breaks A14's call detection (`PlatformMonitor.appOwnsAudioMode`)
+
+  Implement it behind a setting if it works. Test first on the Desktop Head
+  Unit (DHU) as far as it allows, then maelo checks in the car.
+- **Done when:** findings are recorded (works, works with caveats, or
+  doesn't), with the chosen behaviour implemented or documented.
+- **Result:**
+
+#### A20 — Android Auto media app · S · any + design review
+- **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`
+  (platform `android.service.media.MediaBrowserService`, returning the A18
+  session's token), `res/xml/automotive_app_desc.xml` (`<uses name="media"/>`),
+  `.jucer` manifest (service with the `android.media.browse.MediaBrowserService`
+  intent filter, and `com.google.android.gms.car.application` meta-data)
+- **Do:** build A21's design:
+  - the browse tree: root → stations; `onPlayFromMediaId` selects the station
+    through A17
+  - the same `PlaybackState` and custom actions as A18
+  - document how to install the Android Auto Desktop Head Unit
+    (`extras;google;auto`) and how to turn on Unknown sources in Android Auto
+    (Developer settings: tap the version 10 times) in docs/ANDROID.md
+- **Done when:** on the DHU, Crosspoint appears in the launcher, the player
+  shows, and every button and station item changes the engine. Captures go to
+  `/private/tmp/claude-501/a20-review/`. Design review passed.
+- **Result:**
+
+#### A23 — In-car test · S · human (maelo)
+- **Depends on:** A20, A22
+- **Do:** with the release APK installed and Unknown sources on in Android
+  Auto, connect to the car and check:
+  - Crosspoint appears in Auto
+  - the controls work while driving rules apply
+  - station audio plays through the car
+  - talking works through whichever mic A22 settled on
+  - phone calls interrupt and recover (A14)
+- **Done when:** results are recorded here; anything that fails becomes a bug
+  or a task.
 - **Result:**
 
 ### P9.3 — Native iOS Console · L · deferred
