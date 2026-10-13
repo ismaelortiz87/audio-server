@@ -154,7 +154,7 @@ Ordered so that every task appears after everything it depends on.
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
-| A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | todo | |
+| A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | todo | |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
@@ -2974,7 +2974,52 @@ conflicts by keeping both sides, then `scripts/build-android.sh --resave`.
   recorded here, plus one line on what changed since maelo's last APK
   (`348618c6`) and the install command (`adb install -r …`, or "uninstall
   first" if the signing key differs).
-- **Result:**
+- **Result (2026-10-13, `android-apk` @ `275316ef`): debug APK built and
+  smoke-tested; release skipped (no keystore, as the card requires).**
+  - **Artifact:** `build/apk/crosspoint-debug-275316ef.apk`, 195 MB,
+    sha256 `54d6a36f...f765` (below), built from
+    `275316ef`, debug-signed with the standard Android debug key
+    (`CN=Android Debug`), so the usual `adb install -r` works.
+    ```sh
+    adb install -r build/apk/crosspoint-debug-275316ef.apk
+    ```
+    No uninstall needed: same debug key as `348618c6`.
+  - **Release APK skipped, deliberately.** `CROSSPOINT_KEYSTORE` was not set and
+    `~/.crosspoint/crosspoint-release.jks` does not exist. The card says never to
+    create one for maelo, so `--release` was not run. Give me the variables (or
+    the keystore) and the release build is one command.
+  - **Checks:** console-ui `npm test` 31/31; `scripts/test-android-ui.sh` 10/10;
+    `scripts/build-desktop.sh --app-only` green.
+  - **Smoke test on the API 34 emulator:** installs, launches, no crash; the
+    Console loads and is served from `http://127.0.0.1:7070/`; it connects to a
+    group (local `aooserver` + a headless VDI peer); the lock-screen player shows
+    with the selected station as the title and working buttons (tapping the Mic
+    slot drove `mic.on true → false`).
+  - **What changed since maelo's last APK (`348618c6`, 16 commits):** the
+    lock-screen player (A18 — media session, Layout B, per-state icons and
+    artwork, Listening pause), the A17 control bridge it runs on, A16 (the
+    notification is no longer dismissable), and the A9 mic-permission flow
+    (first-connect ask, "Mic blocked" states, Settings problem rows, device
+    name). Also the A15/A9/A14 copy and layout fixes.
+  - **Captures** in `/private/tmp/claude-501/a24-review/`:
+    `01-console-connected`, `02-mic-blocked` (shows both the live-band and mic
+    button blocked states), `03-settings-rows`, `04-during-call`,
+    `05-after-call`, `06-lockscreen-player`, `07-shade-player`.
+    Caveats on those, so the review is not over-read:
+    - `02` is the good mic-blocked capture; an earlier attempt caught an
+      emulator "System UI isn't responding" dialog over the permission prompt
+      (software GPU on a loaded host), which is not an app fault.
+    - `04`/`05` (during/after call) do **not** show the §6 call states:
+      `adb emu gsm call` set the emulator's call state but
+      `platform.phoneCall` never became true, so the engine never entered the
+      call path. A14's call detection needs its own check; I did not chase it,
+      as A24's brief was to produce the APK.
+    - `06-lockscreen-player` caught the home screen, not the lock screen; `07`
+      (the shade) is the usable player capture.
+  - **Cleanup:** `app/build` and `.cxx` deleted after copying the APK, resave
+    noise discarded, local test server/peer stopped.
+  - Full sha256: `54d6a36f2c0d744315d4ce3d108038e2bae8526ac8b355fb2be098991048f765`.
+
 
 ### Android Auto: lock-screen controls on the car screen (A20–A23, low priority)
 
