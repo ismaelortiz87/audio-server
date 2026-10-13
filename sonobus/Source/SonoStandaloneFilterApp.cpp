@@ -174,6 +174,7 @@ public:
     std::unique_ptr<crosspoint::ApiCommands> apiCommands;   // P4.3/P4.4 (declared after engineState: destroyed first)
     String loadedConfigPath;                                 // P4.2: agent state configPath
     String apiStartError;                                    // P6.1: why the API is not listening (shown in the window)
+    bool webShellShown = false;                              // A7: the web view is the window content (no GL context then)
     bool legacyUi = false;                                   // P6.1: hidden --legacy-ui keeps the old SonoBus editor in the window
 
     // P6.5: global push-to-talk hotkey (windowed Console on macOS). Declared after
@@ -620,6 +621,8 @@ public:
                   + "\n\nAnother Crosspoint or SonoBus may already be using that port. Quit it, or start this one with --api-port <other port>.";
         else if (! apiConfig.uiDir.isDirectory())
             error = "The Console UI files were not found. Expected them in the app bundle (Contents/Resources/console-ui).\n\nRebuild the app, or pass --ui-dir <path to console-ui>.";
+
+        webShellShown = true;
 
         // The window reaches the engine on loopback whatever the bind address is.
         mainWindow->showWebShell ("http://127.0.0.1:" + String (apiConfig.port) + "/", error);
@@ -1939,6 +1942,14 @@ public:
 
     void attachGL()
     {
+        // A7: a native WebView inside a window that has an OpenGLContext attached
+        // can render black or stay hidden, and the web shell draws nothing with
+        // JUCE's renderer anyway. Only --legacy-ui (the SonoBus editor) uses GL.
+        // This is the single place a context is attached, so nothing else (a
+        // resume, the 500 ms foreground-service timer) can re-attach it.
+        if (webShellShown)
+            return;
+
         if (mainWindow) {
 #if JUCE_OPENGL  && JUCE_ANDROID
             DBG("activating GL context");
