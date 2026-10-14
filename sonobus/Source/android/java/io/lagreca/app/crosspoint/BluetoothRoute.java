@@ -119,7 +119,7 @@ final class BluetoothRoute {
 
         final boolean wantRoute = connected && desired == 1 && !inRealCall;
 
-        if (wantRoute && !sHeld) engage(am, le, bt);
+        if (wantRoute && !sHeld) engage(am, le);
         else if (!wantRoute && sHeld) releaseRoute();
 
         // Report the connected device separately from the route below. With the
@@ -169,7 +169,7 @@ final class BluetoothRoute {
     // ---------------------------------------------------------------- route
 
     /** Move audio to the communication route on the given Bluetooth device. */
-    private static void engage(AudioManager am, boolean le, AudioDeviceInfo dev) {
+    private static void engage(AudioManager am, boolean le) {
         PlatformMonitor.appOwnsAudioMode = true;   // A14: do not count this as a call
         if (le) {
             // LE Audio (android.md 14) carries the stereo media and the mic
@@ -177,28 +177,69 @@ final class BluetoothRoute {
             sHeld = true;
             return;
         }
-        if (Build.VERSION.SDK_INT >= 31 && dev != null) {
-            // Classic A2DP: the mic only exists on the call channel, so move the
-            // communication session to the Bluetooth device (API 31+; the mode
-            // must be IN_COMMUNICATION for setCommunicationDevice to take).
-            try {
-                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                if (am.setCommunicationDevice(dev)) {
-                    sHeld = true;
-                    return;
+        if (Build.VERSION.SDK_INT >= 31) {
+            // Classic A2DP: media plays on the stereo music channel, but the mic
+            // only exists on the call channel. The device to select is NOT the
+            // A2DP output findBt() found (setCommunicationDevice rejects it and it
+            // has no mic) but the one the platform offers for communication —
+            // SCO, or a BLE headset. Selecting it also makes the framework bring
+            // the SCO link up (startBluetoothSco() is deprecated from API 31).
+            final AudioDeviceInfo comm = findCommunicationDevice(am);
+            if (comm != null) {
+                try {
+                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    if (am.setCommunicationDevice(comm)) {
+                        sHeld = true;
+                        Log.i(TAG, "Bluetooth route engaged: type=" + comm.getType()
+                            + " commDevice=" + am.getCommunicationDevice()
+                            + " scoOn=" + am.isBluetoothScoOn());
+                        return;
+                    }
+                    Log.w(TAG, "setCommunicationDevice(" + comm.getType() + ") was refused");
+                } catch (Throwable t) {
+                    Log.w(TAG, "engaging the communication route failed", t);
                 }
-            } catch (Throwable ignored) { }
+            } else {
+                final StringBuilder sb = new StringBuilder();
+                try {
+                    for (AudioDeviceInfo d : am.getAvailableCommunicationDevices())
+                        sb.append(d.getType()).append(' ');
+                } catch (Throwable t) {
+                    sb.append("listing failed: ").append(t);
+                }
+                Log.w(TAG, "no Bluetooth communication device offered for a call route; offered: " + sb);
+            }
         }
         classicSco(am);
+    }
+
+    /**
+     * The Bluetooth device the platform offers for a call, or null. On API 31+
+     * this is what setCommunicationDevice accepts; the A2DP output used for media
+     * has no microphone and is not a communication device.
+     */
+    private static AudioDeviceInfo findCommunicationDevice(AudioManager am) {
+        if (Build.VERSION.SDK_INT < 31) return null;
+        try {
+            for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
+                final int t = d.getType();
+                if (t == T_BT_SCO || t == T_BLE_HEADSET) return d;
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "could not list the communication devices", t);
+        }
+        return null;
     }
 
     /** The classic Bluetooth SCO call channel (API 24+; the API 31+ fallback). */
     private static void classicSco(AudioManager am) {
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            am.setBluetoothScoOn(true);
             am.startBluetoothSco();
+            am.setBluetoothScoOn(true);
             sHeld = true;
+            Log.i(TAG, "Bluetooth route engaged via SCO: scoOn=" + am.isBluetoothScoOn()
+                + " mode=" + am.getMode());
         } catch (Throwable t) {
             Log.w(TAG, "could not start the Bluetooth call channel", t);
         }

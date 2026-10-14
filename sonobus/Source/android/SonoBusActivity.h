@@ -141,19 +141,27 @@ private:
     static void JNIEXPORT nativeBtRouteJni (JNIEnv* env, jclass, jstring name, jboolean stereo)
     {
         auto& sig = crosspoint::android::Signals::get();
-        std::lock_guard<std::mutex> lock (sig.btRouteNameLock);
-        if (name == nullptr)
         {
-            sig.btRoute.store (false);
-            sig.btRouteStereo.store (false);
-            sig.btRouteName.clear();
+            std::lock_guard<std::mutex> lock (sig.btRouteNameLock);
+            if (name == nullptr)
+            {
+                sig.btRoute.store (false);
+                sig.btRouteStereo.store (false);
+                sig.btRouteName.clear();
+            }
+            else
+            {
+                sig.btRoute.store (true);
+                sig.btRouteStereo.store (stereo != JNI_FALSE);
+                sig.btRouteName = juceString (env, name).toStdString();
+            }
         }
-        else
-        {
-            sig.btRoute.store (true);
-            sig.btRouteStereo.store (stereo != JNI_FALSE);
-            sig.btRouteName = juceString (env, name).toStdString();
-        }
+        // A22: the route really changed, so the engine has to follow it — the app
+        // reopens its audio device here, which is what puts capture on the
+        // headset's mic and playback on the mono call route. This callback is on
+        // the Android main thread, i.e. JUCE's message thread, like onShutdown.
+        if (sig.onBtRouteChanged != nullptr)
+            sig.onBtRouteChanged (name != nullptr);
     }
 
     /** A22 (android.md 14): a Bluetooth headset/car is connected (or was

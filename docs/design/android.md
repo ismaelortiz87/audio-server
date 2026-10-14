@@ -593,8 +593,20 @@ Note under it, changing with the choice:
 **Behaviour with "Headset mic":**
 - While a Bluetooth headset or car is connected, Crosspoint switches to the
   communication route: `MODE_IN_COMMUNICATION` and
-  `setCommunicationDevice(<the BT device>)` (API 31+), or SCO on older phones.
-  Mic and playback both use that device.
+  `setCommunicationDevice(<the communication device>)` (API 31+), or SCO on
+  older phones. Mic and playback both use that device.
+  - The device to select is the one `getAvailableCommunicationDevices()` offers
+    (SCO, or a BLE headset) — **not** the A2DP output that media plays on: that
+    one has no microphone and `setCommunicationDevice` refuses it. Selecting the
+    communication device is also what makes the framework bring the SCO link up.
+  - This needs the `MODIFY_AUDIO_SETTINGS` permission (`startBluetoothSco()` and
+    `stopBluetoothSco()` require it, and `setMode()` has been gated on it): without
+    it the SCO path throws `SecurityException`, and the route silently never
+    engages (no mono switch, phone mic stays in use).
+  - The engine reopens its audio device when the route changes
+    (`Signals.onBtRouteChanged` → `restartLastAudioDevice()`): Oboe does not
+    reliably re-route an already-open stream, and the reopen is what actually
+    moves capture onto the headset's mic and playback onto the mono call route.
 - When it disconnects, Crosspoint goes back to normal media routing and the
   phone mic, and **the mic state doesn't change** (§6 rule).
 - **LE Audio** devices that can do stereo and mic together keep stereo. In

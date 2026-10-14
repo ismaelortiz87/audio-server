@@ -42,6 +42,14 @@ struct Signals
     // directly like onShutdown, rather than polled.
     std::function<void (const juce::String& stationId)> onSelectStation;
 
+    // A22 (android.md 14): the Bluetooth route was engaged or released. Set by
+    // the app on the message thread (like onSelectStation) and called from the
+    // JNI route callback, which also runs on the message thread. The app reopens
+    // the audio device from it: Oboe does not reliably re-route an already-open
+    // stream, and that reopen is what moves capture onto the headset's mic (and
+    // playback onto the mono call route).
+    std::function<void (bool engaged)> onBtRouteChanged;
+
     // A22: the active Bluetooth route (name + whether it is stereo). Written by
     // the Java BluetoothMicController (JNI, main thread) and read by the
     // controller on the message thread to build platform.bluetoothRoute. The

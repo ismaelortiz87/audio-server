@@ -158,7 +158,7 @@ Ordered so that every task appears after everything it depends on.
 | A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`), builds; maelo 2026-10-13: checked on the Samsung, confirmed nice |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix below |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); awaiting retest |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip, PR #2 | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; follow-ups (shared station-state, §13.2 Dimmed, §13.3 fresh-install message) in PR #2; car acceptance passed (maelo 2026-10-13, A23) |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
@@ -3236,6 +3236,28 @@ is ever needed, adds 1–2 days.
     headset makes the row appear, that "Headset mic" engages the route, and the
     §14 notes — the emulator has no Bluetooth stack, so none of it is testable
     here.
+  - **On-device feedback (maelo, 2026-10-13) — the row works, the route did
+    not.** With the fix above he could open the row and pick the device, but
+    "Headset mic" did nothing: no mic from the buds and **no switch to mono**.
+    Root cause: the communication route had no way to engage — the manifest
+    declared no `MODIFY_AUDIO_SETTINGS` (so the SCO path threw
+    `SecurityException`, swallowed by `engage()`'s `catch (Throwable
+    ignored) {}`), and on API 31+ the device handed to
+    `setCommunicationDevice()` was the A2DP output from `findBt()`, which the
+    platform refuses: that API only accepts a device from
+    `getAvailableCommunicationDevices()`. Fixed in the same PR:
+    1. `MODIFY_AUDIO_SETTINGS` added to the .jucer manifest (normal permission,
+       no runtime prompt).
+    2. `engage()` now selects the *communication* device from
+       `getAvailableCommunicationDevices()` (SCO, or a BLE headset) instead of
+       the A2DP output the media plays on — `setCommunicationDevice` refuses an
+       A2DP device, and it has no mic — and it logs (`TAG=Crosspoint`) when a
+       device is refused or unavailable instead of assuming success.
+    3. The engine reopens its audio device when the route changes
+       (`Signals.onBtRouteChanged` → `restartLastAudioDevice()`, +300 ms): Oboe
+       does not reliably re-route an already-open stream, so even with the route
+       set the capture would have stayed on the phone mic.
+    Awaiting his retest on the buds (and the car).
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

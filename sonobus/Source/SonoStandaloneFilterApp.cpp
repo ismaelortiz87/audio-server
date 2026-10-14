@@ -779,6 +779,20 @@ public:
         {
             if (androidService != nullptr) androidService->selectStation (station);
         };
+        // A22 (android.md 14): the Java route controller moved audio to (or away
+        // from) the headset's call channel. Reopen the audio device so the engine
+        // follows: Oboe does not reliably re-route an already-open stream, so
+        // without this the capture stays on the phone mic and the output stays
+        // stereo. Slightly delayed — the SCO/LE link is still coming up when Java
+        // reports the route.
+        crosspoint::android::Signals::get().onBtRouteChanged = [dm] (bool)
+        {
+            if (dm == nullptr) return;
+            Timer::callAfterDelay (300, [dm]()
+            {
+                dm->restartLastAudioDevice();
+            });
+        };
         androidService->setShutdownHandler ([this, proc]() {            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
             if (mainWindow.get() != nullptr) {
