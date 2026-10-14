@@ -199,9 +199,13 @@ them one at a time.
   (`CGWindowListCreateImage` obsoleted); the script exports
   `MACOSX_DEPLOYMENT_TARGET=11.0` to fix it. Verified on macOS 26 / arm64
   (Command Line Tools only, CMake 4.4, ninja): app 189/189 linked,
-  `--version` → 1.7.2; aooserver listens on TCP+UDP. **Linux not yet run
-  through the script**; the app's Linux build is proven by `docker/`, but the
-  new aooserver CMake on Linux is untested.
+  `--version` → 1.7.2; aooserver listens on TCP+UDP.
+  **Verified on Linux (2026-10-13, maelosdebian):** from a wiped `build/`,
+  `scripts/build-desktop.sh` exits 0 and builds both binaries —
+  `build/desktop-release/SonoBus_artefacts/Release/Standalone/sonobus` and
+  `build/aooserver-release/aooserver`. Both **execute**: `sonobus --version` →
+  `Crosspoint version 1.7.2`, and `aooserver --help` prints its options. So the
+  new `aooserver/CMakeLists.txt` is proven on Linux, not just macOS.
 
 ### F2 — Local multi-peer test harness
 - **Depends on:** F1 · **Size:** M · **Touches:** `scripts/` or `tests/` (new); may add a debug flag in `SonoStandaloneFilterApp.cpp`
@@ -239,7 +243,24 @@ them one at a time.
   Caveat: the real app reports `connected` asymmetrically/unstably (it tracks
   AOO invite timing, not routing), so the harness asserts presence + booleans
   by default; `--require-connected` opts in.
-  **Linux not yet run** (F2's card asks for it).
+  **Verified on Linux (2026-10-13, maelosdebian): all four scenarios pass** —
+  `mesh-stock`, `blocked-unknown`, `matrix-1v1`, `matrix-2v2` (the harness's
+  first Linux run). Four portability gaps had to be worked around; they are
+  harness bugs, not engine ones, and are worth fixing in the harness:
+  (1) the default `--app` path is the macOS bundle — pass the Linux binary;
+  (2) lines ~71-72 hardcode `MacBook Pro Microphone/Speakers`, so the peers exit
+  `audio.input_device … not found` — on Linux leave both device env vars empty
+  and let the app pick its default (naming any device, even
+  `Default Audio Device`, gives `could not open the audio device(s): no
+  channels` on this box); (3) line ~224 `${!PEER_PIDS[@]+"${!PEER_PIDS[@]}"}`
+  is a bash-5 parse error (`invalid variable name`) that also corrupts the
+  harness exit code, so a trailing exit 1 can accompany a passing scenario;
+  (4) peer isolation uses `CFFIXED_USER_HOME`, which only works on macOS — on
+  Linux every peer shares the real `~/.config/crosspoint/Crosspoint.settings`
+  and inherits whatever role the previous scenario wrote, which is exactly what
+  failed `mesh-stock`/`blocked-unknown` (`selfRole: expected "console", got
+  "vdi"`) until the run used a fresh `HOME`. On Linux the harness needs `HOME`
+  (or `XDG_CONFIG_HOME`) isolation too.
 
 ## UX — Experience design (Claude only)
 
@@ -551,7 +572,19 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   remain: larger ALSA buffer for the plugin PCMs, avoid client churn on the
   engine sinks (gateway connects once), or a jitter-buffer floor. Target: 0
   gaps > 200 ms in 10 minutes of steady state.
-- **Result:**
+- **Result (2026-10-13, maelosdebian, both backends on a quiet host):** PASS on
+  both, no incomplete run; the harness reports per-run medians and dropouts
+  (target < 150 ms), not the 10-minute steady-state figure above.
+  - Pulse: medians 70.2 / 61.5 / 59.8 ms (vdi→console) and 62.5 / 57.1 / 60.0 ms
+    (console→vdi); dropouts 2 and 4 across the three runs — the residual churn
+    below, well under the 0–8 seen under load.
+  - PipeWire: medians 101.1 / 102.4 / 101.1 ms (vdi→console, 1 dropout) and
+    97.9 / 97.9 / 97.9 ms (console→vdi, 0 dropouts).
+  So the latency itself is stable on both; what is left is the dropout/client
+  churn work below and the human VDI↔Mac-over-VPN measurement.
+  Images must be built with the right contexts first: web-console and pw-test
+  from the repo root, aooserver from `aooserver/` (its Dockerfile runs
+  `cmake -S .` on its own context).
 
 ### F2.1 — F2 coverage gaps from the P1.4 review · S
 - **Depends on:** F2, P1.4
@@ -754,7 +787,11 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   `yaml_smoke` builds clean and exits 0, printing the parsed values of a
   document using the P2.1 key schema (11 checked leaves incl. nested
   `audio.*`/`codec.*`, plus a malformed-input rejection); `SonoBus_Standalone`
-  still links. **Verified on Linux** in `ubuntu:22.04` with the project's exact
+  still links. **Verified on Linux (2026-10-13, maelosdebian, native, not a
+  container):** `cmake --build build/desktop-release --target yaml_smoke` builds
+  it from the tree and the binary **executes** — prints the ryml version
+  (0.7.2), rejects the malformed document, parses the 11 leaves and ends with
+  `yaml_smoke: OK`, exit 0. **Verified on Linux** in `ubuntu:22.04` with the project's exact
   apt list: the full default target set (no `--target`, so VST3 + Standalone +
   LV2) builds 390/390 and exits 0 with the Standalone executable and both the
   VST3 and LV2 `.so` present, and `yaml_smoke` exits 0. The PIC fix was proven
