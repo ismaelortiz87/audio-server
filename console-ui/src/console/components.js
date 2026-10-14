@@ -375,15 +375,18 @@ function stationCard(ctx, id) {
       setAttr(solo, 'aria-pressed', s.solo);
       setAttr(solo, 'title', `Solo this station: dims the others by ${Math.abs(st.settings.soloDimDb)} dB, and only soloed stations hear your mic. ⌘-click or Shift+S adds it to the stations already soloed`);
 
-      // talk (spec §3.5 talk table)
+      // talk (spec §3.5 talk table; P5.9: a muted station does not hear your mic
+      // either — mute wins over solo, and the same "held" look as "Paused by solo")
       const held = s.talk && soloHeld(st, s);
-      const state = held ? 'held' : !s.talk ? 'off' : s.hearsYou ? 'live' : 'will';
+      const mutedHeld = !!s.mute;
+      const state = (mutedHeld || held) ? 'held' : !s.talk ? 'off' : s.hearsYou ? 'live' : 'will';
       talk.dataset.state = state;
-      setAttr(talk, 'aria-pressed', s.talk && !held);
-      setAttr(talk, 'aria-disabled', held ? 'true' : null);
-      setAttr(talk, 'title', held ? 'Another station is soloed, so only it hears you. Un-solo to restore.'
+      setAttr(talk, 'aria-pressed', s.talk && !held && !mutedHeld);
+      setAttr(talk, 'aria-disabled', (held || mutedHeld) ? 'true' : null);
+      setAttr(talk, 'title', mutedHeld ? "This station is muted, so it doesn't hear your mic. Un-mute it to talk to it."
+        : held ? 'Another station is soloed, so only it hears you. Un-solo to restore.'
         : s.talk ? 'Click so this station stops hearing your mic' : 'Click so this station hears your mic');
-      const label = { held: 'Paused by solo', off: "Doesn't hear", live: 'Hears you', will: 'Will hear you' }[state];
+      const label = { held: mutedHeld ? "Muted: doesn't hear you" : 'Paused by solo', off: "Doesn't hear", live: 'Hears you', will: 'Will hear you' }[state];
       setHTML(talk, (state === 'held' || state === 'off' ? ICONS.micOff : ICONS.mic) + esc(label) + (state === 'held' ? '' : ' <kbd>T</kbd>'));
     },
   };

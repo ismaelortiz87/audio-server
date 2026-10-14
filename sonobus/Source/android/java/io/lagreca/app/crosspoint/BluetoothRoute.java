@@ -78,6 +78,12 @@ final class BluetoothRoute {
     // clean state cannot leave the UI showing a route we already left. Generous:
     // the HFP teardown plus the A2DP restart is the slow part of the switch.
     private static final long RELEASE_SETTLE_MS = 4000;
+    // A failed engage is retried with a back-off instead of on every tick: each
+    // attempt sets the voice mode and undoes it again, and flipping the mode once a
+    // second re-routes the phone's audio each time (audible glitches). 2 s, 4 s, ...
+    // capped at 30 s; reset on success and whenever the route stops being wanted.
+    private static final long ENGAGE_RETRY_MIN_MS = 2000;
+    private static final long ENGAGE_RETRY_MAX_MS = 30000;
 
     // The engine's answer to "is capture wanted, and under which policies"
     // (one int per tick): see Signals::BtRouteFlag in AndroidPlatform.h.
@@ -105,6 +111,11 @@ final class BluetoothRoute {
     private static String sLastRoute = null;   // last route name pushed to native (null = none)
     private static boolean sLastStereo = false;
     private static boolean sHeld = false;      // we currently hold the communication route
+    // T1: did *we* change the audio mode (and select the communication device)? Only
+    // then may releaseRoute() undo them. The LE path holds the route without touching
+    // either, and a release that still called setMode(MODE_NORMAL) would reset the mode
+    // underneath another app's live VoIP call.
+    private static boolean sOwnsMode = false;
     private static String sLastDevice = null;  // last *connected* device pushed (null = none)
     private static boolean sLastDeviceLe = false;
 
@@ -121,6 +132,8 @@ final class BluetoothRoute {
     // engine's reopen lands on a live call channel.
     private static boolean sEngagePending = false;
     private static long sEngageDeadline = 0;
+    private static int sEngageFailures = 0;    // consecutive failed engages
+    private static long sEngageRetryAt = 0;    // no engage attempt before this (uptime ms)
 
     static synchronized void start(Context ctx) {
         if (sApp != null) return;
@@ -145,11 +158,14 @@ final class BluetoothRoute {
         sLastDevice = null;
         sLastDeviceLe = false;
         sHeld = false;
+        sOwnsMode = false;
         sReleaseAt = 0;
         sReleasePending = false;
         sReleaseDeadline = 0;
         sEngagePending = false;
         sEngageDeadline = 0;
+        sEngageFailures = 0;
+        sEngageRetryAt = 0;
     }
 
     // ---------------------------------------------------------------- tick
@@ -177,10 +193,17 @@ final class BluetoothRoute {
         final boolean le = bt != null && isLeType(bt.getType());
         final boolean connected = bt != null;
 
-        // A real call owns the route: never override it (android.md 6, A14).
+        // A real call owns the route: never override it (android.md 6, A14). That
+        // includes another app's VoIP call: it holds MODE_IN_COMMUNICATION, and
+        // engaging on top of it would take the mic and the speakers out from under
+        // their call. `sHeld` separates their hold from ours — our own engage is the
+        // only IN_COMMUNICATION we may override. A ringing call counts too: the
+        // user may answer it in a second.
         final int mode = am.getMode();
         final boolean inRealCall = mode == AudioManager.MODE_IN_CALL
-            || (Build.VERSION.SDK_INT >= 30 && mode == AudioManager.MODE_CALL_SCREENING);
+            || mode == AudioManager.MODE_RINGTONE
+            || (Build.VERSION.SDK_INT >= 30 && mode == AudioManager.MODE_CALL_SCREENING)
+            || (mode == AudioManager.MODE_IN_COMMUNICATION && !sHeld);
 
         // Is capture wanted right now? Solo only counts when the policy allows it:
         // a solo is a persistent state, and while the route is held playback is
@@ -203,8 +226,25 @@ final class BluetoothRoute {
 
         final long now = SystemClock.uptimeMillis();
 
-        if (wantRoute && !sHeld) {
+        if (!wantRoute) {
+            // A new request gets a prompt first attempt.
+            sEngageFailures = 0;
+            sEngageRetryAt = 0;
+        }
+
+        if (wantRoute && !sHeld && now >= sEngageRetryAt) {
             engage(am, le);
+            if (sHeld) {
+                sEngageFailures = 0;
+                sEngageRetryAt = 0;
+            } else {
+                sEngageFailures++;
+                final long wait = Math.min(ENGAGE_RETRY_MAX_MS,
+                    ENGAGE_RETRY_MIN_MS << Math.min(sEngageFailures - 1, 4));
+                sEngageRetryAt = now + wait;
+                Log.w(TAG, "Bluetooth route: engage failed (" + sEngageFailures
+                    + " in a row), next attempt in " + (wait / 1000) + " s");
+            }
             sReleaseAt = 0;
             sReleasePending = false;    // we are back on the call route: report it
             sReleaseDeadline = 0;
@@ -302,10 +342,11 @@ final class BluetoothRoute {
 
     /** Move audio to the communication route on the given Bluetooth device. */
     private static void engage(AudioManager am, boolean le) {
-        PlatformMonitor.appOwnsAudioMode = true;   // A14: do not count this as a call
         if (le) {
             // LE Audio (android.md 14) carries the stereo media and the mic
             // together, so there is nothing to switch: the route stays where it is.
+            // Note what that means for the release: sOwnsMode stays false, so
+            // releaseRoute() only drops the hold and touches no AudioManager setter.
             sHeld = true;
             return;
         }
@@ -320,6 +361,12 @@ final class BluetoothRoute {
             if (comm != null) {
                 try {
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    // A14: the mode is ours, not a call. Set only where we really call
+                    // setMode (the LE path above switches nothing and must not claim
+                    // it, or another app's VoIP call would go undetected). T1: it is
+                    // also what releaseRoute() needs to know before undoing the mode.
+                    PlatformMonitor.appOwnsAudioMode = true;
+                    sOwnsMode = true;
                     if (am.setCommunicationDevice(comm)) {
                         sHeld = true;
                         Log.i(TAG, "Bluetooth route engaged: type=" + comm.getType()
@@ -342,7 +389,33 @@ final class BluetoothRoute {
                 Log.w(TAG, "no Bluetooth communication device offered for a call route; offered: " + sb);
             }
         }
-        classicSco(am);
+        if (!classicSco(am)) {
+            undoFailedEngage(am);
+        }
+    }
+
+    /**
+     * T2: an engage that fails *after* the app called setMode() would leave the phone in
+     * voice mode with the mode owned by us and no hold. The next tick's call guard reads
+     * `MODE_IN_COMMUNICATION && !sHeld` as another app's VoIP call, so the route would
+     * never be retried, never released (releaseRoute() needs sHeld, stop() goes through
+     * it too), and A14 would stop detecting real calls for the rest of the session.
+     * Undo exactly what the failed attempt changed, and only that.
+     */
+    private static void undoFailedEngage(AudioManager am) {
+        if (sOwnsMode) {
+            try {
+                // Only if it is still *our* voice mode: another app may have taken it
+                // over in the meantime, and its call must not be reset.
+                if (am.getMode() == AudioManager.MODE_IN_COMMUNICATION)
+                    am.setMode(AudioManager.MODE_NORMAL);
+            } catch (Throwable t) {
+                Log.w(TAG, "could not restore the audio mode after a failed engage", t);
+            }
+        }
+        PlatformMonitor.appOwnsAudioMode = false;
+        sOwnsMode = false;
+        sHeld = false;
     }
 
     /**
@@ -363,27 +436,44 @@ final class BluetoothRoute {
         return null;
     }
 
-    /** The classic Bluetooth SCO call channel (API 24+; the API 31+ fallback). */
-    private static void classicSco(AudioManager am) {
+    /**
+     * The classic Bluetooth SCO call channel (API 24+; the API 31+ fallback).
+     * Returns whether the app now holds the route (T2: the caller undoes its own mode
+     * change when this fails).
+     */
+    private static boolean classicSco(AudioManager am) {
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            PlatformMonitor.appOwnsAudioMode = true;   // A14: this mode is ours
+            sOwnsMode = true;                          // T1: and releaseRoute() may undo it
             am.startBluetoothSco();
             am.setBluetoothScoOn(true);
             sHeld = true;
             Log.i(TAG, "Bluetooth route engaged via SCO: scoOn=" + am.isBluetoothScoOn()
                 + " mode=" + am.getMode());
+            return true;
         } catch (Throwable t) {
             Log.w(TAG, "could not start the Bluetooth call channel", t);
+            return false;
         }
     }
 
     /** Back to normal media routing and the phone mic (mic on/off state untouched). */
     static void releaseRoute() {
-        if (sApp != null) {
+        // Nothing of ours to give back: leave the platform completely alone. Two cases
+        // land here and neither may touch an AudioManager setter. stop() calls this
+        // unconditionally on the way out, and a teardown from there would take down
+        // whoever *does* hold the route — another app's VoIP call
+        // (MODE_IN_COMMUNICATION), a ringing call, or a live call's SCO link. And the LE
+        // path holds the route without having changed the mode or the communication
+        // device at all (T1), so undoing them would reset platform state the app never
+        // set — the same clobber, one hop away.
+        if (sOwnsMode && sApp != null) {
             final AudioManager am = (AudioManager) sApp.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
                 final int mode = am.getMode();
                 final boolean ours = mode != AudioManager.MODE_IN_CALL
+                    && mode != AudioManager.MODE_RINGTONE
                     && (Build.VERSION.SDK_INT < 30 || mode != AudioManager.MODE_CALL_SCREENING);
                 if (Build.VERSION.SDK_INT >= 31 && ours) {
                     try { am.clearCommunicationDevice(); }
@@ -395,6 +485,7 @@ final class BluetoothRoute {
             }
         }
         PlatformMonitor.appOwnsAudioMode = false;
+        sOwnsMode = false;
         sHeld = false;
     }
 

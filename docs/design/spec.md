@@ -217,6 +217,7 @@ slider resets to 0 dB. ↑/↓ and PageUp/PageDown when focused.
 | will hear you | talk on, mic not transmitting, or station lost/offline | mic + "Will hear you" | `ink`, `ink3` border |
 | doesn't hear | talk off | crossed mic + "Doesn't hear" | `ink3`, dashed border |
 | paused by solo | talk on, another station soloed | crossed mic + "Paused by solo" | `ink3`, dotted border, no background, **disabled** (click does nothing), tooltip "Another station is soloed, so only it hears you. Un-solo to restore." |
+| muted | station muted (P5.9; mute wins over solo, whatever talk says) | crossed mic + "Muted: doesn't hear you" | as paused by solo — `ink3`, dotted border, no background, **disabled**, tooltip "This station is muted, so it doesn't hear your mic. Un-mute it to talk to it." |
 
 Key hints (`<kbd>`) show on desktop only.
 
