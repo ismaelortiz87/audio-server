@@ -244,3 +244,16 @@ A **VoIP call arriving while an LE headset holds the route** (T1/T2 — the new 
 B17's `adb logcat -b crash`; B18's media-button log with the mic live; B19's buds drop
 while the route is held; and the car check with Headset mic, which also covers T6's
 strings and closes A22 and A26.
+
+---
+
+## Closed (Claude, 2026-10-14)
+
+- **Retry back-off.** The leftover from the resolution check is fixed: a failed engage
+  used to retry on every 1 s tick, and since T2 each retry set and then undid the voice
+  mode, re-routing the phone's audio once a second. Retries now back off from 2 s,
+  doubling to a 30 s cap, and reset on success or when the route stops being wanted
+  (`ENGAGE_RETRY_MIN_MS` / `ENGAGE_RETRY_MAX_MS`, `BluetoothRoute.tick()`).
+- **P5.9** merged with PR #6 at maelo's request, marked `done`. The talk-button design
+  review was not done separately.
+- What's left needs hardware and is listed under "Left for maelo" above.

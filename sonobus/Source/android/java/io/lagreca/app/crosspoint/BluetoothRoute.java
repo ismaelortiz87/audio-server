@@ -78,6 +78,12 @@ final class BluetoothRoute {
     // clean state cannot leave the UI showing a route we already left. Generous:
     // the HFP teardown plus the A2DP restart is the slow part of the switch.
     private static final long RELEASE_SETTLE_MS = 4000;
+    // A failed engage is retried with a back-off instead of on every tick: each
+    // attempt sets the voice mode and undoes it again, and flipping the mode once a
+    // second re-routes the phone's audio each time (audible glitches). 2 s, 4 s, ...
+    // capped at 30 s; reset on success and whenever the route stops being wanted.
+    private static final long ENGAGE_RETRY_MIN_MS = 2000;
+    private static final long ENGAGE_RETRY_MAX_MS = 30000;
 
     // The engine's answer to "is capture wanted, and under which policies"
     // (one int per tick): see Signals::BtRouteFlag in AndroidPlatform.h.
@@ -126,6 +132,8 @@ final class BluetoothRoute {
     // engine's reopen lands on a live call channel.
     private static boolean sEngagePending = false;
     private static long sEngageDeadline = 0;
+    private static int sEngageFailures = 0;    // consecutive failed engages
+    private static long sEngageRetryAt = 0;    // no engage attempt before this (uptime ms)
 
     static synchronized void start(Context ctx) {
         if (sApp != null) return;
@@ -156,6 +164,8 @@ final class BluetoothRoute {
         sReleaseDeadline = 0;
         sEngagePending = false;
         sEngageDeadline = 0;
+        sEngageFailures = 0;
+        sEngageRetryAt = 0;
     }
 
     // ---------------------------------------------------------------- tick
@@ -216,8 +226,25 @@ final class BluetoothRoute {
 
         final long now = SystemClock.uptimeMillis();
 
-        if (wantRoute && !sHeld) {
+        if (!wantRoute) {
+            // A new request gets a prompt first attempt.
+            sEngageFailures = 0;
+            sEngageRetryAt = 0;
+        }
+
+        if (wantRoute && !sHeld && now >= sEngageRetryAt) {
             engage(am, le);
+            if (sHeld) {
+                sEngageFailures = 0;
+                sEngageRetryAt = 0;
+            } else {
+                sEngageFailures++;
+                final long wait = Math.min(ENGAGE_RETRY_MAX_MS,
+                    ENGAGE_RETRY_MIN_MS << Math.min(sEngageFailures - 1, 4));
+                sEngageRetryAt = now + wait;
+                Log.w(TAG, "Bluetooth route: engage failed (" + sEngageFailures
+                    + " in a row), next attempt in " + (wait / 1000) + " s");
+            }
             sReleaseAt = 0;
             sReleasePending = false;    // we are back on the call route: report it
             sReleaseDeadline = 0;
