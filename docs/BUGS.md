@@ -654,9 +654,30 @@ event never arrives); with the mic muted there should be one.
 3. Document the button as unavailable while the route is held, with the on-screen
    control as the mute path. (For the user: "release on mute = off" keeps the route
    held, so the *unmute* direction is instant.)
+4. **Listen for the call-control signal instead of the media key** — maelo's theory
+   (2026-10-14), logged as a candidate, not a decision: *"what the app should listen to
+   when in bluetooth mode with mic is whatever signal produces the close call from
+   headset button (usually a double tap or something like that) … based on how the
+   headset button changes its function when normal vs when in calls."* That is the same
+   asymmetry the reading above names, with the opposite conclusion: not "the event is
+   swallowed" but "the event is still delivered, as call control". In HFP the remote's
+   button is answer/hang-up — `AT+CHUP`, surfacing as `KEYCODE_CALL` / `KEYCODE_ENDCALL`
+   / `HEADSETHOOK` — rather than the AVRCP media key the session listens for. If that is
+   what happens, the app mutes on whatever key arrives while the route is held, with no
+   need for Telecom at all. Two things to settle before it is a fix: (a) our state is
+   `MODE_IN_COMMUNICATION` with **no Telecom call**, so whether the phone even tells the
+   headset it is "in a call" — and therefore which key it sends — is exactly what is
+   unverified here; (b) the gesture differs by mode: HFP uses a *single* press for
+   answer/end, while the double-tap convention he remembers ("next track") is AVRCP, so
+   the mapping has to come from his headset rather than from convention. **The test is
+   already in the build:** `CrosspointMediaSession` logs every media-button event, so
+   press the button with the route held and look for *any* line — a call-control keycode
+   confirms this option; nothing at all keeps the reading above and rules it out.
 
 **Left.** Choose (1) or (3) with one test build; (2) only if the button matters more
-than the notification it brings. Not scheduled.
+than the notification it brings; (4) is decided by one log line — press the button with
+the route held and see whether anything arrives, and if so as which keycode. Not
+scheduled.
 
 ## B19 — Noise when the headset drops and comes back with the route held
 
