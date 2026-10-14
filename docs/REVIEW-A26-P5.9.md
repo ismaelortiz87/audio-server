@@ -8,6 +8,10 @@
 how to fix it and how to check it. Keep working on `task/a22-hardening` (PR #6), and don't
 merge it. maelo merges.
 
+**Status (Claude, 2026-10-14): all six items are done** in `a653c8b742` on the same branch,
+which is still **not merged**. The full account, with the evidence and one correction to
+T4, is in "Resolution" at the end of this file.
+
 ## Verdict
 
 | Item | Verdict |
@@ -142,3 +146,101 @@ check).
   That closes A22 and A26.
 - **A9:** recapture the Settings problem rows after PR #6 merges. Then P9.2 can close.
 - **Next Console work:** P5.8, then P3.x and L2. P2.8 and P7.4 are blocked on maelo.
+
+---
+
+## Resolution (Claude, 2026-10-14) — `a653c8b742` on `task/a22-hardening`
+
+All six items are done on the same branch/PR (#6), which stays **unmerged**: maelo merges.
+
+| Item | Status | Where |
+|---|---|---|
+| T1 | **Fixed** | `BluetoothRoute.java`: `sOwnsMode` set only where the app itself calls `setMode()`, `releaseRoute()` gates its teardown on it, LE release drops just the hold, reset in `stop()` |
+| T2 | **Fixed** | same file: `classicSco()` returns success and `undoFailedEngage()` restores the mode + flags on both failure paths, `Log.w` kept |
+| T3 | **Fixed** | `docs/TASKS.md`: P5.9 → `wip, PR #6, awaiting design review`, Result text kept |
+| T4 | **Fixed, with one correction** | `docs/BUGS.md`: B15 and B16 rows added; **B15 is closed, not open** — detail below |
+| T5 | **Confirmed** | `tests/api/p59.test.mjs` **3/3** on a box with a sound server — command and output below |
+| T6 | **Fixed** | A20 row + card: the `3793d68900` strings and the fresh-install `STATE_ERROR` message are read-verified only, both to be checked at A26's car test |
+
+### T1/T2 as implemented
+
+`BluetoothRoute.java` gained `sOwnsMode` ("did *we* change the audio mode and select the
+communication device?"). It is set **only** right after the app's own
+`am.setMode(MODE_IN_COMMUNICATION)` — in the API 31+ branch and in `classicSco()` — and
+nowhere else. Consequences, which are the two fixes:
+
+- `releaseRoute()` runs `clearCommunicationDevice()`, `stopBluetoothSco()`,
+  `setBluetoothScoOn(false)` and `setMode(MODE_NORMAL)` **only when `sOwnsMode` is true**,
+  then clears it. The **LE** path never sets it (it does not call `setMode` or
+  `setCommunicationDevice` at all), so an LE release now drops the hold and touches no
+  `AudioManager` setter — nothing can be undone on top of another app's call.
+- `classicSco()` returns whether the hold was taken. When it fails, `undoFailedEngage()`
+  runs: it restores `MODE_NORMAL` **only if the mode is still ours**
+  (`getMode() == MODE_IN_COMMUNICATION`) so a foreign call is never reset, then clears
+  `appOwnsAudioMode` and `sOwnsMode` (and `sHeld`). The `Log.w` lines stay. The API 31+
+  path falls through to `classicSco()`, so a refusal there plus a SCO failure now ends
+  with the mode and the flag restored instead of stuck.
+
+Read of the branches confirms the property the review asked for: every path out of
+`engage()` ends either with `sHeld == true` or with the mode and `appOwnsAudioMode`
+restored. `stop()` resets `sOwnsMode` alongside `sHeld`, so a stopped service cannot
+leave the ownership flag behind.
+
+### T4 correction — B15 is closed
+
+The review lists B15 and B16 as "both open". **B16 is open; B15 is closed.** Evidence:
+
+- `f94e083325` — "fix(console): phone touch targets for segments and small buttons (B15)"
+  — is an ancestor of `main` (`git log main -S size-touchMin` lists it).
+- The register's header already says "B15 closed 2026-10-12".
+- The entry's own last paragraph is `**Closed** (Claude, 2026-10-12, branch android-apk)`,
+  naming the fix (`min-height: var(--size-touchMin)` on `.seg button` and the
+  placement-field buttons, phone container query only).
+
+What misled the review is placement, not content: B15's entry sits **above** the open
+ones because this register keeps closed entries for the record (B1, B2 and B3 do the
+same). Nothing in the entry was changed; it now opens with a status line saying it is
+closed, with the commit, and why it sits there. Both rows are now in the summary table:
+B15 → **Closed — `f94e083325`**, B16 → **Open, not reproduced by anyone else**. The
+header metadata (`Last updated`, `Repo state referenced`) was refreshed at the same time.
+
+### T5 evidence
+
+```
+SONOBUS_APP=build/desktop-release/SonoBus_artefacts/Release/Standalone/sonobus \
+AOOSERVER=build/aooserver-release/aooserver \
+node --test tests/api/p59.test.mjs
+  ok 1 - P5.9: muting a station closes your mic to it, and leaves its talk flag alone
+  ok 2 - P5.9: mute wins over solo
+  ok 3 - P5.9: un-muting restores what solo alone gives
+  # tests 3   # pass 3   # fail 0   # duration_ms 20138
+```
+
+No rebuild was needed: the binary (2026-10-13 23:31:36) is newer than
+`SonobusPluginProcessor.cpp` (23:28:17), so it carries P5.9. The run is kept silent and
+capture-free with a temporary null sink — `pactl load-module module-null-sink
+sink_name=p59_test`, defaults repointed to it and its monitor, both defaults restored and
+the module unloaded afterwards — so nothing is recorded and nothing is audible. (In the
+review's sandbox there is no PulseAudio/PipeWire at all, which is why both engines time
+out in *setup*: the peer only comes online once its aoo streams exist, and those come
+from the audio callback. The `P59_IN_DEVICE` / `P59_OUT_DEVICE` overrides cover a box
+whose device names differ.)
+
+### T1/T2 build and artifact
+
+- The debug APK builds with both changes: `BUILD SUCCESSFUL in 34s`.
+- The compiled class carries them: `sOwnsMode` (9 references), `undoFailedEngage`
+  present, `classicSco` returning `boolean`, and `releaseRoute()` reading `sOwnsMode`
+  first — checked with `javap -c` on
+  `app/build/intermediates/javac/debug_Debug/classes/.../BluetoothRoute.class`.
+- These two are hardware-only, so the build is on the share, named for the change:
+  **`crosspoint-debug-btroute-le-mode-a653c8b742.apk`** in
+  `//192.168.0.50/coldstorage/crosspoint` — 258,566,215 B, md5
+  `905e0ad96af612d69a562ad22045dff2`, read back from the share and compared.
+
+### Left for maelo (hardware)
+
+A **VoIP call arriving while an LE headset holds the route** (T1/T2 — the new one);
+B17's `adb logcat -b crash`; B18's media-button log with the mic live; B19's buds drop
+while the route is held; and the car check with Headset mic, which also covers T6's
+strings and closes A22 and A26.
