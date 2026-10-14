@@ -6199,6 +6199,10 @@ bool SonobusAudioProcessor::computeHearsYou(const RemotePeer * peer, bool anyPee
     // peer hears whatever we send while the path is open.
     if (mRole.load() != PeerRole::Console) return true;
     if (! isMicTransmitting()) return false;
+    // P5.9: a muted station does not hear you either — mute wins over solo, and like
+    // solo it leaves the talk flag alone. Kept in step with the send gate in
+    // processBlock, so state and audio never disagree.
+    if (peer->playMuted.load()) return false;
     // talk && !(anySolo && !solo), with solo narrowing talk: while anything is
     // soloed only soloed peers hear us, whatever their talk flag says.
     return anyPeerSoloed ? peer->soloed.load() : peer->talk.load();
@@ -9268,8 +9272,12 @@ void SonobusAudioProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer
                     gateTarget = 0.0f;
                 }
                 else if (gateSend) {
+                    // P5.9: a station you cannot hear does not hear you either, so a
+                    // muted peer is closed here even while anything is soloed (mute
+                    // wins over solo). The talk flag is left untouched, as solo leaves
+                    // it, so un-muting restores whatever talk was.
                     const bool wants = anyPeerSoloed ? remote->soloed.load() : remote->talk.load();
-                    gateTarget = (micTransmitting && wants) ? 1.0f : 0.0f;
+                    gateTarget = (micTransmitting && wants && ! remote->playMuted.load()) ? 1.0f : 0.0f;
                 }
                 const float gateStart = remote->sendGateGain;
                 const float gateEnd = approachGain(gateStart, gateTarget);

@@ -69,6 +69,26 @@ test('hearsYou: open mic, talk toggles and solo narrowing (spec §4.1)', async (
   assert.deepEqual(hears(), [], 'mic off means nobody hears you');
 });
 
+test('P5.9: muting a station also closes your mic to it (mute wins over solo)', async () => {
+  const { client, st } = boot('console', 'everyday');
+  await settle();
+  const hears = () => st().stationOrder.filter(id => st().stations[id].hearsYou);
+  assert.deepEqual(hears(), ['VDI-ACCT-07', 'VDI-DEV-02', 'VDI-QA-11']);
+
+  await client.cmd('station.setMute', { station: 'VDI-DEV-02', on: true });
+  await settle();
+  assert.deepEqual(hears(), ['VDI-ACCT-07', 'VDI-QA-11'], 'a muted station does not hear your mic');
+  assert.equal(st().stations['VDI-DEV-02'].talk, true, 'mute leaves the talk choice alone');
+
+  await client.cmd('station.setSolo', { station: 'VDI-DEV-02', on: true });
+  await settle();
+  assert.deepEqual(hears(), [], 'mute wins over solo: a muted, soloed station still does not hear you');
+
+  await client.cmd('station.setMute', { station: 'VDI-DEV-02', on: false });
+  await settle();
+  assert.deepEqual(hears(), ['VDI-DEV-02'], 'un-muting restores what solo alone gives');
+});
+
 test('hearsYou is false for lost and offline stations', async () => {
   const { st } = boot('console', 'problem');
   await settle();

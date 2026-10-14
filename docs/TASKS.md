@@ -119,7 +119,7 @@ Ordered so that every task appears after everything it depends on.
 | P5.6 | Wire UI to the real API | P5.2–P5.5, P4.2–P4.4 | M | any + design review | done | Claude (subagent K proved it; console) |
 | P5.7 | Exclusive solo: soloing a station clears the other solos | P5.6 | S | any + design review | done | Claude |
 | P5.8 | Network (jitter) buffer control in the Console: per-station auto/manual, re-measure, faster start | P5.6 | M | any + design review | todo | |
-| P5.9 | Muting a station also stops sending your mic to it | P1.5, P5.3 | S | any + design review | todo | |
+| P5.9 | Muting a station also stops sending your mic to it | P1.5, P5.3 | S | any + design review | done | Claude 2026-10-13: gate + `hearsYou` closed on mute (mute wins over solo, Talk untouched), talk button held state "Muted: doesn't hear you"; console-ui 34/34, new `tests/api/p59.test.mjs` 3/3 on this box (gate 1→0→0→1) |
 | P6.1 | Mac shell: web view hosting Console UI | P5.6 | M | any + design review | done | merged 192e5f1f; design review Claude 2026-10-10 |
 | P6.5 | Mac global push-to-talk hotkey | P6.1 | S | any | done | merged 192e5f1f (B2) |
 | P6.6 | Mac window: modern unified title bar (content under the traffic lights) | P6.1 | S | any + design review | todo | |
@@ -1557,7 +1557,36 @@ Android app is now planned as P9.2, tasks A1–A14 (lanes in the P9.2 card).
   "Paused by solo": e.g. **"Muted: doesn't hear you"**, not clickable. Its tooltip
   says to un-mute to talk to this station. Check the label against B13 (talk
   button width).
-- **Result:**
+- **Result (Claude, 2026-10-13):** done, on the A26 batch's branch (PR #6).
+  - **Engine:** the P1.5 send gate is now `mic transmitting AND wants AND
+    !playMuted` (with the "P5.9" comment), and `computeHearsYou()` gained the same
+    check. It sits *after* the role early-return on purpose: the gate is
+    Console-only (`gateSend = mRole == Console`), and on a VDI the mic reaches every
+    open peer while the path is up, so a VDI's `hearsYou` must not claim otherwise.
+    Mute wins over solo by construction; Talk is left untouched. Audio and state
+    therefore never disagree.
+  - **UI:** the talk button gets the held state (`data-state="held"`, the same look
+    as "Paused by solo") with the label **"Muted: doesn't hear you"**, not
+    clickable, tooltip "This station is muted, so it doesn't hear your mic.
+    Un-mute it to talk to it." (`console-ui/src/console/components.js`), plus the
+    row in `docs/design/spec.md` §3.5. **B13:** this label is 23 characters against
+    "Paused by solo"'s 14, so the narrow-width overflow B13 describes is neither
+    made worse nor fixed.
+  - **Tests:** `console-ui` **34/34** (the new `P5.9: muting a station also closes
+    your mic to it` covers mute, mute-over-solo and un-mute-restores), mock engine
+    updated, `docs/control-api.md`'s mute and `hearsYou` rows updated.
+  - **New integration test `tests/api/p59.test.mjs`** (local aooserver + a console +
+    a vdi, `node --test tests/api/p59.test.mjs`) — **3/3 on this box**. It asserts
+    the state *and* the audio path: `hearsYou` false/true with the peer dump's
+    `sendGateGain` 1 → 0 (muted) → 0 (muted+soloed) → 1 (un-muted). Two things it
+    documents for anyone running it: a peer of the **same role never connects**
+    (the P1.4 matrix blocks it, so the station is a `vdi`), and the peer's aoo
+    streams — what makes a station "online" — come from the audio callback, so it
+    needs a working audio device (overridable with `P59_IN_DEVICE` /
+    `P59_OUT_DEVICE`).
+  - **Not done:** the F2 scenario (that harness is macOS-side). The Linux run above
+    covers the same ground on this box.
+
 ### P6.1 — Mac shell · M
 - **Depends on:** P5.6
 - **Do:** replace the JUCE editor (Console role) with a `WebBrowserComponent`

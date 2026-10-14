@@ -184,7 +184,7 @@ backoff (0.5 s → 8 s) on anything but 4401/4403/4409.
 | `pan` | −1…+1 | persisted; any value allowed (UI snaps) |
 | `mute`, `talk` | bool | persisted |
 | `solo` | bool | not persisted across restarts |
-| `hearsYou` | bool | **engine-computed:** `talk && presence=="online" && mic.transmitting && !(anySolo && !solo)`. The UI displays it and never re-derives it |
+| `hearsYou` | bool | **engine-computed:** `talk && !mute && presence=="online" && mic.transmitting && !(anySolo && !solo)`. The UI displays it and never re-derives it. **P5.9:** a muted station never hears you — mute wins over solo, and it is kept in step with the send gate, so `hearsYou` false always means the mic is closed to that station |
 | `mic.transmitting` | bool | `mode=="open" ? on : pttHeld` |
 | `settings.pttHotkey` | string or null | null where no global hotkey exists (web) |
 
@@ -273,7 +273,7 @@ Agent:
 | `connection.disconnect` | `{}` | |
 | `station.setLevel` | `{ station, db }` | clamp −40…+6 |
 | `station.setPan` | `{ station, pan }` | clamp −1…+1 |
-| `station.setMute` | `{ station, on }` | |
+| `station.setMute` | `{ station, on }` | P5.9: muting also closes your mic to that station (the peer's `sendGateGain` goes to 0 and `hearsYou` false), and mute wins over solo; the station's `talk` flag is left untouched, so un-muting restores it |
 | `station.setSolo` | `{ station, on, exclusive? }` | `exclusive: true` (with `on: true`) makes it the only solo: every other solo is cleared in the same step, the new one set first (P5.7). Without it, solos add up |
 | `station.setTalk` | `{ station, on }` | stored even while paused by solo; `hearsYou` follows the gate |
 | `station.forget` | `{ station }` | only for `offline` stations; error `busy` otherwise |

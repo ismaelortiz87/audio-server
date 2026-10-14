@@ -73,7 +73,8 @@ export class MockEngine {
     st.mic.transmitting = !blocked && (st.mic.mode === 'open' ? st.mic.on : st.mic.pttHeld);
     const anySolo = Object.values(st.stations).some(s => s.solo);
     for (const s of Object.values(st.stations)) {
-      s.hearsYou = s.talk && s.presence === 'online' && st.mic.transmitting && !(anySolo && !s.solo);
+      // P5.9: a muted station does not hear you either (mute wins over solo).
+      s.hearsYou = s.talk && !s.mute && s.presence === 'online' && st.mic.transmitting && !(anySolo && !s.solo);
     }
     // android.md section 6: the voice must reach at least one station, not just leave the mic.
     if (st.platform) st.platform.echoRisk = this.noAec && st.platform.outputRoute === 'speaker' && st.mic.transmitting
