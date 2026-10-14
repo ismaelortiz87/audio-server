@@ -603,10 +603,19 @@ Note under it, changing with the choice:
     `stopBluetoothSco()` require it, and `setMode()` has been gated on it): without
     it the SCO path throws `SecurityException`, and the route silently never
     engages (no mono switch, phone mic stays in use).
-  - The engine reopens its audio device when the route changes
-    (`Signals.onBtRouteChanged` → `restartLastAudioDevice()`): Oboe does not
-    reliably re-route an already-open stream, and the reopen is what actually
-    moves capture onto the headset's mic and playback onto the mono call route.
+  - **Engaging needs nothing of the engine; releasing does.** Android moves the
+    running streams onto the call channel by itself (verified on the buds), so
+    engaging is purely a platform call. It does not move them back: after a
+    release the engine kept reading the call channel — heard as a frozen input —
+    until a device pick forced a reopen. `Signals.onBtRouteChanged` now reopens on
+    release, and it has to be a *real* reopen: `restartLastAudioDevice()` returns
+    early *while a device is open*, and `setAudioDeviceSetup()` returns early when
+    the setup is unchanged, so the app closes the device first (forcing JUCE to
+    delete and recreate it) and remaps a device name that vanished with the route
+    to the system-default entry. The release is reported only once the platform
+    has really left the call route (`getCommunicationDevice() == null`,
+    `isBluetoothScoOn()` false and — API 33+ — media output back off the call
+    device), so the reopen cannot land in the middle of the profile switch.
  - **On-demand: the route is held only while capture is wanted.** Holding the
     communication route forces the narrowband mono call path whether or not
     anything is captured, so Crosspoint holds it only while the engine is

@@ -3,6 +3,7 @@
 package io.lagreca.app.crosspoint;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Build;
@@ -69,8 +70,9 @@ final class BluetoothRoute {
     private static final long RELEASE_HOLD_MS = 3000;
     // ...and wait at most this long for the platform to really leave the call
     // route before telling native. Bounded, so a platform that never reports a
-    // clean state cannot leave the UI showing a route we already left.
-    private static final long RELEASE_SETTLE_MS = 2500;
+    // clean state cannot leave the UI showing a route we already left. Generous:
+    // the HFP teardown plus the A2DP restart is the slow part of the switch.
+    private static final long RELEASE_SETTLE_MS = 4000;
 
     // The engine's answer to "is capture wanted, and under which policies"
     // (one int per tick): see Signals::BtRouteFlag in AndroidPlatform.h.
@@ -215,6 +217,7 @@ final class BluetoothRoute {
         if (sReleasePending && (routeIsClear(am) || now >= sReleaseDeadline)) {
             sReleasePending = false;
             Log.i(TAG, "Bluetooth route released (platform clear=" + routeIsClear(am)
+                + ", mediaOut=" + currentMediaOutputType(am)
                 + ", timedOut=" + (now >= sReleaseDeadline) + ")");
         }
 
@@ -368,20 +371,41 @@ final class BluetoothRoute {
     }
 
     /**
-     * A22: true once the platform is really back on the phone route — no
-     * communication device selected and the SCO link down. API 31+ reports the
-     * selection; older builds only have the SCO flag. Native is told about the
-     * release only after this, so the engine's device reopen cannot land on a
-     * tearing-down SCO channel (which it would read as noise).
+     * A22: has the platform really left the call route? No communication device
+     * selected, the SCO link down, and — API 33+ — media output no longer on the
+     * call-channel device, i.e. the media route has actually re-established. The
+     * engine reopens its streams from this report, and doing that in the middle of
+     * the profile switch leaves them bound to the call channel, which is heard as
+     * a frozen input until something reopens them again.
      */
     private static boolean routeIsClear(AudioManager am) {
         try {
             if (Build.VERSION.SDK_INT >= 31 && am.getCommunicationDevice() != null)
                 return false;
-            return !am.isBluetoothScoOn();
+            if (am.isBluetoothScoOn())
+                return false;
+            if (Build.VERSION.SDK_INT >= 33 && currentMediaOutputType(am) == T_BT_SCO)
+                return false;
+            return true;
         } catch (Throwable t) {
             return true;     // cannot ask: do not stall the release
         }
+    }
+
+    /** The type Android currently routes media output to — the system's own answer,
+        which is the only way to see the A2DP route come back after a call route.
+        0 when it cannot be told (API < 33 has no such call: the SCO flag is all). */
+    private static int currentMediaOutputType(AudioManager am) {
+        if (Build.VERSION.SDK_INT < 33) return 0;
+        try {
+            final AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA).build();
+            final java.util.List<AudioDeviceInfo> list = am.getAudioDevicesForAttributes(attrs);
+            if (list != null && !list.isEmpty()) return list.get(0).getType();
+        } catch (Throwable t) {
+            // unknown: treat as "cannot tell"
+        }
+        return 0;
     }
 
     // ---------------------------------------------------------------- detection

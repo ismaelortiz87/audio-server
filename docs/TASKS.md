@@ -3288,6 +3288,31 @@ is ever needed, adds 1–2 days.
     it; needs a logcat of the key events before choosing between a `MediaSession`
     handler and `dispatchKeyEvent`. Hardware-only (no Bluetooth stack on the
     emulator).
+  - **Retest 2 (maelo): the flow works** — both policies behave as intended and the
+    route is released seconds after a mute — with one leftover: the release
+    produced a frozen/stuck input until he re-picked the phone mic in the
+    Microphone dropdown. **Cause: the reopen was a no-op.**
+    `restartLastAudioDevice()` returns early *while a device is open* (JUCE's own
+    comment: it only reopens what was running *after* `closeAudioDevice()`), and
+    `setAudioDeviceSetup()` returns early when the setup is unchanged — so the A22
+    handler did nothing at all and the engine kept reading the call channel, which
+    no longer carried audio. A manual pick worked because that path *does* recreate
+    the device. Fixed:
+    1. The app now closes the device first (`closeAudioDevice()`) and only then
+       calls `setAudioDeviceSetup()`, so JUCE deletes and recreates it — recreating
+       is what rebinds the streams. A device name that came and went with the route
+       is remapped to the system-default entry instead of failing the reopen.
+    2. **Engaging is deliberately left alone**: Android moves the running streams
+       onto the call channel by itself, which is exactly why the buds mic worked
+       with the same no-op in place. Only the release would reopen, and a reopen on
+       engage would race the SCO setup.
+    3. The release is reported only after the platform has really left the call
+       route, now including the media route (API 33+
+       `getAudioDevicesForAttributes`), with a 4 s bound: the HFP teardown plus the
+       A2DP restart is the slow half of the switch.
+    Both the Java release line (`TAG=Crosspoint`) and the app's reopen line
+    (Android `Logger::outputDebugString` → logcat tag `JUCE`) record the switch, so
+    a retest is diagnosable without a debugger. Awaiting that retest.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

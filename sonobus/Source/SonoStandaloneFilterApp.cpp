@@ -779,19 +779,49 @@ public:
         {
             if (androidService != nullptr) androidService->selectStation (station);
         };
-        // A22 (android.md 14): the Java route controller moved audio to (or away
-        // from) the headset's call channel. Reopen the audio device so the engine
-        // follows: Oboe does not reliably re-route an already-open stream, so
-        // without this the capture stays on the phone mic and the output stays
-        // stereo. Slightly delayed — the SCO/LE link is still coming up when Java
-        // reports the route.
-        crosspoint::android::Signals::get().onBtRouteChanged = [dm] (bool)
+        // A22 (android.md 14, on-demand route): the Java controller released the
+        // headset's call channel. Android moves the running streams onto that
+        // channel by itself (which is why engaging needs nothing here — verified on
+        // the buds), but it does NOT move them back: the engine kept reading a
+        // channel that no longer carried anything, heard as a frozen input, until
+        // something forced a reopen (a manual device pick did exactly that).
+        //
+        // The reopen has to be a real one. JUCE's restartLastAudioDevice() returns
+        // early while a device is open, and setAudioDeviceSetup() returns early when
+        // the setup is unchanged: both are no-ops at this point, which is why the
+        // first attempt at this fixed nothing. Closing first makes the next call
+        // recreate the device, and recreating is what rebinds the streams. Delayed a
+        // little so it lands after the platform's own switch.
+        static const auto reopenAfterRouteRelease = [] (juce::AudioDeviceManager& dm)
         {
-            if (dm == nullptr) return;
-            Timer::callAfterDelay (300, [dm]()
+            auto setup = dm.getAudioDeviceSetup();
+            auto* type = dm.getCurrentDeviceTypeObject();
+
+            // A device name that came and went with the route (a call-channel entry)
+            // would fail the reopen; the system-default entry is what the phone
+            // routes to now, so fall back to it.
+            const auto fixName = [type] (String& name, bool isInput)
             {
-                dm->restartLastAudioDevice();
-            });
+                if (type == nullptr || name.isEmpty() || type->getDeviceNames (isInput).contains (name)) return;
+                for (const auto& candidate : type->getDeviceNames (isInput))
+                    if (candidate.startsWith ("System Default")) { name = candidate; return; }
+            };
+            fixName (setup.inputDeviceName, true);
+            fixName (setup.outputDeviceName, false);
+
+            dm.closeAudioDevice();
+            const auto err = dm.setAudioDeviceSetup (setup, true);
+
+            // On Android Logger::outputDebugString lands in logcat (tag JUCE), so a
+            // retest without a debugger still records whether the rebind happened.
+            Logger::outputDebugString ("A22 route released: reopened audio in='"
+                + setup.inputDeviceName + "' out='" + setup.outputDeviceName + "'"
+                + (err.isEmpty() ? String (" ok") : " FAILED: " + err));
+        };
+        crosspoint::android::Signals::get().onBtRouteChanged = [dm] (bool engaged)
+        {
+            if (dm == nullptr || engaged) return;
+            Timer::callAfterDelay (300, [dm]() { reopenAfterRouteRelease (*dm); });
         };
         androidService->setShutdownHandler ([this, proc]() {            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
