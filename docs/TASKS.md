@@ -3313,6 +3313,25 @@ is ever needed, adds 1–2 days.
     Both the Java release line (`TAG=Crosspoint`) and the app's reopen line
     (Android `Logger::outputDebugString` → logcat tag `JUCE`) record the switch, so
     a retest is diagnosable without a debugger. Awaiting that retest.
+  - **Retest 3 (maelo): the release is clean** — no noise, and stereo comes back
+    correctly. Leftover: after an unmute the headset mic did not come back — the
+    Microphone row stayed on "Phone mic" until he picked the Bluetooth device by
+    hand. **That was a regression from the release fix**: making the release
+    recreate the device removed the only thing that had made engaging work (Android
+    moving the already-open streams) — the recreated streams stay where they are, so
+    the next engage moved the route but not the audio. Fixed by making the reopen
+    symmetric and the reporting verified in both directions:
+    1. `Signals.onBtRouteChanged` now reopens on engage as well as release (the app
+       is the only reliable mover of its own streams).
+    2. The route is reported to native only once the platform is really *on* it
+       (`getCommunicationDevice()`/`isBluetoothScoOn()`, 3 s bound), mirroring the
+       release gate (4 s): selecting the communication device is not the link being
+       up, so the reopen used to land before the SCO existed and bound the phone
+       mic. LE Audio switches nothing, so it reports at once.
+    Trade-off, now explicit: with the route released, an unmute costs the SCO
+    re-setup (~1-2 s) before the headset mic is live — the "release on mute = off"
+    policy is the way to make unmute instant.
+    Awaiting the retest.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

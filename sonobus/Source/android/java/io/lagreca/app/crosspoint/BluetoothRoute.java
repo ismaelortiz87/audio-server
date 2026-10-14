@@ -68,6 +68,11 @@ final class BluetoothRoute {
     // ordinary pause in a conversation does not pay an SCO teardown + setup (each
     // ~0.2-0.5 s, plus a device reopen in the engine).
     private static final long RELEASE_HOLD_MS = 3000;
+    // Selecting the communication device is not the same as the link being up: the
+    // SCO takes a moment to come up, and the engine's reopen must not land before
+    // it does (that is what left the buds mic silent on a later unmute). Bound, so
+    // a platform that never reports the link live still gets the route reported.
+    private static final long ENGAGE_SETTLE_MS = 3000;
     // ...and wait at most this long for the platform to really leave the call
     // route before telling native. Bounded, so a platform that never reports a
     // clean state cannot leave the UI showing a route we already left. Generous:
@@ -111,6 +116,11 @@ final class BluetoothRoute {
     private static long sReleaseAt = 0;
     private static boolean sReleasePending = false;
     private static long sReleaseDeadline = 0;
+    // A22: the route is selected but the platform is not on it yet (the SCO link is
+    // still coming up). Native learns the route only when this clears, so the
+    // engine's reopen lands on a live call channel.
+    private static boolean sEngagePending = false;
+    private static long sEngageDeadline = 0;
 
     static synchronized void start(Context ctx) {
         if (sApp != null) return;
@@ -138,6 +148,8 @@ final class BluetoothRoute {
         sReleaseAt = 0;
         sReleasePending = false;
         sReleaseDeadline = 0;
+        sEngagePending = false;
+        sEngageDeadline = 0;
     }
 
     // ---------------------------------------------------------------- tick
@@ -196,9 +208,18 @@ final class BluetoothRoute {
             sReleaseAt = 0;
             sReleasePending = false;    // we are back on the call route: report it
             sReleaseDeadline = 0;
+            // Selecting the device is not the link being up: the SCO takes a moment.
+            // Native is told the route only when the platform is really on it, so the
+            // engine's reopen binds the buds mic instead of the phone mic. LE Audio
+            // switches nothing, so it is live at once.
+            sEngagePending = sHeld && !le;
+            sEngageDeadline = now + ENGAGE_SETTLE_MS;
+            if (sEngagePending)
+                Log.i(TAG, "Bluetooth route: selected, waiting for the call link to come up");
         } else if (!wantRoute && sHeld) {
             // Nothing wanted: hold for a few seconds first, so a normal pause in a
             // conversation does not cost an SCO teardown and setup.
+            sEngagePending = false;
             if (sReleaseAt == 0) {
                 sReleaseAt = now + RELEASE_HOLD_MS;
                 Log.i(TAG, "Bluetooth route: nothing wanted, holding "
@@ -212,8 +233,15 @@ final class BluetoothRoute {
         }
 
         // A22: the route is reported to native only once the platform has really
-        // moved, and that report is what makes the engine reopen its audio device.
-        // On release that means waiting for the communication/SCO link to go down.
+        // moved, and that report is what makes the engine reopen its audio device —
+        // in both directions, so the streams follow the route instead of staying
+        // bound to the device they were created against.
+        if (sEngagePending && (routeIsLive(am) || now >= sEngageDeadline)) {
+            sEngagePending = false;
+            Log.i(TAG, "Bluetooth route live (platform live=" + routeIsLive(am)
+                + ", mediaOut=" + currentMediaOutputType(am)
+                + ", timedOut=" + (now >= sEngageDeadline) + ")");
+        }
         if (sReleasePending && (routeIsClear(am) || now >= sReleaseDeadline)) {
             sReleasePending = false;
             Log.i(TAG, "Bluetooth route released (platform clear=" + routeIsClear(am)
@@ -232,7 +260,7 @@ final class BluetoothRoute {
         // Report the route actually taken. While a release is still settling, the
         // previous value stands: pushing null early is what told the engine to
         // reopen onto a channel that was already going away.
-        if (!sReleasePending) {
+        if (!sReleasePending && !sEngagePending) {
             // Report a route only while we really hold it: a failed engage must not
             // claim one (the engine reopens its device on this signal, and the UI's
             // mono note keys off it).
@@ -389,6 +417,21 @@ final class BluetoothRoute {
             return true;
         } catch (Throwable t) {
             return true;     // cannot ask: do not stall the release
+        }
+    }
+
+    /**
+     * A22: is the platform really on the call route now? The mirror of
+     * routeIsClear — a communication device selected (API 31+) or the classic SCO
+     * link up. True when it cannot be asked, so an engage is never stalled.
+     */
+    private static boolean routeIsLive(AudioManager am) {
+        try {
+            if (Build.VERSION.SDK_INT >= 31 && am.getCommunicationDevice() != null)
+                return true;
+            return am.isBluetoothScoOn();
+        } catch (Throwable t) {
+            return true;     // cannot ask: report the route rather than stall it
         }
     }
 

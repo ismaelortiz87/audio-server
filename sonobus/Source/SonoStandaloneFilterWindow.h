@@ -375,9 +375,21 @@ public:
     {
         if (settings != nullptr)
         {
-            std::unique_ptr<XmlElement> xml (deviceManager.createStateXml());
+            // A22: never persist an emptied setup. A failed device open deletes the
+            // device *and* clears the setup's names; saving that would leave the next
+            // launch unable to open anything — the app comes up mute, or dies when it
+            // reaches for the device it never got. Keeping the last good value is the
+            // safe move; the keys below (which are not device state) are still written.
+            if (deviceManager.getCurrentAudioDevice() == nullptr)
+            {
+                DBG ("saveAudioDeviceState: no audio device open, keeping the saved setup");
+            }
+            else
+            {
+                std::unique_ptr<XmlElement> xml (deviceManager.createStateXml());
 
-            settings->setValue ("audioSetup", xml.get());
+                settings->setValue ("audioSetup", xml.get());
+            }
 
             settings->setValue ("shouldOverrideSampleRate", (bool) shouldOverrideSampleRate.getValue());
             settings->setValue ("shouldCheckForNewVersion", (bool) shouldCheckForNewVersion.getValue());
@@ -467,12 +479,24 @@ public:
             totalOutChannels = defaultConfig.numOuts;
         }
 
-        deviceManager.initialise (enableAudioInput ? totalInChannels : 0,
+        // A22: a saved setup whose device no longer exists (or was saved empty) must
+        // not leave the engine with nothing open — silence at best, and an engine with
+        // no device is what the audio paths treat as a hard failure. Fall back to the
+        // plain defaults so a bad saved state self-heals instead of bricking the run.
+        const auto openErr = deviceManager.initialise (enableAudioInput ? totalInChannels : 0,
                                   totalOutChannels,
                                   savedState.get(),
                                   true,
                                   preferredDefaultDeviceName,
                                   prefSetupOptions.get());
+
+        if (openErr.isNotEmpty() && deviceManager.getCurrentAudioDevice() == nullptr)
+        {
+            DBG ("reloadAudioDeviceState: " << openErr << " - falling back to defaults");
+            deviceManager.initialise (enableAudioInput ? totalInChannels : 0,
+                                      totalOutChannels,
+                                      nullptr, true, {}, nullptr);
+        }
 
 #if JUCE_IOS
         // get current audio device and change a setting if necessary
