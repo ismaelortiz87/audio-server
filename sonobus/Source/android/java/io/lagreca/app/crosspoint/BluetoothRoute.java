@@ -10,7 +10,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.util.Log;
 
 /**
  * A22 (docs/design/android.md section 14): the "Bluetooth mic" setting.
@@ -242,7 +241,7 @@ final class BluetoothRoute {
                 final long wait = Math.min(ENGAGE_RETRY_MAX_MS,
                     ENGAGE_RETRY_MIN_MS << Math.min(sEngageFailures - 1, 4));
                 sEngageRetryAt = now + wait;
-                Log.w(TAG, "Bluetooth route: engage failed (" + sEngageFailures
+                CrosspointLog.w(TAG, "Bluetooth route: engage failed (" + sEngageFailures
                     + " in a row), next attempt in " + (wait / 1000) + " s");
             }
             sReleaseAt = 0;
@@ -255,14 +254,14 @@ final class BluetoothRoute {
             sEngagePending = sHeld && !le;
             sEngageDeadline = now + ENGAGE_SETTLE_MS;
             if (sEngagePending)
-                Log.i(TAG, "Bluetooth route: selected, waiting for the call link to come up");
+                CrosspointLog.i(TAG, "Bluetooth route: selected, waiting for the call link to come up");
         } else if (!wantRoute && sHeld) {
             // Nothing wanted: hold for a few seconds first, so a normal pause in a
             // conversation does not cost an SCO teardown and setup.
             sEngagePending = false;
             if (sReleaseAt == 0) {
                 sReleaseAt = now + RELEASE_HOLD_MS;
-                Log.i(TAG, "Bluetooth route: nothing wanted, holding "
+                CrosspointLog.i(TAG, "Bluetooth route: nothing wanted, holding "
                     + (RELEASE_HOLD_MS / 1000) + " s before releasing");
             } else if (now >= sReleaseAt) {
                 releaseRoute();             // platform side: back to media (A2DP)
@@ -278,13 +277,13 @@ final class BluetoothRoute {
         // bound to the device they were created against.
         if (sEngagePending && (routeIsLive(am) || now >= sEngageDeadline)) {
             sEngagePending = false;
-            Log.i(TAG, "Bluetooth route live (platform live=" + routeIsLive(am)
+            CrosspointLog.i(TAG, "Bluetooth route live (platform live=" + routeIsLive(am)
                 + ", mediaOut=" + currentMediaOutputType(am)
                 + ", timedOut=" + (now >= sEngageDeadline) + ")");
         }
         if (sReleasePending && (routeIsClear(am) || now >= sReleaseDeadline)) {
             sReleasePending = false;
-            Log.i(TAG, "Bluetooth route released (platform clear=" + routeIsClear(am)
+            CrosspointLog.i(TAG, "Bluetooth route released (platform clear=" + routeIsClear(am)
                 + ", mediaOut=" + currentMediaOutputType(am)
                 + ", timedOut=" + (now >= sReleaseDeadline) + ")");
         }
@@ -369,14 +368,14 @@ final class BluetoothRoute {
                     sOwnsMode = true;
                     if (am.setCommunicationDevice(comm)) {
                         sHeld = true;
-                        Log.i(TAG, "Bluetooth route engaged: type=" + comm.getType()
+                        CrosspointLog.i(TAG, "Bluetooth route engaged: type=" + comm.getType()
                             + " commDevice=" + am.getCommunicationDevice()
                             + " scoOn=" + am.isBluetoothScoOn());
                         return;
                     }
-                    Log.w(TAG, "setCommunicationDevice(" + comm.getType() + ") was refused");
+                    CrosspointLog.w(TAG, "setCommunicationDevice(" + comm.getType() + ") was refused");
                 } catch (Throwable t) {
-                    Log.w(TAG, "engaging the communication route failed", t);
+                    CrosspointLog.w(TAG, "engaging the communication route failed", t);
                 }
             } else {
                 final StringBuilder sb = new StringBuilder();
@@ -386,7 +385,7 @@ final class BluetoothRoute {
                 } catch (Throwable t) {
                     sb.append("listing failed: ").append(t);
                 }
-                Log.w(TAG, "no Bluetooth communication device offered for a call route; offered: " + sb);
+                CrosspointLog.w(TAG, "no Bluetooth communication device offered for a call route; offered: " + sb);
             }
         }
         if (!classicSco(am)) {
@@ -410,7 +409,7 @@ final class BluetoothRoute {
                 if (am.getMode() == AudioManager.MODE_IN_COMMUNICATION)
                     am.setMode(AudioManager.MODE_NORMAL);
             } catch (Throwable t) {
-                Log.w(TAG, "could not restore the audio mode after a failed engage", t);
+                CrosspointLog.w(TAG, "could not restore the audio mode after a failed engage", t);
             }
         }
         PlatformMonitor.appOwnsAudioMode = false;
@@ -431,7 +430,7 @@ final class BluetoothRoute {
                 if (t == T_BT_SCO || t == T_BLE_HEADSET) return d;
             }
         } catch (Throwable t) {
-            Log.w(TAG, "could not list the communication devices", t);
+            CrosspointLog.w(TAG, "could not list the communication devices", t);
         }
         return null;
     }
@@ -449,11 +448,11 @@ final class BluetoothRoute {
             am.startBluetoothSco();
             am.setBluetoothScoOn(true);
             sHeld = true;
-            Log.i(TAG, "Bluetooth route engaged via SCO: scoOn=" + am.isBluetoothScoOn()
+            CrosspointLog.i(TAG, "Bluetooth route engaged via SCO: scoOn=" + am.isBluetoothScoOn()
                 + " mode=" + am.getMode());
             return true;
         } catch (Throwable t) {
-            Log.w(TAG, "could not start the Bluetooth call channel", t);
+            CrosspointLog.w(TAG, "could not start the Bluetooth call channel", t);
             return false;
         }
     }

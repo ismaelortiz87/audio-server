@@ -19,7 +19,6 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.KeyEvent;
 
 import java.util.ArrayList;
@@ -160,7 +159,7 @@ final class CrosspointMediaSession {
                 // Log every key that reaches the session (with whether it is still
                 // the active one) so a retest shows whether the key is swallowed
                 // before it arrives, or arrives with a code we do not handle.
-                Log.i(TAG, "media button: key=" + ev.getKeyCode() + " action=" + ev.getAction()
+                CrosspointLog.i(TAG, "media button: key=" + ev.getKeyCode() + " action=" + ev.getAction()
                     + " repeat=" + ev.getRepeatCount() + " active=" + session.isActive());
                 switch (ev.getKeyCode()) {
                     case KeyEvent.KEYCODE_HEADSETHOOK:
@@ -491,7 +490,7 @@ final class CrosspointMediaSession {
             try {
                 openAppIntent().send();
             } catch (PendingIntent.CanceledException e) {
-                android.util.Log.w("Crosspoint", "could not open the app", e);
+                CrosspointLog.w("Crosspoint", "could not open the app", e);
             }
             return;
         }

@@ -3457,6 +3457,10 @@ is ever needed, adds 1–2 days.
      VoIP call that starts *during* the hold is indistinguishable from our own route.
      Dropping the mode on API 31+ (the B18 experiment) removes that as well — the
      reason the two are one task.
+  **Diagnostics (this batch):** the app writes its own logs on the phone now
+  (`Android/data/io.lagreca.app.crosspoint/files/logs/`), with `crash-java-*.txt` for
+  uncaught exceptions and `crash-native-*.txt` for fatal signals, plus `session start`
+  / `session clean exit` markers — see the note at the top of docs/BUGS.md.
   **Still open:** B17–B21 (all need the phone), a VoIP call arriving during an LE hold
   (T1/T2), and the car check. **Not verified here:** the route paths are hardware-only;
   the AVD has no Bluetooth stack.

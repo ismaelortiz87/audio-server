@@ -11,6 +11,36 @@ Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged), APK
 `crosspoint-debug-a26-p59-merged-ee5f5407.apk` on the share.
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
+### On-phone logs (A26 diagnostics)
+
+Every build from the diagnostics change on writes its own logs on the phone, so a report
+does not need a cable. In `<external files>/logs/`, i.e.
+`/sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/`:
+
+- `crosspoint.log` — the app's lines (route transitions, media buttons, service
+  lifecycle), capped at 2 MB and rotated once.
+- `crosspoint-native.log` — the engine's lines, including the `A22 route ...: reopened
+  audio in='...' out='...'` reopen line, which is what B20/B21 turn on.
+- `crash-java-<time>.txt` — an uncaught Java exception: its trace, the build, and the
+  last 300 log lines.
+- `crash-native-<time>.txt` — a fatal signal: the engine's last output. The handler
+  re-raises, so the tombstone still happens and `adb logcat -b crash` stays the
+  authority for a native crash.
+- `=== session start ===` and `=== session clean exit ===` markers. A run whose start
+  has no clean exit after it ended abruptly — a crash, a force-stop, or the system
+  killing the process. The marker deliberately does not claim which: a false crash
+  report is worse than none, so read the `crash-*.txt` files and the breadcrumbs above
+  the marker.
+
+Pull the lot at once:
+
+```
+adb pull /sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/
+```
+
+The app is a debug build, so `adb shell run-as io.lagreca.app.crosspoint` also reaches
+the private files if a log ever needs to live there instead.
+
 | ID | Bug | Severity | Found in | Status |
 |---|---|---|---|---|
 | [B1](#b1--a-vdi-still-receives-and-decodes-streams-from-blocked-peers) | A VDI still receives and decodes the stream of a peer the routing matrix blocks | Medium (no audible leak) | F2.1 `matrix-mixed` | **Closed** — `bd8ede82` |
