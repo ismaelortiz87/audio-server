@@ -4,10 +4,10 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
-Last updated: 2026-10-10 by Claude (lead session).
-Repo state referenced: `main` @ `fb91e5b6` (local, ahead of `origin/main`).
+Last updated: 2026-10-13 by the A22 session.
+Repo state referenced: `task/android-consolidated` @ `e9fac9c4cf` (PR #5).
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
 | ID | Bug | Severity | Found in | Status |
@@ -22,6 +22,9 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B13](#b13--station-card-controls-overflow-at-narrow-widths) | Station card controls overflow their card at narrow widths ("Will hear you") | Low (layout) | all Console UIs | **Open**, not scheduled |
 | [B14](#b14--a-vdi-that-is-also-on-the-vpn-stays-offline-for-the-mac) | A VDI that is also on the Mac's VPN connects but exchanges no data with it | High | cebastian (.71) | **Closed** — `446dd3e2` |
 | [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
+| [B17](#b17--an-intermittent-crash-right-after-reopening-the-app-android) | An intermittent crash right after reopening the app (Android) | High (a crash), seen once | A22 route builds | **Open** |
+| [B18](#b18--the-headsets-mute-button-stops-working-while-the-route-is-held) | The headset's mute button stops working while the communication route is held | Medium (dead in the state where it is wanted) | A22 on real hardware | **Open** |
+| [B19](#b19--noise-when-the-headset-drops-and-comes-back-with-the-route-held) | Noise when the headset drops and comes back while the route is held | Medium (recovers with a manual pick) | A22 on real hardware | **Open** |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -529,6 +532,117 @@ after 2 s (a genuine symmetric NAT). Verified: 4/4 probe restarts and the Mac
 app peer with `cebastian` (~1830 packets like the others). `tests/api/p42` 6/6,
 `p43p44` 9/9. Both ends need the fix: the Mac app has it, and .71 runs it from the
 preview build until the `446dd3e2` .deb is installed.
+
+## B17 — An intermittent crash right after reopening the app (Android)
+
+**Found** by maelo, 2026-10-13, on the Pixel A22 with the on-demand Bluetooth
+route in use (headset mic mode). Seen **once** in a session; opening the app again
+straight away was fine, so it is not persistent. No trace was captured — he tests
+on the phone, without adb.
+**Owner:** any.
+
+**Facts.** "I got excited [a crash] from the application after reopening … trying
+again worked well, so it was nothing persistent." Nothing further: no trace, no
+reproducible trigger.
+
+**Nearby, already fixed (`e9fac9c4cf`)** — two reopen crashes that *were*
+deterministic and are gone:
+- the reopen ran on a 300 ms `Timer::callAfterDelay` holding a raw
+  `AudioDeviceManager*`, and a route release is part of the exit path, so on exit
+  the timer fired against a manager being destroyed (a crash right after closing
+  the app);
+- a failed reopen left the engine with no device *and* persisted that emptied
+  setup, so the next launch had nothing to open.
+
+This one is neither: one occurrence, and a clean retry.
+
+**Hypotheses (unconfirmed).**
+1. A route change landing during startup. The guard from `e9fac9c4cf` covers
+   `shutdown()`, not startup, so a `closeAudioDevice()` + `setAudioDeviceSetup()`
+   from the route path can still race the app's own initial device open — and the
+   Java controller engages the route on its first tick whenever the mic is live
+   and the setting is headset.
+2. The Bluetooth controller and the media session both starting while the route is
+   already engaged.
+
+**Left.** Diagnose from a trace, not from reasoning: on the next occurrence, take
+`adb logcat -b crash` together with `adb logcat -s Crosspoint JUCE AndroidRuntime`
+while it is still in the buffer. An `A22 route engaged/released: reopened audio …`
+line followed by `… FAILED (…) : no audio device open` puts it in the reopen; its
+absence puts it elsewhere. If he has no adb, add an in-app handler that persists
+the trace where he can read it in the Console UI — noting that a *native* crash
+needs the tombstone, which a Java handler will not catch.
+**Severity:** High (a crash). **Frequency:** rare. Not scheduled.
+
+## B18 — The headset's mute button stops working while the route is held
+
+**Found** by maelo, 2026-10-13, on the Pixel A22 with buds, in headset mic mode.
+This is A22's "follow-up 1" (the button was dead in headset mic mode), now narrowed
+to an exact condition.
+**Owner:** any.
+
+**Facts** (his conditions, verbatim in substance):
+- The button works when the headset route is not in use at all (headset mic mode
+  off, plain phone mic).
+- In headset mic mode with the **mic muted** — i.e. the route has been released by
+  the on-demand policy — the button **works**: that press unmutes.
+- In headset mic mode with the **mic unmuted** — i.e. the route is held — the button
+  does nothing, so it cannot mute.
+
+**Reading.** The asymmetry is the diagnosis: the button reaches Crosspoint's
+`MediaSession` as an ordinary media key only when the app is *not* on the call
+route. While Crosspoint holds `setCommunicationDevice()` +
+`MODE_IN_COMMUNICATION`, Android treats the HFP button as call control and does not
+dispatch it to the media session. The route is held exactly while the mic transmits
+(or on solo) — precisely when someone reaches for that button.
+
+**Already in the build.** `CrosspointMediaSession` logs every media-button event
+(`key`/`action`/`active`) under tag `Crosspoint`. That log *is* the test for the
+reading above: with the mic unmuted there should be **no** line for the press (the
+event never arrives); with the mic muted there should be one.
+
+**Options (none chosen).**
+1. Drop `MODE_IN_COMMUNICATION`, holding only `setCommunicationDevice()` + the SCO
+   link. The mode was part of what made capture work in the first place, so this
+   needs a build to test whether the buds mic still routes (the engine's input is a
+   communication capture stream, which is what the device routing keys off).
+   Cheapest path: put the mode behind a debug flag and A/B it on the phone.
+2. Take the button through a self-managed Telecom `ConnectionService` — how a VoIP
+   app receives HFP buttons. Correct, but invasive for a music app: a phone account
+   and a call notification.
+3. Document the button as unavailable while the route is held, with the on-screen
+   control as the mute path. (For the user: "release on mute = off" keeps the route
+   held, so the *unmute* direction is instant.)
+
+**Left.** Choose (1) or (3) with one test build; (2) only if the button matters more
+than the notification it brings. Not scheduled.
+
+## B19 — Noise when the headset drops and comes back with the route held
+
+**Found** by maelo, 2026-10-13, on the Pixel A22 with buds. Occasional (seen once or
+twice in a session), not reproducible on demand; recovery takes a manual pick in the
+Microphone dropdown.
+**Owner:** any.
+
+**Facts.** Disconnecting the headset and connecting it again sometimes produces the
+same freeze/stuck noise the earlier route bugs made, with audio sitting on the wrong
+device until he picks one by hand. Everything else about the route is confirmed on
+hardware: engages on unmute/solo, releases ~3 s after a mute (the hysteresis), stereo
+back on release.
+
+**Hypothesis.** The headset vanishing *while the route is held* runs two transitions
+at once — our release path reopening the app's audio device, and Android moving the
+route back by itself. `fixName` in the reopen covers a device *name* that disappeared
+from the list; what it does not cover is a device-change event landing *inside* that
+reopen (a second transition against a device list that is mid-change), which is the
+shape of an intermittent wrong-device outcome.
+
+**Left.** Capture the lines around a drop before changing anything: the `Crosspoint`
+route lines (engage/release, `platform clear=`, `mediaOut=`) plus the `JUCE`
+`A22 route …: reopened audio in='…' out='…'` line, across a drop → reconnect. If the
+two overlap, give a device disappearance its own path (settle the release and reopen
+once, then re-engage) instead of letting the generic poll-driven route change drive
+it. Not scheduled.
 
 ---
 

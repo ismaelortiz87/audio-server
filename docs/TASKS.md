@@ -158,7 +158,7 @@ Ordered so that every task appears after everything it depends on.
 | A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`), builds; maelo 2026-10-13: checked on the Samsung, confirmed nice |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); awaiting retest |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); **then four retests on the phone**: the route engages on unmute/solo, releases ~3 s after a mute with stereo back, no freeze/noise, and an unmute restores the buds mic — **the on-demand flow works on hardware** (three release-path crashes found and fixed along the way, `435b49da29`, `e9fac9c4cf`); residual: **B17** (rare crash right after reopening), **B18** (mute button dead while the route is held), **B19** (occasional noise when the headset drops) — all in BUGS.md, none scheduled; car check still pending |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip, PR #2 | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; follow-ups (shared station-state, §13.2 Dimmed, §13.3 fresh-install message) in PR #2; car acceptance passed (maelo 2026-10-13, A23) |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
@@ -3282,12 +3282,14 @@ is ever needed, adds 1–2 days.
     - The persistence is a fix in itself: the A22 settings were **never persisted**
     (only the test-harness paths touched `bluetoothMic`), so the choice silently
     reset to "phone" on every launch.
-    - **Still open: follow-up 1** — the headset's mute button does nothing while the
-    route is held. While we hold the communication route, the HFP button arrives
-    as a call-control key rather than a media key, so the app's session never sees
-    it; needs a logcat of the key events before choosing between a `MediaSession`
-    handler and `dispatchKeyEvent`. Hardware-only (no Bluetooth stack on the
-    emulator).
+    - **Still open: follow-up 1 → now B18.** The headset's mute button stops working
+      while the route is held, and maelo's follow-up pins it down precisely: it works
+      with headset mic mode off, and it works in headset mic mode while the mic is
+      *muted* (the route is released, so that press unmutes) — it only fails with the
+      mic **unmuted**, i.e. while the route is held. That asymmetry says the HFP
+      button is delivered as a media key only when we are not on the call route.
+      Options, the evidence to collect and the media-button log already in the build:
+      **B18** in BUGS.md. Hardware-only (no Bluetooth stack on the emulator).
   - **Retest 2 (maelo): the flow works** — both policies behave as intended and the
     route is released seconds after a mute — with one leftover: the release
     produced a frozen/stuck input until he re-picked the phone mic in the
@@ -3332,6 +3334,41 @@ is ever needed, adds 1–2 days.
     re-setup (~1-2 s) before the headset mic is live — the "release on mute = off"
     policy is the way to make unmute instant.
     Awaiting the retest.
+  - **Retest 3 follow-up (maelo): two crashes, both from the reopen.**
+    After the release fix he got a crash right after closing the app, and then the
+    app died on the next launch ("it opened and after reconnecting it closed, not
+    working").
+    1. **Use-after-free on exit:** the reopen was scheduled on a 300 ms
+       `Timer::callAfterDelay` holding a raw `AudioDeviceManager*`, and a route
+       release is part of the way out, so on exit the timer fired against a manager
+       being destroyed. The timer now checks the file-scope `a22AudioReopenAllowed`,
+       which `shutdown()` clears before anything else is torn down.
+    2. **A failed reopen persisted as "no device":** a failed
+       `setAudioDeviceSetup()` calls `deleteCurrentDevice()`, which *also clears the
+       setup's device names*; `saveAudioDeviceState()` then saved that emptied setup,
+       so the next launch had nothing to open (and an engine with no device is a
+       hard-failure path, not just silence). Guards: the reopen retries upward (fixed
+       name → `System Default …` → default channel counts →
+       `restartLastAudioDevice()`) and reports whether a device is actually open;
+       `saveAudioDeviceState()` keeps the last good setup when no device is open (the
+       non-device keys still written); `reloadAudioDeviceState()` falls back to the
+       defaults when the saved setup no longer opens, so a bad state self-heals.
+    Verified on the emulator: builds, installs, launches clean (empty crash buffer),
+    the three settings round-trip through the API, and a save with a device open still
+    records `audioSetup`. The route paths need the phone. Awaiting the retest.
+  - **Retest 4 (maelo): the route is solid on hardware.** Engage on unmute/solo,
+    release ~3 s after a mute, stereo back on release, no freeze/noise on the
+    release, and an unmute brings the headset mic back by itself — the on-demand
+    flow works end to end. Three residual defects remain, all intermittent or
+    narrow, none scheduled (he wants more testing before deciding what to address):
+    - **B17** — one crash right after reopening the app; the retry was clean, so it
+      is not the (now-fixed) deterministic reopen crashes. Needs a trace.
+    - **B18** — the mute button does nothing *while the route is held*; it works with
+      headset mic mode off, and in headset mode once the route has been released.
+    - **B19** — occasional noise when the headset drops and reconnects with the route
+      held, needing a manual device pick.
+    All three are written up with facts, the evidence to collect and candidate fixes
+    in BUGS.md.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`
