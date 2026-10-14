@@ -251,6 +251,27 @@ design review.
 | P9.2b | Lock-screen player polish: artwork v2 (full-bleed, gradient, station name, state pill; fixes Samsung's black corners), A25 | todo |
 | P9.4 | Android Auto, **lock-screen controls on the car screen** (A20–A23): the A18 media player registered as an Auto media app (talking uses the phone mic; car mic only if needed) | todo (low priority) |
 | P9.5 | Android Auto **control panel app** (Car App Library, IoT templates): station list with Mute / Solo / Hears you toggles and health text, Mic and Disconnect. Not the full Console: Auto allows no custom UI, meters or web views while driving. About 2–4 d | deferred (non-priority) |
+| P9.6 | **Wear OS companion** (Galaxy Watch): station list, mic on/off, mute and solo, device config — the Console from the wrist. Surveyed 2026-10-14, nothing built; non-priority because there is no watch yet | deferred (non-priority) |
+
+**P9.6 — what a watch companion would take** (surveyed 2026-10-14, nothing built).
+Two halves. The **free half**: the A18 `MediaSession` already advertises *Next station*, mic
+on/off, mute and solo as named actions with icons, and Wear OS (and Samsung's own) stock media
+surface mirrors the phone's active session — so station switching, mic, mute and solo should
+already be reachable from a Watch4 or newer with no code at all. Verify that before writing
+anything; it rides the same media-button path as B18. The **paid half**: picking a *specific*
+station (a watch cannot browse the `MediaBrowserService`) and device config need a real app —
+a `wear` module as its own Gradle project (**never** inside `Builds/Android`, which the
+Projucer resave owns and would wipe), Compose for Wear OS, a Tile and a complication, signed
+with the same key as the phone (the Data Layer requires it). On the phone side the pieces are
+declarative and already exist as `.jucer` fields: `play-services-wearable` in
+`androidDependencies`, a `WearableListenerService` in `androidManifestCustomXmlElements`, and
+its Java in `Source/android/java` — an *additional Java folder*, so a new file needs no resave.
+That service just calls the `nativeAction(NATIVE_MIC/MUTE/SOLO/NEXT)` entry points the app
+already has. Estimate: ~1–2 d phone side, ~3–5 d watch side (+1–2 for Tile/complication
+polish). Two dependencies: **device config on the watch is blocked on B22** (the picked device
+is ignored today, so a watch picker would ship a broken control to a second screen), and the
+watch has to be Wear OS — Watch4 or newer; a Tizen watch (Watch3 or earlier) cannot run one.
+Sideloading needs developer mode + wireless debugging enabled on the watch.
 
 ## P7 — Web Console container
 
