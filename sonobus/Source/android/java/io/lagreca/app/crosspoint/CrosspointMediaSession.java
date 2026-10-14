@@ -19,6 +19,7 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import java.util.ArrayList;
@@ -45,6 +46,8 @@ import java.util.List;
  * button presses become nativePlayerButton calls.
  */
 final class CrosspointMediaSession {
+
+    private static final String TAG = "Crosspoint";
 
     // Native button codes. Must match crosspoint::android::PlayerButton in AndroidPlatform.h.
     static final int NATIVE_MIC = 1;
@@ -152,6 +155,13 @@ final class CrosspointMediaSession {
             @Override public boolean onMediaButtonEvent(Intent intent) {
                 KeyEvent ev = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
                 if (ev == null) return false;
+                // A22 follow-up: while we hold the Bluetooth call/communication
+                // route the headset's button stops toggling the mic on maelo's buds.
+                // Log every key that reaches the session (with whether it is still
+                // the active one) so a retest shows whether the key is swallowed
+                // before it arrives, or arrives with a code we do not handle.
+                Log.i(TAG, "media button: key=" + ev.getKeyCode() + " action=" + ev.getAction()
+                    + " repeat=" + ev.getRepeatCount() + " active=" + session.isActive());
                 switch (ev.getKeyCode()) {
                     case KeyEvent.KEYCODE_HEADSETHOOK:
                     case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
@@ -261,6 +271,12 @@ final class CrosspointMediaSession {
         return null;
     }
 
+    /** True when any station is soloed (the §12/§13 solo-dim rules). */
+    private boolean anySolo() {
+        for (Station s : stations) if (s.solo) return true;
+        return false;
+    }
+
     // ---- A20 (section 13.1): what the Android Auto browse list reads ----------
 
     /** The session token Auto attaches its player to. */
@@ -289,21 +305,27 @@ final class CrosspointMediaSession {
         return bmp;
     }
 
-    /** Section 13.1: the browse item's subtitle, e.g. "Hears you · Clear". */
-    String stationState(Station s) {
-        if (s == null) return "";
+    /**
+     * Section 13.1/13.2: the browse item's car-short state, e.g. "Hears you ·
+     * Clear". The single implementation for the station state both call sites
+     * share (the Auto browse list, and CrosspointMediaSession's §12.4 second
+     * line). `dimmed` means some *other* station is soloed, which dims this
+     * one's playback.
+     */
+    static String stationStateFor(boolean hearsYou, boolean solo, boolean mute,
+                                  boolean dimmed, String presence, String health) {
         List<String> p = new ArrayList<>();
-        if (s.hearsYou) p.add("Hears you");
-        if (s.solo) p.add("Soloed");
-        if (s.mute) p.add("Muted");
-        String presence = s.presence == null ? "online" : s.presence;
+        if (hearsYou) p.add("Hears you");
+        if (solo) p.add("Soloed");
+        if (mute) p.add("Muted");
+        else if (dimmed && !solo) p.add("Dimmed");   // a soloed station is never dimmed
         if ("lost".equals(presence)) p.add("Lost");
         else if ("offline".equals(presence)) p.add("Offline");
-        else if ("unstable".equals(s.health)) p.add("Unstable");
-        else if (!s.hearsYou && !s.solo) p.add("Clear");
+        else if ("unstable".equals(health)) p.add("Unstable");
+        else p.add("Clear");     // §13.2: the health word is there whenever online
         StringBuilder sb = new StringBuilder();
         for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
-        return sb.length() == 0 ? "Clear" : sb.toString();
+        return sb.toString();
     }
 
     /**
@@ -339,23 +361,38 @@ final class CrosspointMediaSession {
         return s != null ? s.name : "Crosspoint";
     }
 
-    /** Second line: the selected station's state, " · " joined; not connected: the section 4 connection text. */
+    /**
+     * Section 12.4: the selected station's second line, " · " joined; not
+     * connected: the section 4 connection text. The state words come from the
+     * shared stationStateFor; the §12.4 line then renders the last word with
+     * detail ("Lost · reconnecting", "Unstable · 2% loss", "Clear · 32 ms") and
+     * the car-short "Dimmed" with the engine's actual dim level.
+     */
     private String albumText() {
         Station s = selectedStation();
         if (!connected || s == null) return connText;
-        List<String> p = new ArrayList<>();
-        // The system's centre button keeps showing "pause" (the session stays PLAYING, section 12.1),
-        // so the paused state is told here.
-        if (!listening) p.add("Listening paused");
-        boolean anySolo = false;
-        for (Station o : stations) anySolo |= o.solo;
-        if (s.mute) p.add("Muted");
-        if (s.solo) p.add("Soloed");
-        else if (anySolo && !s.mute) p.add("Dimmed −" + Math.abs(soloDimDb));
-        if ("lost".equals(s.presence)) p.add("Lost · reconnecting");
-        else if ("offline".equals(s.presence)) p.add("Offline");
-        else if ("unstable".equals(s.health)) p.add(s.lossPct >= 0.5 ? "Unstable · " + Math.round(s.lossPct) + "% loss" : "Unstable");
-        else p.add(s.latencyMs >= 0 ? "Clear · " + Math.round(s.latencyMs) + " ms" : "Clear");
+        String presence = s.presence == null ? "online" : s.presence;
+        final boolean dimmed = anySolo() && !s.solo;
+        final String state = stationStateFor(s.hearsYou, s.solo, s.mute, dimmed, presence, s.health);
+        List<String> parts = new ArrayList<>(java.util.Arrays.asList(state.split(" · ")));
+        if (!listening) parts.add(0, "Listening paused");        // the system button still says "pause"
+        List<String> p = new ArrayList<>(parts.size());
+        for (String part : parts) {
+            // §12.4 does not carry "Hears you" (the shared builder adds it for the
+            // car list, §13.2); the line is state words plus the health detail.
+            if (part.equals("Hears you")) continue;
+            if (part.equals("Dimmed")) {
+                p.add("Dimmed −" + Math.abs(soloDimDb));        // the §12.4 dim level
+            } else if (part.equals("Lost")) {
+                p.add("Lost · reconnecting");
+            } else if (part.equals("Unstable")) {
+                p.add(s.lossPct >= 0.5 ? "Unstable · " + Math.round(s.lossPct) + "% loss" : "Unstable");
+            } else if (part.equals("Clear")) {
+                p.add(s.latencyMs >= 0 ? "Clear · " + Math.round(s.latencyMs) + " ms" : "Clear");
+            } else {
+                p.add(part);
+            }
+        }
         StringBuilder sb = new StringBuilder();
         for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
         return sb.toString();
@@ -392,6 +429,19 @@ final class CrosspointMediaSession {
     private PlaybackState playbackState() {
         final Station sel = selectedStation();
         final boolean hasStation = sel != null;
+        // Section 13.3 (A20 design-review fix): a fresh install has nothing to play
+        // and nothing saved. Android Auto shows the app's *error* state for that, not
+        // a browse-list row, so the message lives here and the list stays empty. The
+        // phone is unaffected: the session is inactive while disconnected (§12.1), so
+        // its lock-screen player is not there and only Auto reads this.
+        if (!connected && !hasSaved) {
+            return new PlaybackState.Builder()
+                .setState(PlaybackState.STATE_ERROR, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f,
+                          android.os.SystemClock.elapsedRealtime())
+                .setErrorMessage("Set up Crosspoint on your phone first.")
+                .setActions(0)
+                .build();
+        }
         // Section 12.1: "playing" from connect until Disconnect, whatever the mic
         // does, so the system never drops the player. (Pausing Listening also stays
         // PLAYING for the same reason: see the A18 spike in docs/TASKS.md.)

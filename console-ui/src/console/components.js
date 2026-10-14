@@ -6,7 +6,8 @@ import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
 import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE, allHearYouText } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
-import { callBandText, callMicButton, blockedMicButton, micBlocked, problemRows } from '../lib/platform.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, btDevice, problemRows } from '../lib/platform.js';
+import { DEFAULT_SERVER } from '../lib/defaults.js';
 
 const STATION_VAR = i => `var(--s${(i % 4) + 1})`;
 const ordered = st => st.stationOrder.map(id => st.stations[id]).filter(Boolean);
@@ -94,8 +95,10 @@ export function placement(ctx) {
   field.append(h('div.axis'));
   for (const v of AUDIO.panSnaps) field.append(h(`div.tick${v === 0 ? '.c' : ''}`, { style: { left: fieldX(v) } }));
   field.append(h('span.end', { style: { left: '0' } }, 'L'), h('span.end', { style: { right: '0' } }, 'R'));
+  // A22 (android.md 14): a quiet note while placement is off (headset-mic route is mono).
+  const plNote = h('small.note', { hidden: true });
   const el = h('section.stage', { 'aria-label': 'Stereo placement' },
-    h('div.stagehead', h('span.label', 'Placement'), h('span.spacer'),
+    h('div.stagehead', h('span.label', 'Placement'), plNote, h('span.spacer'),
       h('button.btn.small', { title: 'Spread stations evenly from left to right', onclick: () => ctx.client.fire('stations.spread') }, 'Spread'),
       h('button.btn.small', { title: 'Put every station in the centre', onclick: () => ctx.client.fire('stations.centerAll') }, 'All centre')),
     field);
@@ -157,6 +160,11 @@ export function placement(ctx) {
         p.style.left = fieldX(pan);
       }
       layoutPucks(field, list.map(s => pucks.get(s.id)));
+      // A22 (android.md 14): placement is off on the mono headset-mic route (LE Audio keeps stereo).
+      const route = btRoute(st);
+      const plOff = !!route && !route.stereo && st.settings.bluetoothMic === 'headset';
+      plNote.hidden = !plOff;
+      if (plOff) setText(plNote, 'Placement is off while using the headset mic.');
     },
   };
 }
@@ -489,6 +497,38 @@ export function settingsSheet(ctx) {
   const outSel = h('select', { onchange: () => ctx.client.fire('devices.setOutput', { id: outSel.value }) });
   const dimSel = h('select', { onchange: () => ctx.client.fire('settings.set', { soloDimDb: Number(dimSel.value) }) },
     [-12, -18, -24, -30].map(v => h('option', { value: v }, `−${Math.abs(v)} dB`)));
+  // A22 (android.md 14): Bluetooth mic. Shown while a Bluetooth headset or car is
+  // connected — that is platform.bluetoothDevice, NOT platform.bluetoothRoute:
+  // the route only appears once this row has already set the setting to "headset",
+  // so gating the row on it would hide the only control that picks the route.
+  // "Phone mic" is today's routing, "Headset mic" takes the call/SCO route (mono,
+  // placement off — or stereo for LE Audio, which the device reports as le:true).
+  const btMicPhone = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { bluetoothMic: 'phone' }) }, 'Phone mic');
+  const btMicHeadset = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { bluetoothMic: 'headset' }) }, 'Headset mic');
+  const btMicNote = h('small.note');
+  const btMicSeg = h('div.seg', { role: 'group', 'aria-label': 'Bluetooth mic' }, btMicPhone, btMicHeadset);
+  const btMicField = field('Bluetooth mic', btMicSeg, btMicNote);
+
+  // A22 (on-demand route): the headset route is held only while capture is
+  // wanted, so playback stays stereo (A2DP) whenever nothing is being captured —
+  // these two decide when "wanted" is true. Both only matter with the setting on
+  // "Headset mic", so they are shown with that choice.
+  //  - solo engages: a solo is a persistent state, so while any station is soloed
+  //    the route stays held (mono) — that is why it is optional.
+  //  - release on mute: with it off, muting keeps the route held so unmuting is
+  //    instant, at the price of staying mono while muted. (In push-to-talk,
+  //    releasing the key is not a mute and always releases, after the 3 s hold.)
+  const seg = (label, key) => {
+    const off = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { [key]: false }) }, 'Off');
+    const on = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { [key]: true }) }, 'On');
+    return { off, on, row: h('div.seg', { role: 'group', 'aria-label': label }, off, on) };
+  };
+  const btSoloSeg = seg('Solo also uses the headset mic', 'bluetoothMicSoloEngages');
+  const btSoloField = field('Solo also uses the headset mic', btSoloSeg.row,
+    h('small.note', 'While a station is soloed the headset route stays on.'));
+  const btMuteSeg = seg('Release the headset route when muted', 'bluetoothMicReleaseOnMute');
+  const btMuteField = field('Release the route when muted', btMuteSeg.row,
+    h('small.note', 'Off keeps the route through a mute, so unmuting is instant.'));
   const ptt = h('div.num.readonly'); const pttField = field('Push-to-talk key (works in other apps)', ptt);
   const codec = h('div'), buffer = h('div');
   const remembered = h('div.remembered'); const rememberedField = field('Remembered stations', remembered);
@@ -501,7 +541,8 @@ export function settingsSheet(ctx) {
     problems,
     h('span.label', 'Connection'), form,
     h('span.label', 'Audio'),
-    field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), pttField,
+    field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), btMicField,
+    btSoloField, btMuteField, pttField,
     h('details', h('summary', 'Advanced'), h('div.adv', field('Codec', codec), field('Network buffer', buffer))),
     rememberedField);
   const el = h('div', { style: { display: 'contents' } }, scrim, sheet);
@@ -545,7 +586,7 @@ export function settingsSheet(ctx) {
       problems.hidden = !rows.length;
       const connected = c.state === 'connected';
       for (const f of [server, group, password, name]) f.disabled = connected;
-      setVal(server, c.server ?? ''); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');
+      setVal(server, c.server || server.value || DEFAULT_SERVER); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');
       setText(form.querySelector('.pwnote'), c.passwordSaved ? 'A password is saved. Leave empty to keep it.' : 'No password saved.');
       setText(connectBtn, connected ? 'Disconnect' : c.state === 'connecting' || c.state === 'reconnecting' ? 'Connecting…' : 'Connect');
       connectBtn.classList.toggle('primary', !connected);
@@ -554,6 +595,31 @@ export function settingsSheet(ctx) {
       options(micSel, st.devices.inputs, st.mic.device);
       options(outSel, st.devices.outputs, st.output.device);
       setVal(dimSel, String(s.soloDimDb));
+      // A22 (android.md 14): the Bluetooth mic row is offered while a Bluetooth
+      // headset or car is *connected* (bluetoothDevice) — that is what lets the
+      // user pick "Headset" at all. bluetoothRoute only reports the route that
+      // choice produced, so it can never gate this row.
+      const dev = btDevice(st);
+      btMicField.hidden = !dev;
+      // A22 (on-demand route): the two policies only mean anything with a
+      // Bluetooth device on the "Headset mic" route — they decide when that route
+      // is held. Set OUTSIDE the `dev` block below: with no device they must
+      // disappear, and a `hidden` nobody assigns keeps them on screen.
+      const btPolicies = !!dev && s.bluetoothMic === 'headset';
+      btSoloField.hidden = btMuteField.hidden = !btPolicies;
+      if (dev) {
+        setAttr(btMicPhone, 'aria-pressed', (s.bluetoothMic ?? 'phone') === 'phone');
+        setAttr(btMicHeadset, 'aria-pressed', s.bluetoothMic === 'headset');
+        setText(btMicNote, s.bluetoothMic === 'headset'
+          ? (dev.le ? 'Hands-free, stereo.' : 'Hands-free, call quality. Both ears hear the same mix, so placement is off.')
+          : 'Stereo, full quality. Talk toward the phone.');
+      }
+      if (btPolicies) {
+        setAttr(btSoloSeg.off, 'aria-pressed', s.bluetoothMicSoloEngages === false);
+        setAttr(btSoloSeg.on, 'aria-pressed', s.bluetoothMicSoloEngages !== false);
+        setAttr(btMuteSeg.off, 'aria-pressed', s.bluetoothMicReleaseOnMute === false);
+        setAttr(btMuteSeg.on, 'aria-pressed', s.bluetoothMicReleaseOnMute !== false);
+      }
       pttField.hidden = !s.pttHotkey; setText(ptt, s.pttHotkey ?? '');
       setText(codec, `${s.codec === 'opus' ? 'Opus' : s.codec} · ${s.bitrateKbps} kbps`);
       setHTML(buffer, `${s.networkBuffer.mode === 'auto' ? 'Auto' : 'Fixed'} (currently <span class="num">${s.networkBuffer.currentMs} ms</span>)`);

@@ -357,6 +357,23 @@ test('mic.*: setMode, setOn (wrong_mode in ptt), output.setLevel, settings.set, 
   await cmd('settings.set', { codec: 'opus', bitrateKbps: 96 });
   await waitState(s => s.settings.codec === 'opus' && s.settings.bitrateKbps === 96, 3000, 'opus 96');
 
+  // A22 (android.md 14): the Bluetooth mic choice and its two on-demand route
+  // policies. The policies are booleans, so the values are validated and the
+  // round-trip goes through the same settings object the console reads.
+  await expectErr(cmd('settings.set', { bluetoothMic: 'speaker' }), 'bad_request');
+  await expectErr(cmd('settings.set', { bluetoothMicSoloEngages: 'yes' }), 'bad_request');
+  await expectErr(cmd('settings.set', { bluetoothMicReleaseOnMute: 1 }), 'bad_request');
+  for (const v of ['headset', 'phone']) {
+    await cmd('settings.set', { bluetoothMic: v });
+    await waitState(s => s.settings.bluetoothMic === v, 3000, 'bluetoothMic ' + v);
+  }
+  for (const key of ['bluetoothMicSoloEngages', 'bluetoothMicReleaseOnMute']) {
+    for (const v of [false, true]) {
+      await cmd('settings.set', { [key]: v });
+      await waitState(s => s.settings[key] === v, 3000, key + ' ' + v);
+    }
+  }
+
   const st = consoleClient.store.state;
   for (const [c, list, cur] of [['devices.setInput', st.devices.inputs, st.mic.device], ['devices.setOutput', st.devices.outputs, st.output.device]]) {
     const field = s => (c === 'devices.setInput' ? s.mic.device : s.output.device);

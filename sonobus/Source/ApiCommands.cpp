@@ -449,6 +449,8 @@ void ApiCommands::setSettings (const var& a)
     std::optional<float> dim;
     std::optional<int> format;
     std::optional<String> hotkey;
+    std::optional<String> bluetoothMic;   // A22: "phone" | "headset"
+    std::optional<bool> btMicSoloEngages, btMicReleaseOnMute;   // A22: on-demand route policies
     String unsupported;
 
     for (auto& kv : o->getProperties())
@@ -458,6 +460,21 @@ void ApiCommands::setSettings (const var& a)
         {
             if (! isNumber (kv.value)) throw CmdError { "bad_request", "soloDimDb must be a number" };
             dim = (float) (double) kv.value;
+        }
+        else if (key == "bluetoothMic")
+        {
+            // A22: only valid on the phone with Bluetooth; the value is
+            // validated here and applied (processor + the Java route).
+            if (kv.value.toString() != "phone" && kv.value.toString() != "headset")
+                throw CmdError { "bad_request", "bluetoothMic must be \"phone\" or \"headset\"" };
+            bluetoothMic = kv.value.toString();
+        }
+        else if (key == "bluetoothMicSoloEngages" || key == "bluetoothMicReleaseOnMute")
+        {
+            // A22 (on-demand route): the two policies that decide whether a solo
+            // engages the headset route and whether a mute releases it.
+            if (! kv.value.isBool()) throw CmdError { "bad_request", key + " must be a boolean" };
+            (key == "bluetoothMicSoloEngages" ? btMicSoloEngages : btMicReleaseOnMute) = (bool) kv.value;
         }
         else if (key == "pttHotkey" && hooks.setPttHotkey)
         {
@@ -517,6 +534,9 @@ void ApiCommands::setSettings (const var& a)
         if (! hooks.setPttHotkey (*hotkey, err)) throw CmdError { "bad_request", err };   // before anything else is applied
     }
     if (dim) processor.setSoloDimDb (*dim);
+    if (bluetoothMic) processor.setBluetoothMic (*bluetoothMic);   // A22: the Java route reacts to the processor value
+    if (btMicSoloEngages) processor.setBluetoothMicSoloEngages (*btMicSoloEngages);        // A22
+    if (btMicReleaseOnMute) processor.setBluetoothMicReleaseOnMute (*btMicReleaseOnMute);  // A22
     if (format) processor.setDefaultAudioCodecFormat (*format);   // the send format of new connections
 }
 
@@ -590,6 +610,10 @@ void ApiCommands::connectionConnect (const var& a)
     if (! recents.isEmpty()) base = recents.getReference (0);
 
     String host = base.serverHost;
+    // No live/recent/initial connection: default to aoo.sonobus.net, so the API
+    // and the app only need a group (matches DEFAULT_SERVER_HOST; the settings
+    // sheet seeds the same host:port from console-ui's lib/defaults.js).
+    if (host.isEmpty()) host = DEFAULT_SERVER_HOST;
     int port = base.serverPort;
     String liveHost; int livePort = 0;
     if (processor.getServerEndpointInfo (liveHost, livePort) && liveHost.isNotEmpty()) { host = liveHost; port = livePort; }

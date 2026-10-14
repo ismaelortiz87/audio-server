@@ -593,10 +593,52 @@ Note under it, changing with the choice:
 **Behaviour with "Headset mic":**
 - While a Bluetooth headset or car is connected, Crosspoint switches to the
   communication route: `MODE_IN_COMMUNICATION` and
-  `setCommunicationDevice(<the BT device>)` (API 31+), or SCO on older phones.
-  Mic and playback both use that device.
-- When it disconnects, Crosspoint goes back to normal media routing and the
-  phone mic, and **the mic state doesn't change** (§6 rule).
+  `setCommunicationDevice(<the communication device>)` (API 31+), or SCO on
+  older phones. Mic and playback both use that device.
+  - The device to select is the one `getAvailableCommunicationDevices()` offers
+    (SCO, or a BLE headset) — **not** the A2DP output that media plays on: that
+    one has no microphone and `setCommunicationDevice` refuses it. Selecting the
+    communication device is also what makes the framework bring the SCO link up.
+  - This needs the `MODIFY_AUDIO_SETTINGS` permission (`startBluetoothSco()` and
+    `stopBluetoothSco()` require it, and `setMode()` has been gated on it): without
+    it the SCO path throws `SecurityException`, and the route silently never
+    engages (no mono switch, phone mic stays in use).
+  - **Both directions reopen the engine's audio device.** Android cannot be relied
+    on to move already-open streams between the media and call routes: a release
+    left the engine reading the call channel (a frozen input) and, once the release
+    had recreated the device, an unmute left the buds mic silent until a device
+    pick. `Signals.onBtRouteChanged` therefore reopens in both directions, and it
+    has to be a *real* reopen: `restartLastAudioDevice()` returns early *while a
+    device is open* and `setAudioDeviceSetup()` returns early when the setup is
+    unchanged, so the app closes the device first (forcing JUCE to delete and
+    recreate it) and remaps a name that vanished with the route to the
+    system-default entry.
+  - The route is reported to native only once the platform is really on it, or
+    really off it (`getCommunicationDevice()` / `isBluetoothScoOn()`, and — API
+    33+ — the media route for a release), each with its own bound (3 s to engage,
+    4 s to release). That report is what triggers the reopen, so it must not land
+    in the middle of the switch. Selecting the communication device is not the link
+    being up: the SCO takes a moment after the selection.
+ - **On-demand: the route is held only while capture is wanted.** Holding the
+    communication route forces the narrowband mono call path whether or not
+    anything is captured, so Crosspoint holds it only while the engine is
+    transmitting (`isMicTransmitting()` — mic on, or PTT held). When nothing is
+    wanted the route is released after a **3 s hold** (an ordinary pause in a
+    conversation must not pay an SCO teardown + setup, each ~0.2–0.5 s plus a
+    device reopen) and playback returns to the stereo A2DP channel.
+ - **The release is reported to the engine only once the platform has really
+    left the call route** (`getCommunicationDevice() == null` and
+    `isBluetoothScoOn()` false, bounded by 2.5 s). That report is what reopens
+    the engine's device, so reporting it while the SCO link tears down rebinds
+    capture to a dying channel — heard as noise until something forced another
+    reopen. Two policies decide when "wanted" is true:
+    `settings.bluetoothMicSoloEngages` (default on: soloing a station is a
+    persistent state, so while it lasts the route stays held and playback stays
+    mono) and `settings.bluetoothMicReleaseOnMute` (default on; with it off a
+    mute keeps the route held, so unmuting is instant, at the cost of staying
+    mono while muted — in PTT a released key is not a mute and always releases).
+ - When it disconnects, Crosspoint goes back to normal media routing and the
+   phone mic, and **the mic state doesn't change** (§6 rule).
 - **LE Audio** devices that can do stereo and mic together keep stereo. In
   that case the note says "Hands-free, stereo" and placement stays on.
 - The placement field and pucks in the Console show a quiet note while
@@ -606,6 +648,13 @@ Note under it, changing with the choice:
 - **Device names (§6):** while the headset mic is in use, Microphone shows
   "Bluetooth · {name}".
 
-**API:** `settings.bluetoothMic: "phone" | "headset"`, and
-`platform.bluetoothRoute: null | { name, stereo }` (null when no Bluetooth
-headset or car is connected).
+**API:** `settings.bluetoothMic: "phone" | "headset"`,
+`settings.bluetoothMicSoloEngages: bool` and
+`settings.bluetoothMicReleaseOnMute: bool` (the on-demand route policies, both
+default true and persisted), and
+`platform.bluetoothDevice: null | { name, le }` — the Bluetooth headset or car
+that is *connected*, which is what offers the row (null when none is connected),
+`le` true for LE Audio. Alongside it `platform.bluetoothRoute: null | { name,
+stereo }` — the route actually taken, so it stays null until the setting is
+"headset" and a device is connected. The row must read the device, not the route:
+gating it on the route hides the only control that can set the route.

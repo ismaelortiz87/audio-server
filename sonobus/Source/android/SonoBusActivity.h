@@ -62,6 +62,10 @@ private:
     CALLBACK (nativePlayerButtonJni,     "nativePlayerButton",     "(I)V") \
     CALLBACK (nativeSelectStationJni,    "nativeSelectStation",    "(Ljava/lang/String;)V") \
     CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
+    CALLBACK (nativeBtRouteJni,          "nativeBtRoute",          "(Ljava/lang/String;Z)V") \
+    CALLBACK (nativeBtDeviceJni,         "nativeBtDevice",         "(Ljava/lang/String;Z)V") \
+    CALLBACK (nativeBtMicSettingJni,     "nativeBtMicSetting",     "()Ljava/lang/String;") \
+    CALLBACK (nativeBtRouteFlagsJni,     "nativeBtRouteFlags",     "()I") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
 #undef JNI_CLASS_MEMBERS
@@ -128,6 +132,82 @@ private:
         auto& sig = crosspoint::android::Signals::get();
         sig.shutdownRequested.store (true);
         if (sig.onShutdown) sig.onShutdown();
+    }
+
+    /** A22 (android.md 14): the Bluetooth route changed. `name` is the connected
+        headset/car (null when none); `stereo` is true for LE Audio (stereo + mic
+        together, placement stays on) and false for the call/SCO route (both ears
+        get the same mix). Recorded here; EngineState turns it into
+        platform.bluetoothRoute. */
+    static void JNIEXPORT nativeBtRouteJni (JNIEnv* env, jclass, jstring name, jboolean stereo)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        {
+            std::lock_guard<std::mutex> lock (sig.btRouteNameLock);
+            if (name == nullptr)
+            {
+                sig.btRoute.store (false);
+                sig.btRouteStereo.store (false);
+                sig.btRouteName.clear();
+            }
+            else
+            {
+                sig.btRoute.store (true);
+                sig.btRouteStereo.store (stereo != JNI_FALSE);
+                sig.btRouteName = juceString (env, name).toStdString();
+            }
+        }
+        // A22: the route really changed, so the engine has to follow it — the app
+        // reopens its audio device here, which is what puts capture on the
+        // headset's mic and playback on the mono call route. This callback is on
+        // the Android main thread, i.e. JUCE's message thread, like onShutdown.
+        if (sig.onBtRouteChanged != nullptr)
+            sig.onBtRouteChanged (name != nullptr);
+    }
+
+    /** A22 (android.md 14): a Bluetooth headset/car is connected (or was
+        disconnected). Independent of the "Bluetooth mic" setting: this is what
+        makes the Settings row available, while nativeBtRoute above reports only
+        the route actually taken. `le` is true for LE Audio. */
+    static void JNIEXPORT nativeBtDeviceJni (JNIEnv* env, jclass, jstring name, jboolean le)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        std::lock_guard<std::mutex> lock (sig.btDeviceNameLock);
+        if (name == nullptr)
+        {
+            sig.btDevice.store (false);
+            sig.btDeviceLe.store (false);
+            sig.btDeviceName.clear();
+        }
+        else
+        {
+            sig.btDevice.store (true);
+            sig.btDeviceLe.store (le != JNI_FALSE);
+            sig.btDeviceName = juceString (env, name).toStdString();
+        }
+    }
+
+    /** A22 (android.md 14): the current "Bluetooth mic" setting, read by the Java
+        route controller on its main-looper tick. The controller's own tick mirrors
+        the processor value into the Signals global on the message thread, so this
+        needs no engine handle and is safe before the engine exists (returns the
+        default "phone" until the first tick). */
+    static jstring JNIEXPORT nativeBtMicSettingJni (JNIEnv* env, jclass)
+    {
+        const bool headset = crosspoint::android::Signals::get().btMic.load() == 1;
+        // A new local jstring; the Java caller owns it (do not wrap in LocalRef,
+        // whose destructor would delete the very reference we return).
+        return env->NewStringUTF (headset ? "headset" : "phone");
+    }
+
+    /** A22 (android.md 14, on-demand route): the mic/solo state and the two route
+        policies, read by the Java route controller on its main-looper tick — one
+        int instead of four calls. A bitmask: see Signals::BtRouteFlag. Mirrored by
+        the controller's tick on the message thread, so it needs no engine handle
+        and is safe before the engine exists (0 = nothing wanted, no route). */
+    static jint JNIEXPORT nativeBtRouteFlagsJni (JNIEnv*, jclass)
+    {
+        return (jint) crosspoint::android::Signals::get().btRouteFlags.load();
     }
 
  

@@ -100,6 +100,12 @@ extern juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter();
 namespace juce
 {
 
+// A22: cleared by the app's shutdown() — a device reopen scheduled just before the
+// app is torn down (a route release happens on the way out too) would touch a device
+// manager that is already going away: a use-after-free, which Android reports as a
+// crash right after the app is closed. File scope, so shutdown() can clear it.
+static std::atomic<bool> a22AudioReopenAllowed { true };
+
 //==============================================================================
 class SonobusStandaloneFilterApp  : public JUCEApplication, public Timer
 {
@@ -778,6 +784,100 @@ public:
         crosspoint::android::Signals::get().onSelectStation = [this] (const String& station)
         {
             if (androidService != nullptr) androidService->selectStation (station);
+        };
+        // A22 (android.md 14, on-demand route): the Java controller moved audio onto
+        // (or off) the headset's call channel. Reopen the audio device so the streams
+        // follow, in *both* directions. Relying on Android to move already-open
+        // streams meant the engage only worked while the device had never been
+        // recreated; once the release recreates it (below), the streams stay where
+        // they were and the headset's mic never comes back on the next unmute. Java
+        // reports this only once the platform is really on, or really off, the call
+        // route, so the reopen lands after the switch rather than during it.
+        //
+        // The reopen has to be a real one. JUCE's restartLastAudioDevice() returns
+        // early while a device is open, and setAudioDeviceSetup() returns early when
+        // the setup is unchanged: both are no-ops at this point, which is why the
+        // first attempt at this fixed nothing. Closing first makes the next call
+        // recreate the device, and recreating is what rebinds the streams. The small
+        // delay covers the platform's own last step of the switch.
+        static const auto reopenAfterRouteChange = [] (juce::AudioDeviceManager& dm, bool engaged)
+        {
+            auto setup = dm.getAudioDeviceSetup();
+            auto* type = dm.getCurrentDeviceTypeObject();
+
+            // A device name that came and went with the route (a call-channel entry)
+            // would fail the reopen; the system-default entry is what the phone
+            // routes to now.
+            const auto fixName = [type] (String& name, bool isInput)
+            {
+                if (type == nullptr || name.isEmpty() || type->getDeviceNames (isInput).contains (name)) return;
+                for (const auto& candidate : type->getDeviceNames (isInput))
+                    if (candidate.startsWith ("System Default")) { name = candidate; return; }
+            };
+            fixName (setup.inputDeviceName, true);
+            fixName (setup.outputDeviceName, false);
+
+            // Kept aside: the system-default entry is the one name that cannot vanish
+            // with the route, so it is the fallback if the current setup no longer
+            // opens at all.
+            const auto systemDefault = [type] (bool isInput)
+            {
+                if (type != nullptr)
+                    for (const auto& candidate : type->getDeviceNames (isInput))
+                        if (candidate.startsWith ("System Default")) return candidate;
+                return String();
+            };
+            const auto defaultIn  = systemDefault (true);
+            const auto defaultOut = systemDefault (false);
+
+            dm.closeAudioDevice();
+            String err = dm.setAudioDeviceSetup (setup, true);
+            bool ok = dm.getCurrentAudioDevice() != nullptr;
+
+            // Never leave the engine with no device open: it goes silent, and the
+            // emptied setup is what gets saved as the device state on exit, which then
+            // breaks the next launch. A failed open deletes the device *and* clears
+            // the setup's names, so each fallback is built from a copy taken before.
+            if (!ok)
+            {
+                auto fallback = setup;
+                if (defaultIn.isNotEmpty())  fallback.inputDeviceName  = defaultIn;
+                if (defaultOut.isNotEmpty()) fallback.outputDeviceName = defaultOut;
+                dm.closeAudioDevice();
+                err = dm.setAudioDeviceSetup (fallback, true);
+                ok = dm.getCurrentAudioDevice() != nullptr;
+            }
+            if (!ok)
+            {
+                auto permissive = dm.getAudioDeviceSetup();
+                permissive.useDefaultInputChannels = true;
+                permissive.useDefaultOutputChannels = true;
+                dm.closeAudioDevice();
+                err = dm.setAudioDeviceSetup (permissive, true);
+                ok = dm.getCurrentAudioDevice() != nullptr;
+            }
+            if (!ok)
+            {
+                dm.closeAudioDevice();
+                dm.restartLastAudioDevice();
+                ok = dm.getCurrentAudioDevice() != nullptr;
+            }
+
+            // On Android Logger::outputDebugString lands in logcat (tag JUCE), so a
+            // retest without a debugger still records whether the rebind happened.
+            const auto now = dm.getAudioDeviceSetup();
+            Logger::outputDebugString (String ("A22 route ") + (engaged ? "engaged" : "released")
+                + ": reopened audio in='" + now.inputDeviceName + "' out='" + now.outputDeviceName + "'"
+                + (ok ? String (" ok") : " FAILED (" + err + "): no audio device open"));
+        };
+        crosspoint::android::Signals::get().onBtRouteChanged = [dm] (bool engaged)
+        {
+            if (dm == nullptr) return;
+            Timer::callAfterDelay (300, [dm, engaged]()
+            {
+                if (!a22AudioReopenAllowed.load()) return;
+                reopenAfterRouteChange (*dm, engaged);
+            });
         };
         androidService->setShutdownHandler ([this, proc]() {            // Swipe-away (android.md section 1): leave the group now; Java ends the process shortly after.
             if (apiCommands != nullptr) apiCommands->disconnect();
@@ -1836,6 +1936,9 @@ public:
     void shutdown() override
     {
         //DBG("shutdown");
+        // A22: first — a route release is part of the way out, and its reopen timer
+        // must not fire against the device manager being destroyed right here.
+        a22AudioReopenAllowed.store (false);
         quitSignalWatcher.stopTimer();
         if (globalHotkey != nullptr) { globalHotkey->onChange = nullptr; globalHotkey.reset(); }   // P6.5: first, releases the key
        #if JUCE_ANDROID

@@ -136,7 +136,7 @@ Ordered so that every task appears after everything it depends on.
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
-| P9.2 | Native Android Console (APK): broken down into A1–A23 below, lanes in the P9.2 card | P5.6 | — | — | todo | |
+| P9.2 | Native Android Console (APK): broken down into A1–A23 below, lanes in the P9.2 card | P5.6 | — | — | wip | Claude 2026-10-13: **21 of the A-tasks done**; open: **A9** (Settings problem-rows recapture, the last item) and **A22** (Bluetooth mic — the on-demand route is verified on hardware; hardening task open for B17–B19 plus the two route edge cases); deferred: A12, A19 |
 | A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | done | Claude 2026-10-12: toolchain installed and verified, `--check` green, emulator boots, Gradle runs |
 | A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
 | A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
@@ -145,23 +145,23 @@ Ordered so that every task appears after everything it depends on.
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | done | Claude: design approved 2026-10-12 (follow-ups moved to A9) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
-| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: code verified present; design review: mic-blocked Console approved (A24 02). **Recapture needed:** Settings problem rows (A24 03 was covered by an emulator System UI ANR) |
+| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip | Claude 2026-10-13: code verified present; **design review passed** (mic-blocked Console approved, A24 02); **one item left:** recapture the Settings problem rows (A24 03 was covered by an emulator System UI ANR). No dependency on A20/A22, but A22 changes the Settings sheet, so recapture after the A22 merge and it is done once |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
-| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | wip, awaiting design review | **Recapture needed:** during and after a call **with the mic live before the call** (A24 04/05 were covered by an ANR, and the mic was already off) |
+| A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | done | Claude 2026-10-13: design review passed (code matches android.md §5/§6 on every point; unit tests for the earcon). maelo: marked done. **Known unverified:** the live "call detected" path on a real device — this box's `emu gsm call` doesn't flip `AudioManager.getMode()`, so if it ever misbehaves, switch detection to a `PHONE_STATE` broadcast and recapture with the mic live before the call (A24 04/05 were lost to an ANR) |
 | A12 | Mic toggle from the headset button: folded into A18 (play/pause = mic) | A14, A7 | S | any + design review | deferred | see A18 |
 | A15 | UX addendum: lock-screen player (media session: Now Bar + expanded player) | A2, A10 | S | design | done | Claude (`docs/design/android.md` §12) |
 | A17 | Native control bridge: notification/tile buttons → engine commands, station state → Java | A10 | M | any | done | Claude 2026-10-13: `runLocalCommand` reuses the API paths; every player button verified on API 34 |
 | A16 | Service notification never stays gone (re-post on dismiss and on app foreground) | A9 | S | any | done | Claude 2026-10-13: root-caused; media session makes it non-dismissible (FLAG_NO_DISMISS), verified on API 34 |
 | A18 | Lock-screen player: media session with Mic (play/pause), station ◀ ▶, Mute, Solo; headset button (absorbs A12) | A15, A16, A17 | M | any + design review | done | Layout B (spike: A impossible on API 33/34) Design approved by Claude 2026-10-13. |
 | A24 | Build the APK for maelo once the lock-screen player lands (debug, plus release if a keystore is set) | A18 | S | any | done | Claude 2026-10-13: debug APK `build/apk/crosspoint-debug-275316ef.apk` (195 MB, built from 275316ef); release skipped, no keystore |
-| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | wip, awaiting check on the Samsung | Claude 2026-10-13: merged (`cc8ddaab`), builds; APK `build/apk/crosspoint-debug-cc8ddaab.apk` |
-| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6 |
+| A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`), builds; maelo 2026-10-13: checked on the Samsung, confirmed nice |
+| A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | todo | |
-| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; DHU unavailable (Play Store stub), so car-screen captures and design review are outstanding |
-| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | todo | |
-| A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | todo | |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); **then four retests on the phone**: the route engages on unmute/solo, releases ~3 s after a mute with stereo back, no freeze/noise, and an unmute restores the buds mic — **the on-demand flow works on hardware** (three release-path crashes found and fixed along the way, `435b49da29`, `e9fac9c4cf`); residual: **B17** (rare crash right after reopening), **B18** (mute button dead while the route is held), **B19** (occasional noise when the headset drops) — all in BUGS.md, none scheduled; car check still pending |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | done | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; car acceptance passed (maelo 2026-10-13, A23). **PR #5: the design-review findings fixed** — a soloed station no longer reads "Soloed · Dimmed"; the health word is back for stations that hear you or are soloed (the lock-screen "Clear · 32 ms" detail regressed without it); `connecting` is read with `optBoolean`, not `has` (the key exists and is false after any connect attempt); connecting is said in the subtitle (§13.3), not the title; the fresh-install message is Auto's `STATE_ERROR` + `setErrorMessage` with an empty list, not a non-playable row |
+| A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
+| A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
 | P9.5 | Android Auto control panel app (Car App Library, IoT templates) | A20 | L | any | deferred | non-priority, ROADMAP P9.5 |
 | P10.1 | Per-station recording (pre-fader, one file per station) | P3.4, P4.4 | M | any | deferred | |
@@ -199,9 +199,13 @@ them one at a time.
   (`CGWindowListCreateImage` obsoleted); the script exports
   `MACOSX_DEPLOYMENT_TARGET=11.0` to fix it. Verified on macOS 26 / arm64
   (Command Line Tools only, CMake 4.4, ninja): app 189/189 linked,
-  `--version` → 1.7.2; aooserver listens on TCP+UDP. **Linux not yet run
-  through the script**; the app's Linux build is proven by `docker/`, but the
-  new aooserver CMake on Linux is untested.
+  `--version` → 1.7.2; aooserver listens on TCP+UDP.
+  **Verified on Linux (2026-10-13, maelosdebian):** from a wiped `build/`,
+  `scripts/build-desktop.sh` exits 0 and builds both binaries —
+  `build/desktop-release/SonoBus_artefacts/Release/Standalone/sonobus` and
+  `build/aooserver-release/aooserver`. Both **execute**: `sonobus --version` →
+  `Crosspoint version 1.7.2`, and `aooserver --help` prints its options. So the
+  new `aooserver/CMakeLists.txt` is proven on Linux, not just macOS.
 
 ### F2 — Local multi-peer test harness
 - **Depends on:** F1 · **Size:** M · **Touches:** `scripts/` or `tests/` (new); may add a debug flag in `SonoStandaloneFilterApp.cpp`
@@ -239,7 +243,24 @@ them one at a time.
   Caveat: the real app reports `connected` asymmetrically/unstably (it tracks
   AOO invite timing, not routing), so the harness asserts presence + booleans
   by default; `--require-connected` opts in.
-  **Linux not yet run** (F2's card asks for it).
+  **Verified on Linux (2026-10-13, maelosdebian): all four scenarios pass** —
+  `mesh-stock`, `blocked-unknown`, `matrix-1v1`, `matrix-2v2` (the harness's
+  first Linux run). Four portability gaps had to be worked around; they are
+  harness bugs, not engine ones, and are worth fixing in the harness:
+  (1) the default `--app` path is the macOS bundle — pass the Linux binary;
+  (2) lines ~71-72 hardcode `MacBook Pro Microphone/Speakers`, so the peers exit
+  `audio.input_device … not found` — on Linux leave both device env vars empty
+  and let the app pick its default (naming any device, even
+  `Default Audio Device`, gives `could not open the audio device(s): no
+  channels` on this box); (3) line ~224 `${!PEER_PIDS[@]+"${!PEER_PIDS[@]}"}`
+  is a bash-5 parse error (`invalid variable name`) that also corrupts the
+  harness exit code, so a trailing exit 1 can accompany a passing scenario;
+  (4) peer isolation uses `CFFIXED_USER_HOME`, which only works on macOS — on
+  Linux every peer shares the real `~/.config/crosspoint/Crosspoint.settings`
+  and inherits whatever role the previous scenario wrote, which is exactly what
+  failed `mesh-stock`/`blocked-unknown` (`selfRole: expected "console", got
+  "vdi"`) until the run used a fresh `HOME`. On Linux the harness needs `HOME`
+  (or `XDG_CONFIG_HOME`) isolation too.
 
 ## UX — Experience design (Claude only)
 
@@ -551,7 +572,19 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   remain: larger ALSA buffer for the plugin PCMs, avoid client churn on the
   engine sinks (gateway connects once), or a jitter-buffer floor. Target: 0
   gaps > 200 ms in 10 minutes of steady state.
-- **Result:**
+- **Result (2026-10-13, maelosdebian, both backends on a quiet host):** PASS on
+  both, no incomplete run; the harness reports per-run medians and dropouts
+  (target < 150 ms), not the 10-minute steady-state figure above.
+  - Pulse: medians 70.2 / 61.5 / 59.8 ms (vdi→console) and 62.5 / 57.1 / 60.0 ms
+    (console→vdi); dropouts 2 and 4 across the three runs — the residual churn
+    below, well under the 0–8 seen under load.
+  - PipeWire: medians 101.1 / 102.4 / 101.1 ms (vdi→console, 1 dropout) and
+    97.9 / 97.9 / 97.9 ms (console→vdi, 0 dropouts).
+  So the latency itself is stable on both; what is left is the dropout/client
+  churn work below and the human VDI↔Mac-over-VPN measurement.
+  Images must be built with the right contexts first: web-console and pw-test
+  from the repo root, aooserver from `aooserver/` (its Dockerfile runs
+  `cmake -S .` on its own context).
 
 ### F2.1 — F2 coverage gaps from the P1.4 review · S
 - **Depends on:** F2, P1.4
@@ -754,7 +787,11 @@ Code: `sonobus/Source/SonobusPluginProcessor.{h,cpp}`, CLI in
   `yaml_smoke` builds clean and exits 0, printing the parsed values of a
   document using the P2.1 key schema (11 checked leaves incl. nested
   `audio.*`/`codec.*`, plus a malformed-input rejection); `SonoBus_Standalone`
-  still links. **Verified on Linux** in `ubuntu:22.04` with the project's exact
+  still links. **Verified on Linux (2026-10-13, maelosdebian, native, not a
+  container):** `cmake --build build/desktop-release --target yaml_smoke` builds
+  it from the tree and the binary **executes** — prints the ryml version
+  (0.7.2), rejects the malformed document, parses the 11 leaves and ends with
+  `yaml_smoke: OK`, exit 0. **Verified on Linux** in `ubuntu:22.04` with the project's exact
   apt list: the full default target set (no `--target`, so VST3 + Standalone +
   LV2) builds 390/390 and exits 0 with the Standalone executable and both the
   VST3 and LV2 `.so` present, and `yaml_smoke` exits 0. The PIC fix was proven
@@ -1406,6 +1443,12 @@ build against the spec. Implementers don't make design decisions (see
   desktop/phone, 7 agent states) into an index page; `?open=settings` deep link.
   Tests: 13 unit tests plus 30 browser smoke checks pass. **Left for P5.6:**
   wiring to the real engine once P4.2–P4.4 exist.
+- **Server default (2026-10-13, PR #5):** the sheet seeded the Server field
+  empty, so a fresh install had to be told `aoo.sonobus.net` by hand. It now
+  seeds `aoo.sonobus.net:10998` (`console-ui/src/lib/defaults.js`, mirroring the
+  engine's `DEFAULT_SERVER_HOST`/`DEFAULT_SERVER_PORT`), and
+  `connection.connect` falls back to the same host when it is called without a
+  server, so a group alone is enough.
 - **Result:**
 
 ### P5.6 — Wire to the real API · M
@@ -2572,9 +2615,19 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
 - **Done when:** on the emulator, a simulated call (`adb emu gsm call …`)
   shows the §6 states and leaves the mic off afterwards. The earcons play
   locally, and the F2 VDI peer receives **no** cue audio. Design review
-  passed.
-- **Result (Claude sonnet, 2026-10-12)**: implemented; verified on the emulator and with host tests; wip,
-  awaiting design review. Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
+  passed. *(2026-10-13: design review passed; the emulator call simulation
+  does not flip `AudioManager.getMode()` on this box's image, so the live
+  call path was closed on code + unit-test evidence and marked done by
+  maelo. If a real device ever reports a call and the app ignores it, the
+  fix is to drive detection from a `PHONE_STATE` broadcast instead of
+  `getMode()`, and to recapture with the mic live before the call.)*
+- **Result (Claude sonnet, 2026-10-12; design review Claude, 2026-10-13)**: implemented;
+  verified on the emulator and with host tests; **done 2026-10-13** (maelo) after the design
+  review confirmed the code matches android.md §5/§6 on every point (earcon tone/gap/level/
+  fades + output-only mix after the send tap; mic off on call start with PTT released and
+  staying off after; mic-off earcon on call end; playback gain ramp with pre-fader activity
+  intact; mic button / live band / notification copy; `platform.phoneCall` + `micOffByCall`).
+  Captures in `/private/tmp/claude-501/a10-review/` (`app-call.png`,
   `app-aftercall.png`, `shade-call.png`).
   - **Call detection** (`PlatformMonitor.java`, no permission): `AudioManager.getMode()` every 500 ms:
     `MODE_IN_CALL` (cellular), `MODE_CALL_SCREENING`, or `MODE_IN_COMMUNICATION` (VoIP) while
@@ -2605,6 +2658,15 @@ video) that this task's *Done when* requires, and A9/A10/A14's states.
     the output buffer only after every send path has run. I did not run the F2 harness with a desktop
     peer measuring the received audio, and nobody listened to the earcon on the emulator (no audio check).
   - **Not verified:** a VoIP call (only the cellular emulation was run); the earcon's audibility.
+  - **Correction (2026-10-13, re-test on the emulator):** re-running `adb emu gsm call`/`accept` on the
+    API 34 emulator did **not** drive `platform.phoneCall` to true, so the "phoneCall/micOffByCall true"
+    result above could not be reproduced here. The likely cause is the emulator's gsm-call simulation not
+    moving `AudioManager.getMode()` to `MODE_IN_CALL` (incomplete emulator telephony) — on a **real** device
+    the telephony stack does set the audio mode during a live call, so the existing `inCall()` detection
+    (which reads `getMode()`) is plausibly correct but is **unverified in this environment**. Net: A14's
+    engine/earcon/UI side is complete; the "call detected" path still needs a **real-device** (or an
+    emulator that actually flips `getMode`) check, and a `PHONE_STATE` broadcast would make detection
+    robust regardless of the audio mode. Not a code defect proven, just not re-verified on this box.
 
 #### A12 — Mic toggle from the headset button · S · any + design review · lane P · optional
 - **Depends on:** A14, A7 · **Touches:** `sonobus/Source/android/java/`
@@ -3117,7 +3179,196 @@ is ever needed, adds 1–2 days.
   Unit (DHU) as far as it allows, then maelo checks in the car.
 - **Done when:** findings are recorded (works, works with caveats, or
   doesn't), with the chosen behaviour implemented or documented.
-- **Result:**
+- **Result (2026-10-13, `task/A22-bt-mic-setting`):** implemented behind the
+  `settings.bluetoothMic: "phone" | "headset"` setting (android.md §14).
+  - **Findings:** works, with the §14 caveats. Classic Bluetooth: the headset
+    mic is only reachable on the call channel — the engine's A8
+    VoiceCommunication streams follow the route, so "headset" engages
+    `setCommunicationDevice()` (API 31+) or `MODE_IN_COMMUNICATION` + SCO
+    (24–30) while a headset/car is connected, and releases it otherwise.
+    That route is mono at call quality: **placement is off** (the Console says
+    so), both ears get the same mix. LE Audio keeps stereo. A real call always
+    owns the route and is never overridden; the app's own engagement sets
+    `PlatformMonitor.appOwnsAudioMode`, so **A14 call detection is not broken**.
+    The mic on/off state never changes (A14 §6 rule). `platform.bluetoothRoute`
+    reports `{ name, stereo }` (null when nothing is connected); the Console
+    shows the Phone/Headset mic control (with the §14 notes) only while a
+    headset or car is connected.
+  - **Code:** `BluetoothRoute.java` (main-looper route controller), JNI
+    `nativeBtRoute`/`nativeBtMicSetting`, `Signals.btRoute/btMic`, engine
+    setting + persistence, Console UI + placement note, `platform.js btRoute`
+    (unit-tested). **Build-verified:** debug APK assembles (all ABIs), JNI
+    symbols present in libjuce_jni.so, Console strings embedded in the A6 zip.
+  - **Design review (Claude, 2026-10-13): PASSED with two fixes** (in this PR).
+    Checked against android.md §14 + §6: setting, notes, mic-state rule,
+    `platform.bluetoothRoute`, placement note, and the "Bluetooth · {name}"
+    Microphone label (§6) all match. The two bugs found and fixed in
+    `BluetoothRoute.java`:
+    1. **LE Audio must not switch the route.** §14 says LE Audio "keeps
+       stereo" — it can carry media and the mic together, so there is nothing
+       to move. The code engaged `setCommunicationDevice()` for LE too, which
+       would have forced the mono call channel and dropped the stereo it
+       exists to keep (the 2024+ default; maelo's case). Now LE only sets
+       `sHeld`/`appOwnsAudioMode`; only classic A2DP moves to the
+       communication route.
+    2. **Reported route must follow the actual route.** `platform.bluetoothRoute`
+       was set whenever the *setting* was "headset", even when the route
+       wasn't engaged (e.g. a real call owns it). §14 says it is null unless
+       engaged. Now it is null unless the route is on, and the `stereo` flag
+       is the engaged-and-LE case. `releaseRoute()` also no longer clobbers
+       the mode if a call took over first.
+    Not yet: maelo's buds/car check (A13 covers the car).
+    Gotcha: this box's `android-33` SDK jar postdates the
+    `OUTPUT_DEVICE_*`→`TYPE_*` rename, so `BluetoothRoute.java` resolves the
+    type constants at runtime (both names) instead of referencing them at
+    compile time.
+  - **Fix (2026-10-13, `task/android-consolidated`, PR #5): the control was
+    unreachable.** Review fix #2 above made `platform.bluetoothRoute` null until
+    the route is engaged, but the Console still gated the row on it — so with
+    buds connected and the setting still "phone" there was no route, the row was
+    hidden, and nothing could ever set the route. The engine now reports the
+    *connected device* separately as `platform.bluetoothDevice: null | { name,
+    le }` (JNI `nativeBtDevice`, pushed on every tick from the same controller,
+    independent of the setting), and the Console offers the row on that.
+    `bluetoothRoute` keeps its meaning (the route actually taken) and still
+    drives the placement note. Unit tests cover both fields, including the case
+    that used to be unreachable. **Still needs maelo's buds/car:** that a real
+    headset makes the row appear, that "Headset mic" engages the route, and the
+    §14 notes — the emulator has no Bluetooth stack, so none of it is testable
+    here.
+  - **On-device feedback (maelo, 2026-10-13) — the row works, the route did
+    not.** With the fix above he could open the row and pick the device, but
+    "Headset mic" did nothing: no mic from the buds and **no switch to mono**.
+    Root cause: the communication route had no way to engage — the manifest
+    declared no `MODIFY_AUDIO_SETTINGS` (so the SCO path threw
+    `SecurityException`, swallowed by `engage()`'s `catch (Throwable
+    ignored) {}`), and on API 31+ the device handed to
+    `setCommunicationDevice()` was the A2DP output from `findBt()`, which the
+    platform refuses: that API only accepts a device from
+    `getAvailableCommunicationDevices()`. Fixed in the same PR:
+    1. `MODIFY_AUDIO_SETTINGS` added to the .jucer manifest (normal permission,
+       no runtime prompt).
+    2. `engage()` now selects the *communication* device from
+       `getAvailableCommunicationDevices()` (SCO, or a BLE headset) instead of
+       the A2DP output the media plays on — `setCommunicationDevice` refuses an
+       A2DP device, and it has no mic — and it logs (`TAG=Crosspoint`) when a
+       device is refused or unavailable instead of assuming success.
+    3. The engine reopens its audio device when the route changes
+       (`Signals.onBtRouteChanged` → `restartLastAudioDevice()`, +300 ms): Oboe
+       does not reliably re-route an already-open stream, so even with the route
+       set the capture would have stayed on the phone mic.
+    Awaiting his retest on the buds (and the car).
+    - **His retest: the fix worked** ("alright that fixed the issue"), with two
+    follow-ups — 1. the headset's own mute button does nothing while the route is
+    held; 2. switching back to the phone mic produced *noise* until he re-picked
+    the phone mic by hand. Plus a design idea of his: hold the route only while
+    capture is wanted, so playback keeps stereo whenever the mic is off.
+    - **On-demand route (same PR).** Holding the communication route forces the
+    narrowband mono call path whether or not anything is captured, so the route
+    is now held only while capture is wanted: while transmitting, plus — policy —
+    while any station is soloed (`isAnyPeerSoloed()`, a persistent state, which is
+    why it is optional). Released after a **3 s hold** so an ordinary pause does
+    not pay an SCO teardown + setup; the release is reported to native only once
+    the platform has really left the call route (`getCommunicationDevice() ==
+    null`, `isBluetoothScoOn()` false, 2.5 s bound). That report is what reopens
+    the engine's device, and sending it while the SCO link tears down rebinds
+    capture to a dying channel — **that was follow-up 2, the noise.**
+    - Two new settings, both default true and persisted: `bluetoothMicSoloEngages`
+    and `bluetoothMicReleaseOnMute` (off = a mute keeps the route held, so
+    unmuting is instant, at the cost of staying mono while muted; in PTT a
+    released key is not a mute and always releases). Wired end to end: processor
+    atomics + `extraTree` persistence + `settings.set` + `settings.*` in the
+    console state + two rows in the Settings sheet (only with "Headset mic").
+    - The persistence is a fix in itself: the A22 settings were **never persisted**
+    (only the test-harness paths touched `bluetoothMic`), so the choice silently
+    reset to "phone" on every launch.
+    - **Still open: follow-up 1 → now B18.** The headset's mute button stops working
+      while the route is held, and maelo's follow-up pins it down precisely: it works
+      with headset mic mode off, and it works in headset mic mode while the mic is
+      *muted* (the route is released, so that press unmutes) — it only fails with the
+      mic **unmuted**, i.e. while the route is held. That asymmetry says the HFP
+      button is delivered as a media key only when we are not on the call route.
+      Options, the evidence to collect and the media-button log already in the build:
+      **B18** in BUGS.md. Hardware-only (no Bluetooth stack on the emulator).
+  - **Retest 2 (maelo): the flow works** — both policies behave as intended and the
+    route is released seconds after a mute — with one leftover: the release
+    produced a frozen/stuck input until he re-picked the phone mic in the
+    Microphone dropdown. **Cause: the reopen was a no-op.**
+    `restartLastAudioDevice()` returns early *while a device is open* (JUCE's own
+    comment: it only reopens what was running *after* `closeAudioDevice()`), and
+    `setAudioDeviceSetup()` returns early when the setup is unchanged — so the A22
+    handler did nothing at all and the engine kept reading the call channel, which
+    no longer carried audio. A manual pick worked because that path *does* recreate
+    the device. Fixed:
+    1. The app now closes the device first (`closeAudioDevice()`) and only then
+       calls `setAudioDeviceSetup()`, so JUCE deletes and recreates it — recreating
+       is what rebinds the streams. A device name that came and went with the route
+       is remapped to the system-default entry instead of failing the reopen.
+    2. **Engaging is deliberately left alone**: Android moves the running streams
+       onto the call channel by itself, which is exactly why the buds mic worked
+       with the same no-op in place. Only the release would reopen, and a reopen on
+       engage would race the SCO setup.
+    3. The release is reported only after the platform has really left the call
+       route, now including the media route (API 33+
+       `getAudioDevicesForAttributes`), with a 4 s bound: the HFP teardown plus the
+       A2DP restart is the slow half of the switch.
+    Both the Java release line (`TAG=Crosspoint`) and the app's reopen line
+    (Android `Logger::outputDebugString` → logcat tag `JUCE`) record the switch, so
+    a retest is diagnosable without a debugger. Awaiting that retest.
+  - **Retest 3 (maelo): the release is clean** — no noise, and stereo comes back
+    correctly. Leftover: after an unmute the headset mic did not come back — the
+    Microphone row stayed on "Phone mic" until he picked the Bluetooth device by
+    hand. **That was a regression from the release fix**: making the release
+    recreate the device removed the only thing that had made engaging work (Android
+    moving the already-open streams) — the recreated streams stay where they are, so
+    the next engage moved the route but not the audio. Fixed by making the reopen
+    symmetric and the reporting verified in both directions:
+    1. `Signals.onBtRouteChanged` now reopens on engage as well as release (the app
+       is the only reliable mover of its own streams).
+    2. The route is reported to native only once the platform is really *on* it
+       (`getCommunicationDevice()`/`isBluetoothScoOn()`, 3 s bound), mirroring the
+       release gate (4 s): selecting the communication device is not the link being
+       up, so the reopen used to land before the SCO existed and bound the phone
+       mic. LE Audio switches nothing, so it reports at once.
+    Trade-off, now explicit: with the route released, an unmute costs the SCO
+    re-setup (~1-2 s) before the headset mic is live — the "release on mute = off"
+    policy is the way to make unmute instant.
+    Awaiting the retest.
+  - **Retest 3 follow-up (maelo): two crashes, both from the reopen.**
+    After the release fix he got a crash right after closing the app, and then the
+    app died on the next launch ("it opened and after reconnecting it closed, not
+    working").
+    1. **Use-after-free on exit:** the reopen was scheduled on a 300 ms
+       `Timer::callAfterDelay` holding a raw `AudioDeviceManager*`, and a route
+       release is part of the way out, so on exit the timer fired against a manager
+       being destroyed. The timer now checks the file-scope `a22AudioReopenAllowed`,
+       which `shutdown()` clears before anything else is torn down.
+    2. **A failed reopen persisted as "no device":** a failed
+       `setAudioDeviceSetup()` calls `deleteCurrentDevice()`, which *also clears the
+       setup's device names*; `saveAudioDeviceState()` then saved that emptied setup,
+       so the next launch had nothing to open (and an engine with no device is a
+       hard-failure path, not just silence). Guards: the reopen retries upward (fixed
+       name → `System Default …` → default channel counts →
+       `restartLastAudioDevice()`) and reports whether a device is actually open;
+       `saveAudioDeviceState()` keeps the last good setup when no device is open (the
+       non-device keys still written); `reloadAudioDeviceState()` falls back to the
+       defaults when the saved setup no longer opens, so a bad state self-heals.
+    Verified on the emulator: builds, installs, launches clean (empty crash buffer),
+    the three settings round-trip through the API, and a save with a device open still
+    records `audioSetup`. The route paths need the phone. Awaiting the retest.
+  - **Retest 4 (maelo): the route is solid on hardware.** Engage on unmute/solo,
+    release ~3 s after a mute, stereo back on release, no freeze/noise on the
+    release, and an unmute brings the headset mic back by itself — the on-demand
+    flow works end to end. Three residual defects remain, all intermittent or
+    narrow, none scheduled (he wants more testing before deciding what to address):
+    - **B17** — one crash right after reopening the app; the retry was clean, so it
+      is not the (now-fixed) deterministic reopen crashes. Needs a trace.
+    - **B18** — the mute button does nothing *while the route is held*; it works with
+      headset mic mode off, and in headset mode once the route has been released.
+    - **B19** — occasional noise when the headset drops and reconnects with the route
+      held, needing a manual device pick.
+    All three are written up with facts, the evidence to collect and candidate fixes
+    in BUGS.md.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`
@@ -3191,6 +3442,34 @@ is ever needed, adds 1–2 days.
   - One test-harness trap worth recording: Android 11+ package visibility makes
     a *client* fail with "Unable to start service … not found" unless it declares
     `<queries>`. That looked like a server-side bug for a while and is not.
+  - **Design-review findings, fixed in PR #5 (2026-10-13).** Three defects had
+    shipped with the shared station-state builder, all three listed below with the
+    reason each happened:
+    1. **A soloed station read "Soloed · Dimmed".** The browse-list call site passed
+       `anySolo(o)` without excluding the station itself, and a soloed station *is*
+       in `anySolo`. Fixed at the call site (`anySolo(o) && !solo`) **and** inside
+       `stationStateFor` (`dimmed && !solo`), so no caller can produce it.
+    2. **The health word was lost for stations that hear you or are soloed** — "Clear"
+       was appended only when the state list was empty, so a station that hears you
+       lost it, and the lock screen lost the whole "Clear · 32 ms" detail (the car
+       lost "Hears you · Clear"). Now the word is appended whenever the station is
+       online (§13.2), and the §12.4 line filters "Hears you" out — that word is the
+       car's, not the lock screen's.
+    3. **`o.has("connecting")` is true whenever the key exists**, and the engine
+       pushes it `false` after any connect attempt, so "Connecting to …" would have
+       stuck on the item. Read with `optBoolean` now.
+    Two spec deviations went with them: connecting is said in the *subtitle*
+    (§13.3) with the title left as the action the tap performs, and the fresh-install
+    message is Auto's error state (`PlaybackState.STATE_ERROR` +
+    `setErrorMessage`, empty list) rather than a non-playable list row. `anySolo` is
+    also computed once per push instead of once per station.
+  - **Verified in PR #5:** builds, installs and launches clean on the API 34
+    emulator (empty crash buffer), and the settings contract still round-trips.
+    **Not re-verified:** the browse-item strings themselves — that needs a bound
+    `MediaBrowser` client (the earlier check's throwaway client is not in this
+    environment) or the DHU, which is unavailable; the lock-screen line is only
+    observable with a peer in the group to select. The three fixes are pure
+    string logic on the pushed state and were reviewed line by line.
 
 
 #### A23 — In-car test · S · human (maelo)
