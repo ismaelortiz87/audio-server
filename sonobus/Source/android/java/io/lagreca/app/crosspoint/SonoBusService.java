@@ -18,7 +18,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 /**
@@ -107,7 +106,15 @@ public class SonoBusService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        if (BuildConfig.DEBUG) Log.d(TAG, "service created");
+        // A26: on-phone logs first, so everything the app logs from here on is in the
+        // file too. The engine is handed the same folder, so one pull has both halves.
+        CrosspointLog.start(this);
+        final String logDir = CrosspointLog.path();
+        if (logDir != null) {
+            try { SonoBusActivity.nativeSetLogDir(logDir); }
+            catch (Throwable t) { CrosspointLog.w(TAG, "could not hand the log folder to the engine", t); }
+        }
+        if (BuildConfig.DEBUG) CrosspointLog.d(TAG, "service created");
         sInstance = this;
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         createChannel();
@@ -158,6 +165,7 @@ public class SonoBusService extends Service {
 
     @Override
     public void onDestroy() {
+        CrosspointLog.cleanExit();     // A26: this run ended on purpose
         releaseLocks();
         // The session itself is kept (the Auto browser still needs the token and
         // the pushed state); only deactivate it, so the lock-screen player goes
@@ -166,7 +174,7 @@ public class SonoBusService extends Service {
         mMediaSession = null;
         if (sInstance == this) sInstance = null;
         mStarted = false;
-        if (BuildConfig.DEBUG) Log.d(TAG, "service stopped");
+        if (BuildConfig.DEBUG) CrosspointLog.d(TAG, "service stopped");
         super.onDestroy();
     }
 
@@ -264,7 +272,7 @@ public class SonoBusService extends Service {
                 else startForeground(NOTIFICATION_ID, n);
                 mForegroundTypes = types;
             } catch (RuntimeException e) {
-                Log.e(TAG, "startForeground failed", e);
+                CrosspointLog.e(TAG, "startForeground failed", e);
                 startForeground(NOTIFICATION_ID, n);
                 mForegroundTypes = types;
             }
@@ -299,7 +307,7 @@ public class SonoBusService extends Service {
                 }
             }
         } catch (RuntimeException e) {
-            Log.e(TAG, "could not take the wake/Wi-Fi locks", e);
+            CrosspointLog.e(TAG, "could not take the wake/Wi-Fi locks", e);
         }
     }
 
@@ -309,7 +317,7 @@ public class SonoBusService extends Service {
             if (mWifiLock != null && mWifiLock.isHeld()) mWifiLock.release();
             if (mWifiLockLowLatency != null && mWifiLockLowLatency.isHeld()) mWifiLockLowLatency.release();
         } catch (RuntimeException e) {
-            Log.e(TAG, "could not release the locks", e);
+            CrosspointLog.e(TAG, "could not release the locks", e);
         }
         mWakeLock = null; mWifiLock = null; mWifiLockLowLatency = null;
     }

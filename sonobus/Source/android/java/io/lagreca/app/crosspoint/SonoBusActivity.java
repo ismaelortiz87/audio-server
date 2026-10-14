@@ -16,7 +16,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -49,6 +48,9 @@ public class SonoBusActivity   extends Activity
     // bitmask (see BtRouteFlags below). One call per tick instead of four.
     static native int nativeBtRouteFlags();
 
+    /** A26: the folder for the on-phone logs. The engine appends its own file there. */
+    static native void nativeSetLogDir(String folder);
+
     private final static String TAG = "Crosspoint";
 
     //==============================================================================
@@ -63,6 +65,16 @@ public class SonoBusActivity   extends Activity
     public final void onCreate (Bundle savedInstanceState)
     {
         super.onCreate (savedInstanceState);
+
+        // A26: the on-phone logs start here, so the engine's own lines are captured from
+        // the first moment too. The service also calls this (it starts later, on connect)
+        // and the call is idempotent.
+        CrosspointLog.start (this);
+        final String logDir = CrosspointLog.path();
+        if (logDir != null) {
+            try { nativeSetLogDir (logDir); }
+            catch (Throwable t) { CrosspointLog.w (TAG, "could not hand the log folder to the engine", t); }
+        }
 
         // call the native C++ class constructor
         constructNativeClass();
@@ -92,7 +104,7 @@ public class SonoBusActivity   extends Activity
     @Override
     protected final void onDestroy()
     {
-        if (BuildConfig.DEBUG) Log.d(TAG, "onDestroy, finishing=" + isFinishing());
+        if (BuildConfig.DEBUG) CrosspointLog.d(TAG, "onDestroy, finishing=" + isFinishing());
 
         // call the native C++ class destructor
         destroyNativeClass();
@@ -112,7 +124,7 @@ public class SonoBusActivity   extends Activity
     {
         if (sQuitting) return;
         sQuitting = true;
-        try { nativeShutdown(); } catch (Throwable t) { Log.w(TAG, "native shutdown failed", t); }
+        try { nativeShutdown(); } catch (Throwable t) { CrosspointLog.w(TAG, "native shutdown failed", t); }
         BluetoothRoute.stop();               // A22: drop the communication route before the process ends
         SonoBusService.apply(ctx, false, "", "", false, 0);
         // Let the leave messages leave the socket before the process goes.
@@ -207,7 +219,7 @@ public class SonoBusActivity   extends Activity
             startActivity(i);
             return true;
         } catch (RuntimeException e) {
-            Log.w(TAG, "could not open settings page " + page, e);
+            CrosspointLog.w(TAG, "could not open settings page " + page, e);
             return false;
         }
     }

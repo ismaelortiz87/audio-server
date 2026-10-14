@@ -4,12 +4,43 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. **B20** and **B21** open — the two directions of the phone/headset mic switch, reported by maelo 2026-10-14 on the merged A26 build. **He is filing these as he uses the app: collect them now and work them when he says so, not on sight.** B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. **B20** and **B21** open — the two directions of the phone/headset mic switch, reported by maelo 2026-10-14 on the merged A26 build. **B22** open — with two headsets connected the config lists them accurately but picking one has no effect (the route sticks to the last connected headset) and the Settings row keeps the old name, reported by maelo 2026-10-14 on a **Galaxy S23 Ultra** (his phone, registered here so B22's platform questions — splitting the mic and the output across two devices — can be researched against that model). **B23** open — turning off the release-on-mute policy still releases the route on mute; same phone, same day. **He is filing these as he uses the app: collect them now and work them when he says so, not on sight.** B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
-Last updated: 2026-10-14 (B20/B21 filed; review T4 added B15/B16 to the table).
-Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged), APK
-`crosspoint-debug-a26-p59-merged-ee5f5407.apk` on the share.
+Last updated: 2026-10-14 (B20/B21/B22/B23 filed; the on-phone logs section added).
+Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged). The diagnostics build
+(`task/a26-logs` @ `65b195169c`, PR #8) is what writes the on-phone logs, and its APK
+`crosspoint-debug-a26-logs-65b195169c.apk` is on the share.
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
+
+### On-phone logs (A26 diagnostics)
+
+Every build from the diagnostics change on writes its own logs on the phone, so a report
+does not need a cable. In `<external files>/logs/`, i.e.
+`/sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/`:
+
+- `crosspoint.log` — the app's lines (route transitions, media buttons, service
+  lifecycle), capped at 2 MB and rotated once.
+- `crosspoint-native.log` — the engine's lines, including the `A22 route ...: reopened
+  audio in='...' out='...'` reopen line, which is what B20/B21 turn on.
+- `crash-java-<time>.txt` — an uncaught Java exception: its trace, the build, and the
+  last 300 log lines.
+- `crash-native-<time>.txt` — a fatal signal: the engine's last output. The handler
+  re-raises, so the tombstone still happens and `adb logcat -b crash` stays the
+  authority for a native crash.
+- `=== session start ===` and `=== session clean exit ===` markers. A run whose start
+  has no clean exit after it ended abruptly — a crash, a force-stop, or the system
+  killing the process. The marker deliberately does not claim which: a false crash
+  report is worse than none, so read the `crash-*.txt` files and the breadcrumbs above
+  the marker.
+
+Pull the lot at once:
+
+```
+adb pull /sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/
+```
+
+The app is a debug build, so `adb shell run-as io.lagreca.app.crosspoint` also reaches
+the private files if a log ever needs to live there instead.
 
 | ID | Bug | Severity | Found in | Status |
 |---|---|---|---|---|
@@ -30,6 +61,8 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B19](#b19--noise-when-the-headset-drops-and-comes-back-with-the-route-held) | Noise when the headset drops and comes back while the route is held | Medium (recovers with a manual pick) | A22 on real hardware | **Open** |
 | [B20](#b20--switching-the-mic-setting-to-headset-kills-playback-until-a-muterelease-cycle) | Switching the mic setting to Headset kills playback until a mute/release cycle | High when it hits (no audio at all; recovered by muting and waiting ~3 s) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
 | [B21](#b21--going-back-to-phone-mic-leaves-capture-dead-until-the-mic-is-picked-again) | Going back to Phone mic leaves capture dead until the mic is picked again | Medium (mic dead until the input is re-picked) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
+| [B22](#b22--two-headsets-connected-the-config-lists-them-but-picking-one-has-no-effect-it-sticks-to-the-last-and-the-row-keeps-the-old-name) | Two headsets connected: the list is accurate but the pick has no effect (the route sticks to the last connected headset), and the Settings row keeps the old name | Functional (the pick is silently ignored) plus cosmetic (the row) | Galaxy S23 Ultra, A26 diagnostics build | **Open**, reported 2026-10-14, collecting |
+| [B23](#b23--turning-off-the-release-on-mute-policy-does-not-keep-the-route-muting-still-releases-it) | Turning off the release-on-mute policy still releases the route on mute | Functional (a documented setting has no effect; the mono/stereo flip it was turned off to prevent still happens) | Galaxy S23 Ultra, A26 diagnostics build | **Open**, reported 2026-10-14, collecting |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -621,9 +654,30 @@ event never arrives); with the mic muted there should be one.
 3. Document the button as unavailable while the route is held, with the on-screen
    control as the mute path. (For the user: "release on mute = off" keeps the route
    held, so the *unmute* direction is instant.)
+4. **Listen for the call-control signal instead of the media key** — maelo's theory
+   (2026-10-14), logged as a candidate, not a decision: *"what the app should listen to
+   when in bluetooth mode with mic is whatever signal produces the close call from
+   headset button (usually a double tap or something like that) … based on how the
+   headset button changes its function when normal vs when in calls."* That is the same
+   asymmetry the reading above names, with the opposite conclusion: not "the event is
+   swallowed" but "the event is still delivered, as call control". In HFP the remote's
+   button is answer/hang-up — `AT+CHUP`, surfacing as `KEYCODE_CALL` / `KEYCODE_ENDCALL`
+   / `HEADSETHOOK` — rather than the AVRCP media key the session listens for. If that is
+   what happens, the app mutes on whatever key arrives while the route is held, with no
+   need for Telecom at all. Two things to settle before it is a fix: (a) our state is
+   `MODE_IN_COMMUNICATION` with **no Telecom call**, so whether the phone even tells the
+   headset it is "in a call" — and therefore which key it sends — is exactly what is
+   unverified here; (b) the gesture differs by mode: HFP uses a *single* press for
+   answer/end, while the double-tap convention he remembers ("next track") is AVRCP, so
+   the mapping has to come from his headset rather than from convention. **The test is
+   already in the build:** `CrosspointMediaSession` logs every media-button event, so
+   press the button with the route held and look for *any* line — a call-control keycode
+   confirms this option; nothing at all keeps the reading above and rules it out.
 
 **Left.** Choose (1) or (3) with one test build; (2) only if the button matters more
-than the notification it brings. Not scheduled.
+than the notification it brings; (4) is decided by one log line — press the button with
+the route held and see whether anything arrives, and if so as which keycode. Not
+scheduled.
 
 ## B19 — Noise when the headset drops and comes back with the route held
 
@@ -739,6 +793,160 @@ actually opened. Route/call device → H1; no line at all → H2.
 **Left.** Same log session as B20; the two directions of the same switch are likely one
 fix. Severity: medium (the mic is dead until the user re-picks it, and the setting alone
 does not say so).
+
+## B22 — Two headsets connected: the config lists them, but picking one has no effect (it sticks to the last) and the row keeps the old name
+
+**Found** by maelo, 2026-10-14, on his phone — a **Galaxy S23 Ultra**, registered here so a
+later agent can research what that model and its One UI/Android level actually allow for
+the two questions below — on the A26 diagnostics build.
+**Owner:** any (Android route) + human.
+
+**Facts (maelo's words).** "If I connect another headsets, I put headset mode, It
+accuratelly uses the current bluetooth output of my phone. But if more than one bluetooth
+headset is connected and it change, the config menu keeps displaying the name of the prior
+headset name despit is outputing trough the last one used by the phone (that's purely
+cosmetic as it works with the last connected headset)."
+
+Read as a whole, with the correction he gave in the same thread: the config's **list of
+connected Bluetooth devices is accurate** — it shows the headsets that are connected, and the
+phone's output is offered too — but **picking one or the other has no effect: the route stays
+on the last connected headset**, and the Settings row keeps naming the previous device. So
+this is not only cosmetic; the app presents a choice it does not honour.
+
+**Correction (his words, same thread).** "in the config, the list of connected bluetooth
+devices is accurate, but anyway it makes no effect picking one or other, it gets stick to the
+last connected bluetooth headset."
+
+That supersedes the reading above in one important way: enumeration is fine, so the defect is
+not "the app cannot see the other headset" but "the choice is not carried into the route". It
+also removes a constraint I had wrongly read into question 2 below (that a single Bluetooth
+slot cannot express "A's mic with B's output"): the picker does list the devices, so the limit
+sits in the route and the engine, not in the list.
+
+**Where the code is.** `BluetoothRoute.java` pushes the connected device (`pushDevice` →
+`SonoBusActivity.nativeBtDevice`, deduped by name through `sameDevice`) and the engaged route
+(`push` → `nativeBtRoute`, around lines 299–338); those become `platform.bluetoothDevice` /
+`platform.bluetoothRoute` in `EngineState`, which is what the Settings row renders. Both are
+pushed only when the name the code computed *changes*. What owns the pick is the first thing
+to establish, because the fix differs: if the list is the console's audio-device picker over
+the engine's device list, the chosen device has to reach the route; if it is the app's own
+Bluetooth list, the pick has to be pushed to wherever it is honoured. Nothing in the code read
+so far consumes a choice of one headset over another.
+
+**Hypotheses (unconfirmed).**
+- H1: the engage path takes its device from the last `ACTION_ACL_CONNECTED` (or from
+  `getCommunicationDevice()`), not from the selection, so the pick cannot move it.
+- H2: the pick is stored somewhere the route never consults — e.g. it lands in the engine's
+  audio-device setting while the route is established by the Bluetooth class, which re-asserts
+  its own device on every engage.
+- H3: the platform will not move the *call* route between two headsets — BT SCO/HFP allows one
+  active device and the framework pins it (the last ACL-connected, or the system's chosen SCO
+  device) — so even a correct `setCommunicationDevice()` leaves the audio where it was. The
+  evidence for this is a call that succeeds while the route does not move, and no
+  communication-device change callback.
+- H4: the row and the list are rendered from a different source than the route, so even a pick
+  that works leaves the row lagging (the cosmetic half, unchanged).
+
+**Evidence to collect next.** The on-phone logs now cover this without a cable:
+`crosspoint.log` (the `Bluetooth route …` lines — `engaged: type=…`, `live (platform live=…)`,
+`released (platform clear=…)` — and the device push) and `crosspoint-native.log` (the engine's
+`A22 route …: reopened audio in='…' out='…'` line, which names the device the audio actually
+ended on). Reproduce with both headsets connected, **pick the other one in the config**, then
+`adb pull /sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/`. The decisive comparison
+is the picked name against the device names on that reopen line: if the route reopens on the
+last-connected device anyway, H1 or H3; if it reopens on the picked device but the row does not
+follow, H4; if nothing in either log mentions the pick at all, H2. **Also worth capturing:** what
+`getCommunicationDevice()` reports right after the pick — the route line's `platform live=…`
+carries that value, and H3 lives or dies on it.
+
+**Worth analysis** (his two questions, plus the one the correction created).
+1. *How to keep the Settings row accurate to where the signal actually goes — mic and output.*
+   The row should be rendered from the platform's *current* state instead of from what the app
+   last pushed: observe `getCommunicationDevice()` for the mic path and the media route for
+   playback, and report both rather than one name. Whether the row shows one device or two
+   separate lines (mic / output) is a design call for him — and two lines is the honest shape
+   the moment the two can differ.
+2. *Can the mic come from one headset and the output go to another, in stereo — and would that
+   use the call route at all.* Still to verify against the platform rather than assume, and now
+   with one constraint less: the picker can name a device, but the route today is a single
+   communication device (`setCommunicationDevice()` / `startBluetoothSco()`), which Android
+   treats as one route for both directions and which is exactly what forces the narrowband mono
+   call path — and the engine opens **one** audio device for its input and its output, so a
+   split would need a change there too. Whether Android 14 / One UI allows per-direction routing
+   at the platform level (dual-audio-style routing, LE Audio unicast with a second sink, or an
+   A2DP-out plus SCO-mic split) is a research item for this specific phone. If the platform
+   cannot, the answer is no, and the row should say so rather than offer it.
+3. *Why the pick is ignored at all* — the immediate question, and the one the logs above settle.
+   It should be answered before question 2 is worth designing.
+
+**Left.** Collect only — no fix, no code change, per the standing instruction. Severity:
+**functional** (the config presents a choice and silently ignores it — the user picks a device
+and the audio goes elsewhere) plus the cosmetic row. Not scheduled.
+
+## B23 — Turning off the release-on-mute policy does not keep the route: muting still releases it
+
+**Found** by maelo, 2026-10-14, on his Galaxy S23 Ultra while using the A26 diagnostics build
+— the report is about a *setting*, so the diagnostics build is incidental, not the cause.
+**Owner:** any (Android route).
+
+**Facts (maelo's words).** "in an ongoing session disabling the 'release the route when muted'
+the route stills released whenever I mute myself"
+
+So `settings.bluetoothMicReleaseOnMute` off — the Console's "Release the headset route when
+muted" set to off — should keep the route held while muted, which is the documented intent
+("with it off a mute keeps the route held, so unmuting is instant, at the cost of staying mono
+while muted", `docs/design/android.md` §14), and instead the route releases on mute exactly as
+if the policy were still on.
+
+**Where the code is.** The policy is both implemented and read, so this is not a missing wire:
+`BluetoothRoute.java:221` computes `holdThroughMute = muted && (flags & F_RELEASE_ON_MUTE) == 0`
+and `:224` folds it into `wantRoute = connected && desired == 1 && !inRealCall && (micLive ||
+holdThroughMute)`. The bit reaches Java from the engine (`AndroidServiceController.h:209` sets
+`btFlagReleaseOnMute` when the processor value is true; `AndroidPlatform.h:90,100` define it as
+bit 3), the processor stores it (`SonobusPluginProcessor.h:449-450`, default true), the API
+applies it (`ApiCommands.cpp:539`, from `settings.set`), the snapshot exposes it
+(`EngineState.cpp:863`) and it persists (`SonobusPluginProcessor.cpp:6282,6917,9897,10081`).
+The Console sends a boolean (`console-ui/src/console/components.js:532,623-624`).
+
+**Hypotheses (unconfirmed).**
+- H1 — the engine never received the new value. If the toggle's `settings.set` failed or was
+  swallowed (the API rejects a non-boolean; `tests/api/p43p44.test.mjs:365` expects
+  `bad_request` for `1`), the processor stays true. Check the *snapshot*
+  (`settings.bluetoothMicReleaseOnMute` in the engine state), not the row: the row is the UI's
+  own view of what it sent.
+- H2 — the engine has false but the flags the Java route reads were stale at the moment of the
+  mute: the bits are pushed *from* the engine, so if a mute does not trigger a push, Java keeps
+  `F_RELEASE_ON_MUTE` set and releases.
+- H3 — the mute he performs is not the "explicit mute" the policy models: `muted` requires
+  `!micTx && !PTT && !(off-by-call | mic-blocked)` (`:219`), so a mute that still leaves
+  `F_MIC_TX` set, or that arrives as a released PTT key, bypasses `holdThroughMute` and
+  releases regardless (the spec says PTT *always* releases — correct, but it also means the
+  policy cannot be exercised in PTT mode at all).
+- H4 — the release does not come from the policy path at all: `releaseRoute()` has a second
+  call site (`BluetoothRoute.java:151`, beside the hold-expiry one at `:267`), so if anything
+  on the mute path lands there, the policy is bypassed entirely.
+
+**Evidence to collect next.** The on-phone logs decide between these without guessing.
+`crosspoint.log` prints, on the poll where the route stops being wanted,
+`Bluetooth route: nothing wanted, holding 3 s before releasing` (`:264`) and then the release:
+- that "nothing wanted" line right after the mute → Java computed `wantRoute == false`, so it
+  is H1, H2 or H3 (H1 is read off the engine snapshot, not the row);
+- a release with no such line → something else released it (H4).
+Also worth capturing: whether the release lands on the mute itself or ~3 s later (the hold), and
+the exact `Bluetooth route …` lines around it.
+
+**Worth analysis.** The policy's semantics are subtle enough to confirm with him before it is
+worked: with "release on mute" off, the route stays on the mono call path *for as long as the
+mute lasts*, which is the price the spec names — so is his intent "keep it for the whole muted
+period" (as documented) or something narrower, e.g. "keep it briefly so unmuting is instant"?
+If the second, the policy wants a bound (a longer `RELEASE_HOLD_MS`) rather than an open-ended
+hold. Also to check: what the Console should show while the route is held for a mute —
+`platform.bluetoothRoute` stays non-null with the mic off, and the row's copy currently implies
+the route only exists while the mic is in use.
+
+**Left.** Collect only — no fix, no code change, per the standing instruction. Severity:
+**functional** (a documented setting has no effect, and the audible result is exactly the
+mono/stereo flip the user turned it off to prevent). Not scheduled.
 
 ---
 

@@ -14,6 +14,7 @@
 #include "juce_core/native/juce_JNIHelpers_android.h"
 
 #include "AndroidPlatform.h"
+#include "CrosspointNativeLog.h"     // A26: the engine's log file on the phone
 
 class SonoBusActivity
 {
@@ -66,6 +67,7 @@ private:
     CALLBACK (nativeBtDeviceJni,         "nativeBtDevice",         "(Ljava/lang/String;Z)V") \
     CALLBACK (nativeBtMicSettingJni,     "nativeBtMicSetting",     "()Ljava/lang/String;") \
     CALLBACK (nativeBtRouteFlagsJni,     "nativeBtRouteFlags",     "()I") \
+    CALLBACK (nativeSetLogDirJni,        "nativeSetLogDir",        "(Ljava/lang/String;)V") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
 #undef JNI_CLASS_MEMBERS
@@ -78,6 +80,15 @@ private:
                                                                                 SonoBusActivityJavaClass.cppCounterpartInstance));
     }
     
+    /** A26 diagnostics: the folder the Java side created for the on-phone logs. The
+        engine appends its own lines there (CrosspointNativeLog.h), so one pull has both
+        halves of a report. Called from SonoBusService.onCreate, main thread. */
+    static void JNIEXPORT nativeSetLogDirJni (JNIEnv* env, jclass, jstring folder)
+    {
+        crosspoint::EngineLog::instance().initialise (folder != nullptr ? juceString (env, folder)
+                                                                        : juce::String());
+    }
+
     static void JNIEXPORT constructNativeClassJni (JNIEnv* env, jobject javaInstance)
     {
         initialiseJuce_GUI();
