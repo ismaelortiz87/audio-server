@@ -6,8 +6,9 @@ the code is, what's already done, and what's left. Tasks and phases live in
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
 Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
-Last updated: 2026-10-13 by the A22 session.
-Repo state referenced: `task/android-consolidated` @ `e9fac9c4cf` (PR #5).
+Last updated: 2026-10-14 by the A26/P5.9 session (review T4: B15/B16 added to the
+summary table).
+Repo state referenced: `task/a22-hardening` (PR #6).
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
 | ID | Bug | Severity | Found in | Status |
@@ -22,6 +23,8 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B13](#b13--station-card-controls-overflow-at-narrow-widths) | Station card controls overflow their card at narrow widths ("Will hear you") | Low (layout) | all Console UIs | **Open**, not scheduled |
 | [B14](#b14--a-vdi-that-is-also-on-the-vpn-stays-offline-for-the-mac) | A VDI that is also on the Mac's VPN connects but exchanges no data with it | High | cebastian (.71) | **Closed** — `446dd3e2` |
 | [B10](#b10--the-mac-console-does-not-reconnect-at-launch) | The Mac Console does not reconnect at launch | Medium | Mac app | **Closed** — see entry |
+| [B15](#b15--phone-layout-segmented-controls-are-below-the-44-px-touch-size) | Phone layout: segmented controls are below the 44 px touch size | Low (mis-taps on phone) | A2 phone renders | **Closed** — `f94e083325` (entry kept below for the record) |
+| [B16](#b16--reconnecting-with-the-same-name-fails-after-a-drop) | Reconnecting with the same name fails after a drop | Medium (blocks a reconnect until the name changes) | A18 emulator + local aooserver | **Open**, not reproduced by anyone else |
 | [B17](#b17--an-intermittent-crash-right-after-reopening-the-app-android) | An intermittent crash right after reopening the app (Android) | High (a crash), seen once | A22 route builds | **Open** |
 | [B18](#b18--the-headsets-mute-button-stops-working-while-the-route-is-held) | The headset's mute button stops working while the communication route is held | Medium (dead in the state where it is wanted) | A22 on real hardware | **Open** |
 | [B19](#b19--noise-when-the-headset-drops-and-comes-back-with-the-route-held) | Noise when the headset drops and comes back while the route is held | Medium (recovers with a manual pick) | A22 on real hardware | **Open** |
@@ -472,6 +475,9 @@ and mute buttons and the level control at the same widths.
 
 ## B15 — Phone layout: segmented controls are below the 44 px touch size
 
+**Status: closed** — `f94e083325` (see the summary table and the paragraph at the end
+of this entry). The entry stays here for the record, which is why it sits above the
+open ones.
 **Found** by Claude (design), 2026-10-12, while rendering the Android
 prototype (A2). It affects every phone-width Console: the PWA now, and the
 Android APK (A7).
