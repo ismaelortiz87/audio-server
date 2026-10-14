@@ -155,27 +155,25 @@ public class CrosspointBrowserService extends MediaBrowserService {
             if (hasSaved && !group.isEmpty()) {
                 // Saved settings: one playable item to connect with; tapping it
                 // reconnects (handled in the session's onPlayFromMediaId).
+                // optBoolean, not has(): the key can be present and false (the engine
+                // pushes it once a connect has been tried), and has() would read that as
+                // "connecting" for good.
+                final boolean connecting = o.optBoolean("connecting", false)
+                        || o.optString("connText", "").startsWith("Connecting");
                 MediaDescription.Builder d = new MediaDescription.Builder()
                         .setMediaId(CONNECT_ID)
                         .setTitle("Connect to " + group)
-                        .setSubtitle(carSubtitleFromState(o));
-                if (o.has("connecting") || o.optString("connText", "").startsWith("Connecting")) {
-                    // Section 13.3 connecting/reconnecting: the car is told so.
-                    d.setTitle("Connecting to " + group + "…");
-                }
+                        // Section 13.3: connecting/reconnecting is said in the subtitle;
+                        // the title stays the action the tap performs.
+                        .setSubtitle(connecting ? "Connecting to " + group + "…"
+                                                : carSubtitleFromState(o));
                 items.add(new MediaBrowser.MediaItem(d.build(),
                         MediaBrowser.MediaItem.FLAG_PLAYABLE));
             } else {
-                // Section 13.3 fresh install: nothing saved at all. Auto shows an
-                // error state with no action; the message is ours, not Auto's
-                // generic empty list. It stays until the phone is set up and a
-                // saved connection starts being pushed.
-                MediaDescription.Builder d = new MediaDescription.Builder()
-                        .setMediaId(CONNECT_ID)
-                        .setTitle("Set up Crosspoint on your phone first.")
-                        .setSubtitle("");
-                items.add(new MediaBrowser.MediaItem(d.build(),
-                        0 /* not playable: an error item, no action */));
+                // Section 13.3 fresh install: nothing saved at all. The message is
+                // carried by the session's error state (STATE_ERROR +
+                // setErrorMessage), which is the affordance Auto shows for this, so the
+                // browse list stays empty instead of holding a row that cannot be played.
             }
             result.sendResult(items);
             return;
@@ -184,6 +182,9 @@ public class CrosspointBrowserService extends MediaBrowserService {
         // Section 13.1: up to 8 stations, in stationOrder, offline ones included
         // (so the car list matches the phone).
         org.json.JSONArray arr = o.optJSONArray("stations");
+        // Once per push, not once per station; and a soloed station is never dimmed
+        // (it is the one you hear), so the soloed item is excluded here.
+        final boolean anySoloStation = anySolo(o);
         for (int i = 0; arr != null && i < arr.length(); i++) {
             org.json.JSONObject s = arr.optJSONObject(i);
             if (s == null) continue;
@@ -193,7 +194,8 @@ public class CrosspointBrowserService extends MediaBrowserService {
                     .setTitle(name)
                     .setSubtitle(CrosspointMediaSession.stationStateFor(
                             s.optBoolean("hearsYou", false), s.optBoolean("solo", false),
-                            s.optBoolean("mute", false), anySolo(o),
+                            s.optBoolean("mute", false),
+                            anySoloStation && !s.optBoolean("solo", false),
                             s.optString("presence", "online"), s.optString("health", "clear")))
                     .setIconBitmap(stationBitmap(s));
             // Tapping a station opens the player; it does not start audio by itself.

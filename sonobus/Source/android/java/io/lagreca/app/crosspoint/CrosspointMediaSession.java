@@ -318,11 +318,11 @@ final class CrosspointMediaSession {
         if (hearsYou) p.add("Hears you");
         if (solo) p.add("Soloed");
         if (mute) p.add("Muted");
-        else if (dimmed) p.add("Dimmed");
+        else if (dimmed && !solo) p.add("Dimmed");   // a soloed station is never dimmed
         if ("lost".equals(presence)) p.add("Lost");
         else if ("offline".equals(presence)) p.add("Offline");
         else if ("unstable".equals(health)) p.add("Unstable");
-        else if (p.isEmpty()) p.add("Clear");
+        else p.add("Clear");     // §13.2: the health word is there whenever online
         StringBuilder sb = new StringBuilder();
         for (String part : p) { if (sb.length() > 0) sb.append(" · "); sb.append(part); }
         return sb.toString();
@@ -378,6 +378,9 @@ final class CrosspointMediaSession {
         if (!listening) parts.add(0, "Listening paused");        // the system button still says "pause"
         List<String> p = new ArrayList<>(parts.size());
         for (String part : parts) {
+            // §12.4 does not carry "Hears you" (the shared builder adds it for the
+            // car list, §13.2); the line is state words plus the health detail.
+            if (part.equals("Hears you")) continue;
             if (part.equals("Dimmed")) {
                 p.add("Dimmed −" + Math.abs(soloDimDb));        // the §12.4 dim level
             } else if (part.equals("Lost")) {
@@ -426,6 +429,19 @@ final class CrosspointMediaSession {
     private PlaybackState playbackState() {
         final Station sel = selectedStation();
         final boolean hasStation = sel != null;
+        // Section 13.3 (A20 design-review fix): a fresh install has nothing to play
+        // and nothing saved. Android Auto shows the app's *error* state for that, not
+        // a browse-list row, so the message lives here and the list stays empty. The
+        // phone is unaffected: the session is inactive while disconnected (§12.1), so
+        // its lock-screen player is not there and only Auto reads this.
+        if (!connected && !hasSaved) {
+            return new PlaybackState.Builder()
+                .setState(PlaybackState.STATE_ERROR, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f,
+                          android.os.SystemClock.elapsedRealtime())
+                .setErrorMessage("Set up Crosspoint on your phone first.")
+                .setActions(0)
+                .build();
+        }
         // Section 12.1: "playing" from connect until Disconnect, whatever the mic
         // does, so the system never drops the player. (Pausing Listening also stays
         // PLAYING for the same reason: see the A18 spike in docs/TASKS.md.)

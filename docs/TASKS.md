@@ -136,7 +136,7 @@ Ordered so that every task appears after everything it depends on.
 | P8.3 | Point VDI YAML + Console defaults at it | P8.2, P2.1 | S | any | done | |
 | P8.4 | Verify peers use VPN IPs | P8.3 | S | human | done | |
 | P9.1 | Mac menu-bar panel | P6.1, P6.5 | M | any + design review | deferred | |
-| P9.2 | Native Android Console (APK): broken down into A1–A23 below, lanes in the P9.2 card | P5.6 | — | — | todo | |
+| P9.2 | Native Android Console (APK): broken down into A1–A23 below, lanes in the P9.2 card | P5.6 | — | — | wip | Claude 2026-10-13: **21 of the A-tasks done**; open: **A9** (Settings problem-rows recapture, the last item) and **A22** (Bluetooth mic — the on-demand route is verified on hardware; hardening task open for B17–B19 plus the two route edge cases); deferred: A12, A19 |
 | A1 | Android toolchain (JDK, SDK, NDK, emulator) + Projucer built from `juce/` | — | M | any | done | Claude 2026-10-12: toolchain installed and verified, `--check` green, emulator boots, Gradle runs |
 | A2 | UX addendum: Android-only states (mic permission, notification, headset PTT) | UX4 | S | design | done | Claude (`docs/design/android.md`) |
 | A3 | Debug APK builds the current engine (add missing sources to the `.jucer`) | A1 | L | any | done | Claude 2026-10-12: debug APK builds, installs, launches on the arm64 emulator, joins a group on aoo.sonobus.net (via the control API, stock UI not exercised) |
@@ -145,7 +145,7 @@ Ordered so that every task appears after everything it depends on.
 | A6 | Console UI bundled in the APK (BinaryData zip, extracted on launch) | A3 | S | any | done | Claude: fresh install and `install -r` upgrade verified on the emulator (2026-10-12) |
 | A7 | Android web shell: Console UI in a WebView on the local API | A5, A6, A2 | M | any + design review | done | Claude: design approved 2026-10-12 (follow-ups moved to A9) |
 | A8 | Phone audio path: echo (VoiceCommunication preset), routing, Bluetooth | A5 | M | any | done | Claude (sonnet); by-ear checks are A13 |
-| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip, awaiting design review | Claude 2026-10-13: code verified present; design review: mic-blocked Console approved (A24 02). **Recapture needed:** Settings problem rows (A24 03 was covered by an emulator System UI ANR) |
+| A9 | Mic permission flow + A7/A10 review fixes | A7, A2 | S | any + design review | wip | Claude 2026-10-13: code verified present; **design review passed** (mic-blocked Console approved, A24 02); **one item left:** recapture the Settings problem rows (A24 03 was covered by an emulator System UI ANR). No dependency on A20/A22, but A22 changes the Settings sheet, so recapture after the A22 merge and it is done once |
 | A10 | Background audio: foreground service, notification, Wi-Fi/wake locks | A4, A2 | M | any + design review | done | Claude: lock-screen notification approved 2026-10-12; superseded by the A18 player |
 | A11 | Release APK (signing outside the repo) + install docs | A4 | S | any | done | Claude (sonnet) |
 | A14 | Phone calls (mic off, stays off after) + earcons | A10, A5 | M | any + design review | done | Claude 2026-10-13: design review passed (code matches android.md §5/§6 on every point; unit tests for the earcon). maelo: marked done. **Known unverified:** the live "call detected" path on a real device — this box's `emu gsm call` doesn't flip `AudioManager.getMode()`, so if it ever misbehaves, switch detection to a `PHONE_STATE` broadcast and recapture with the mic live before the call (A24 04/05 were lost to an ANR) |
@@ -159,7 +159,7 @@ Ordered so that every task appears after everything it depends on.
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); **then four retests on the phone**: the route engages on unmute/solo, releases ~3 s after a mute with stereo back, no freeze/noise, and an unmute restores the buds mic — **the on-demand flow works on hardware** (three release-path crashes found and fixed along the way, `435b49da29`, `e9fac9c4cf`); residual: **B17** (rare crash right after reopening), **B18** (mute button dead while the route is held), **B19** (occasional noise when the headset drops) — all in BUGS.md, none scheduled; car check still pending |
-| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip, PR #2 | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; follow-ups (shared station-state, §13.2 Dimmed, §13.3 fresh-install message) in PR #2; car acceptance passed (maelo 2026-10-13, A23) |
+| A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | done | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; car acceptance passed (maelo 2026-10-13, A23). **PR #5: the design-review findings fixed** — a soloed station no longer reads "Soloed · Dimmed"; the health word is back for stations that hear you or are soloed (the lock-screen "Clear · 32 ms" detail regressed without it); `connecting` is read with `optBoolean`, not `has` (the key exists and is false after any connect attempt); connecting is said in the subtitle (§13.3), not the title; the fresh-install message is Auto's `STATE_ERROR` + `setErrorMessage` with an empty list, not a non-playable row |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
 | P9.3 | Native iOS Console | P5.6 | L | any | deferred | |
@@ -3442,6 +3442,34 @@ is ever needed, adds 1–2 days.
   - One test-harness trap worth recording: Android 11+ package visibility makes
     a *client* fail with "Unable to start service … not found" unless it declares
     `<queries>`. That looked like a server-side bug for a while and is not.
+  - **Design-review findings, fixed in PR #5 (2026-10-13).** Three defects had
+    shipped with the shared station-state builder, all three listed below with the
+    reason each happened:
+    1. **A soloed station read "Soloed · Dimmed".** The browse-list call site passed
+       `anySolo(o)` without excluding the station itself, and a soloed station *is*
+       in `anySolo`. Fixed at the call site (`anySolo(o) && !solo`) **and** inside
+       `stationStateFor` (`dimmed && !solo`), so no caller can produce it.
+    2. **The health word was lost for stations that hear you or are soloed** — "Clear"
+       was appended only when the state list was empty, so a station that hears you
+       lost it, and the lock screen lost the whole "Clear · 32 ms" detail (the car
+       lost "Hears you · Clear"). Now the word is appended whenever the station is
+       online (§13.2), and the §12.4 line filters "Hears you" out — that word is the
+       car's, not the lock screen's.
+    3. **`o.has("connecting")` is true whenever the key exists**, and the engine
+       pushes it `false` after any connect attempt, so "Connecting to …" would have
+       stuck on the item. Read with `optBoolean` now.
+    Two spec deviations went with them: connecting is said in the *subtitle*
+    (§13.3) with the title left as the action the tap performs, and the fresh-install
+    message is Auto's error state (`PlaybackState.STATE_ERROR` +
+    `setErrorMessage`, empty list) rather than a non-playable list row. `anySolo` is
+    also computed once per push instead of once per station.
+  - **Verified in PR #5:** builds, installs and launches clean on the API 34
+    emulator (empty crash buffer), and the settings contract still round-trips.
+    **Not re-verified:** the browse-item strings themselves — that needs a bound
+    `MediaBrowser` client (the earlier check's throwaway client is not in this
+    environment) or the DHU, which is unavailable; the lock-screen line is only
+    observable with a peer in the group to select. The three fixes are pure
+    string logic on the pushed state and were reviewed line by line.
 
 
 #### A23 — In-car test · S · human (maelo)
