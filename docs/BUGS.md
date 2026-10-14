@@ -4,11 +4,12 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. **B20** and **B21** open — the two directions of the phone/headset mic switch, reported by maelo 2026-10-14 on the merged A26 build. **He is filing these as he uses the app: collect them now and work them when he says so, not on sight.** B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. **B20** and **B21** open — the two directions of the phone/headset mic switch, reported by maelo 2026-10-14 on the merged A26 build. **B22** open — with two headsets connected the Settings row keeps naming the headset that no longer carries the audio, reported by maelo 2026-10-14 on a **Galaxy S23 Ultra** (his phone, registered here so B22's platform questions — splitting the mic and the output across two devices — can be researched against that model). **He is filing these as he uses the app: collect them now and work them when he says so, not on sight.** B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
-Last updated: 2026-10-14 (B20/B21 filed; review T4 added B15/B16 to the table).
-Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged), APK
-`crosspoint-debug-a26-p59-merged-ee5f5407.apk` on the share.
+Last updated: 2026-10-14 (B20/B21/B22 filed; the on-phone logs section added).
+Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged). The diagnostics build
+(`task/a26-logs` @ `65b195169c`, PR #8) is what writes the on-phone logs, and its APK
+`crosspoint-debug-a26-logs-65b195169c.apk` is on the share.
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
 ### On-phone logs (A26 diagnostics)
@@ -60,6 +61,7 @@ the private files if a log ever needs to live there instead.
 | [B19](#b19--noise-when-the-headset-drops-and-comes-back-with-the-route-held) | Noise when the headset drops and comes back while the route is held | Medium (recovers with a manual pick) | A22 on real hardware | **Open** |
 | [B20](#b20--switching-the-mic-setting-to-headset-kills-playback-until-a-muterelease-cycle) | Switching the mic setting to Headset kills playback until a mute/release cycle | High when it hits (no audio at all; recovered by muting and waiting ~3 s) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
 | [B21](#b21--going-back-to-phone-mic-leaves-capture-dead-until-the-mic-is-picked-again) | Going back to Phone mic leaves capture dead until the mic is picked again | Medium (mic dead until the input is re-picked) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
+| [B22](#b22--with-two-headsets-connected-the-settings-row-keeps-naming-the-one-that-no-longer-carries-the-audio) | Two headsets connected: the Settings row names the headset that no longer carries the audio | Cosmetic today (the audio follows the phone's active output) | Galaxy S23 Ultra, A26 diagnostics build | **Open**, reported 2026-10-14, collecting |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -769,6 +771,73 @@ actually opened. Route/call device → H1; no line at all → H2.
 **Left.** Same log session as B20; the two directions of the same switch are likely one
 fix. Severity: medium (the mic is dead until the user re-picks it, and the setting alone
 does not say so).
+
+## B22 — With two headsets connected, the Settings row keeps naming the one that no longer carries the audio
+
+**Found** by maelo, 2026-10-14, on his phone — a **Galaxy S23 Ultra**, registered here so a
+later agent can research what that model and its One UI/Android level actually allow for
+the two questions below — on the A26 diagnostics build.
+**Owner:** any (Android route) + human.
+
+**Facts (maelo's words).** "If I connect another headsets, I put headset mode, It
+accuratelly uses the current bluetooth output of my phone. But if more than one bluetooth
+headset is connected and it change, the config menu keeps displaying the name of the prior
+headset name despit is outputing trough the last one used by the phone (that's purely
+cosmetic as it works with the last connected headset)."
+
+Read literally: with one headset the row names the right device and the route follows it. With
+two connected, and the phone's active output moving from one to the other, the **audio does
+follow** (his report) while the row keeps the old name. Cosmetic on the face of it — the row
+and the platform disagree, and the row is the one that is wrong.
+
+**Where the code is.** `BluetoothRoute.java` pushes the connected device (`pushDevice` →
+`SonoBusActivity.nativeBtDevice`, deduped by name through `sameDevice`) and the engaged route
+(`push` → `nativeBtRoute`, around lines 299–338); those become `platform.bluetoothDevice` /
+`platform.bluetoothRoute` in `EngineState`, which is what the Settings row renders. Both are
+pushed only when the name the code computed *changes*, so a stale row means the name it
+computed did not change when the phone's active output did.
+
+**Hypotheses (unconfirmed).**
+- H1: the device the code picks is not the platform's *current* communication device but the
+  first convenient one from its enumeration (`getDevices(OUTPUT_DEVICES)`,
+  `getAvailableCommunicationDevices()`, or the last `ACTION_ACL_CONNECTED` seen), so with two
+  connected it keeps naming A while the platform routes to B.
+- H2: the name comes from the device the app *engaged* (it holds `sLastRoute`/`sLastDevice`),
+  and the platform then moved the audio without the app engaging again — the row reports the
+  app's intention rather than the platform's state.
+- H3: the platform announces the change somewhere the app does not listen
+  (`ACTION_ACL_CONNECTED`/`DISCONNECTED`, `ACTION_AUDIO_BECOMING_NOISY`, or the API 31+
+  communication-device change), so nothing ever re-pushes.
+
+**Evidence to collect next.** The on-phone logs now cover this without a cable:
+`crosspoint.log` (the `Bluetooth route …` lines — `engaged: type=…`, `live (platform live=…)`,
+`released (platform clear=…)` — and the device push) and `crosspoint-native.log` (the engine's
+`A22 route …: reopened audio in='…' out='…'` line, which names the device the audio actually
+ended on). Reproduce with both headsets connected, switch the phone's output, then
+`adb pull /sdcard/Android/data/io.lagreca.app.crosspoint/files/logs/`. The decisive comparison
+is the name on the row against the device names on that reopen line: if the engine line
+follows the switch and the Java line does not, it is H1 or H3; if neither moves, H2.
+
+**Worth analysis** (his two questions; they are what makes this entry more than cosmetic).
+1. *How to keep the Settings row accurate to where the signal actually goes — mic and output.*
+   The row should be rendered from the platform's *current* state instead of from what the app
+   last pushed: observe `getCommunicationDevice()` for the mic path and the media route for
+   playback, and report both rather than one name. Whether the row shows one device or two
+   separate lines (mic / output) is a design call for him — and two lines is the honest shape
+   the moment the two can differ.
+2. *Can the mic come from one headset and the output go to another, in stereo — and would that
+   use the call route at all.* To verify against the platform rather than assume: the app's
+   route today is a single communication device (`setCommunicationDevice()` /
+   `startBluetoothSco()`), which Android treats as one route for both directions, and holding
+   it is exactly what forces the narrowband mono call path — so "A's mic with B's stereo
+   output" is not something the current design can express. Whether Android 14 / One UI offers
+   it at the platform level (dual-audio-style routing, LE Audio unicast with a second sink, or
+   an A2DP-out plus SCO-mic split) is a research item for this specific phone. If the platform
+   cannot, the answer is no, and the row should say so rather than offer it.
+
+**Left.** Collect only — no fix, no code change, per the standing instruction. Severity:
+cosmetic today, but it is the visible half of "the row and the audio disagree", which is what
+makes the two questions hard to answer from the UI alone. Not scheduled.
 
 ---
 
