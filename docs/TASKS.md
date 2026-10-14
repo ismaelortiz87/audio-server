@@ -3471,13 +3471,16 @@ is ever needed, adds 1–2 days.
     switching back to Phone restores stereo but leaves capture dead until he re-picks the
     input. Both are collected in BUGS.md with the logs to capture; **he asked for them to
     be collected, not worked, until he says so.**
-  - **B22 (maelo, 2026-10-14, on the diagnostics build):** with two headsets connected and
-    the phone's active output moving between them, the audio follows the phone's output
-    but the Settings row keeps the previous headset's name. Collected in BUGS.md with his
-    two platform questions — keep the row reading the platform's *current* mic and output
-    device, and can the mic come from one headset while the output goes to another in
-    stereo (and would that use the call route at all) — and with his phone model recorded
-    there for the research.
+  - **B22 (maelo, 2026-10-14, on the diagnostics build):** with two headsets connected the
+    config lists them accurately, but **picking one has no effect — the route sticks to the
+    last connected headset** — and the Settings row keeps the previous headset's name (his
+    correction, same thread; severity therefore **functional**, not merely cosmetic).
+    Collected in BUGS.md with what owns the pick as the first thing to establish, four
+    labelled hypotheses, the log lines that settle it (the pick against the engine's reopen
+    line and `platform live=…`), his two platform questions — keep the row reading the
+    *current* mic and output, and can the mic come from one headset while the output goes to
+    another in stereo (and would that use the call route at all) — and his phone model
+    recorded there for the research.
   - **Review T1/T2 (2026-10-14, `docs/REVIEW-A26-P5.9.md`):** the first pass at those
     two items introduced two more, both now fixed in the same file.
     - **T1 — an LE release could clobber another app's call.** The LE path holds the
