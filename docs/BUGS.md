@@ -790,6 +790,17 @@ two connected, and the phone's active output moving from one to the other, the *
 follow** (his report) while the row keeps the old name. Cosmetic on the face of it — the row
 and the platform disagree, and the row is the one that is wrong.
 
+**Also reported (same session).** "the application does let me choose between the phone
+output and the latest connected bluetooth device."
+
+That is a third data point and it sharpens the first question: the app's own device choice is
+two-way — phone, or *the latest connected* Bluetooth device — rather than a list of the
+connected headsets, so the app has no way to name a specific one. With two headsets it names
+whichever it took to be the latest, which is the most likely root of a stale row, and this
+also answers part of his second question by construction: a picker with a single Bluetooth slot
+cannot express "A's mic with B's output", so splitting the two would need a different shape in
+the settings as well as in the route.
+
 **Where the code is.** `BluetoothRoute.java` pushes the connected device (`pushDevice` →
 `SonoBusActivity.nativeBtDevice`, deduped by name through `sameDevice`) and the engaged route
 (`push` → `nativeBtRoute`, around lines 299–338); those become `platform.bluetoothDevice` /
