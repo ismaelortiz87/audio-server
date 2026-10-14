@@ -8,6 +8,7 @@ import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 
 /**
@@ -41,6 +42,18 @@ import android.util.Log;
  * PlatformMonitor.appOwnsAudioMode so the call detector (A14) does not mistake
  * it for a VoIP call.
  *
+ * A22 (on-demand): holding the communication route forces the narrowband mono
+ * call path whether or not anything is captured, so the route is held only while
+ * capture is actually wanted. The engine reports (one bitmask per tick) whether it
+ * is transmitting, whether any station is soloed, and two policies the user sets:
+ * whether a solo engages the route at all, and whether a mute releases it. When
+ * nothing is wanted, the route is released after a few seconds of silence and
+ * playback returns to the stereo A2DP channel — the mono/stereo question is a
+ * property of the route, not of capturing, which is why it is decided here.
+ * The release is reported to native only once the platform has really left the
+ * call route: native reopens the engine's audio device from that signal, and
+ * doing it while the SCO link tears down rebinds capture to a dying channel.
+ *
  * The Bluetooth *type* constants of AudioDeviceInfo changed names across SDK
  * releases, so they are resolved here at runtime (see the type() helper)
  * instead of being referenced at compile time.
@@ -49,6 +62,25 @@ final class BluetoothRoute {
 
     private static final long POLL_MS = 1000;
     private static final String TAG = "Crosspoint";
+
+    // A22 (on-demand route): hold the route this long after capture stops, so an
+    // ordinary pause in a conversation does not pay an SCO teardown + setup (each
+    // ~0.2-0.5 s, plus a device reopen in the engine).
+    private static final long RELEASE_HOLD_MS = 3000;
+    // ...and wait at most this long for the platform to really leave the call
+    // route before telling native. Bounded, so a platform that never reports a
+    // clean state cannot leave the UI showing a route we already left.
+    private static final long RELEASE_SETTLE_MS = 2500;
+
+    // The engine's answer to "is capture wanted, and under which policies"
+    // (one int per tick): see Signals::BtRouteFlag in AndroidPlatform.h.
+    private static final int F_MIC_TX          = 1 << 0;   // transmitting (mic on / PTT held)
+    private static final int F_ANY_SOLO        = 1 << 1;   // any station soloed
+    private static final int F_SOLO_ENGAGES    = 1 << 2;   // policy: solo may engage the route
+    private static final int F_RELEASE_ON_MUTE = 1 << 3;   // policy: a mute releases the route
+    private static final int F_PTT_MODE        = 1 << 4;   // "not transmitting" = released key
+    private static final int F_OFF_BY_CALL     = 1 << 5;   // a call turned the mic off (A14)
+    private static final int F_MIC_BLOCKED     = 1 << 6;   // not granted (A9)
 
     // AudioDeviceInfo type values, resolved at runtime so this file compiles
     // against any SDK release and runs on API 24+.
@@ -68,6 +100,15 @@ final class BluetoothRoute {
     private static boolean sHeld = false;      // we currently hold the communication route
     private static String sLastDevice = null;  // last *connected* device pushed (null = none)
     private static boolean sLastDeviceLe = false;
+
+    // A22 (on-demand route): when the held route may be released (0 = not
+    // scheduled), and whether we released it but have not told native yet because
+    // the platform is still on the call route. Native is told only once it really
+    // left: that signal makes the engine reopen its audio device, and reopening
+    // while the SCO link is tearing down lands on a dying channel (audible noise).
+    private static long sReleaseAt = 0;
+    private static boolean sReleasePending = false;
+    private static long sReleaseDeadline = 0;
 
     static synchronized void start(Context ctx) {
         if (sApp != null) return;
@@ -92,6 +133,9 @@ final class BluetoothRoute {
         sLastDevice = null;
         sLastDeviceLe = false;
         sHeld = false;
+        sReleaseAt = 0;
+        sReleasePending = false;
+        sReleaseDeadline = 0;
     }
 
     // ---------------------------------------------------------------- tick
@@ -100,10 +144,17 @@ final class BluetoothRoute {
         final AudioManager am = (AudioManager) sApp.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
 
-        // The setting, from the engine ("phone" | "headset").
+        // The setting, from the engine ("phone" | "headset"), and the on-demand
+        // route state (one bitmask: transmitting / soloed / the two policies).
         final int desired;
+        final int flags;
         try {
             desired = "headset".equals(SonoBusActivity.nativeBtMicSetting()) ? 1 : 0;
+            final int fl = SonoBusActivity.nativeBtRouteFlags();
+            // A zero bitmask means the engine's controller has not mirrored yet (or
+            // there is no engine): treat the two policies as their defaults (on),
+            // instead of reading "release on mute off" out of an empty int.
+            flags = fl == 0 ? (F_SOLO_ENGAGES | F_RELEASE_ON_MUTE) : fl;
         } catch (Throwable t) {
             return;      // native not up yet
         }
@@ -117,10 +168,55 @@ final class BluetoothRoute {
         final boolean inRealCall = mode == AudioManager.MODE_IN_CALL
             || (Build.VERSION.SDK_INT >= 30 && mode == AudioManager.MODE_CALL_SCREENING);
 
-        final boolean wantRoute = connected && desired == 1 && !inRealCall;
+        // Is capture wanted right now? Solo only counts when the policy allows it:
+        // a solo is a persistent state, and while the route is held playback is
+        // mono, so the user decides whether soloing is worth that.
+        final boolean micTx = (flags & F_MIC_TX) != 0;
+        final boolean micLive = micTx
+            || ((flags & F_SOLO_ENGAGES) != 0 && (flags & F_ANY_SOLO) != 0);
 
-        if (wantRoute && !sHeld) engage(am, le);
-        else if (!wantRoute && sHeld) releaseRoute();
+        // An explicit mute (open mode, mic off, nothing else responsible) may hold
+        // the route: with "release on mute" off, unmuting is instant — at the price
+        // of staying on the mono call route while muted. In PTT mode "not
+        // transmitting" is a released key, not a mute, so the mute rule cannot
+        // apply; a call or a denied permission never holds it (release is right).
+        final boolean muted = !micTx && (flags & F_PTT_MODE) == 0
+            && (flags & (F_OFF_BY_CALL | F_MIC_BLOCKED)) == 0;
+        final boolean holdThroughMute = muted && (flags & F_RELEASE_ON_MUTE) == 0;
+
+        final boolean wantRoute = connected && desired == 1 && !inRealCall
+                                  && (micLive || holdThroughMute);
+
+        final long now = SystemClock.uptimeMillis();
+
+        if (wantRoute && !sHeld) {
+            engage(am, le);
+            sReleaseAt = 0;
+            sReleasePending = false;    // we are back on the call route: report it
+            sReleaseDeadline = 0;
+        } else if (!wantRoute && sHeld) {
+            // Nothing wanted: hold for a few seconds first, so a normal pause in a
+            // conversation does not cost an SCO teardown and setup.
+            if (sReleaseAt == 0) {
+                sReleaseAt = now + RELEASE_HOLD_MS;
+                Log.i(TAG, "Bluetooth route: nothing wanted, holding "
+                    + (RELEASE_HOLD_MS / 1000) + " s before releasing");
+            } else if (now >= sReleaseAt) {
+                releaseRoute();             // platform side: back to media (A2DP)
+                sReleaseAt = 0;
+                sReleasePending = true;     // native is told once the link is down
+                sReleaseDeadline = now + RELEASE_SETTLE_MS;
+            }
+        }
+
+        // A22: the route is reported to native only once the platform has really
+        // moved, and that report is what makes the engine reopen its audio device.
+        // On release that means waiting for the communication/SCO link to go down.
+        if (sReleasePending && (routeIsClear(am) || now >= sReleaseDeadline)) {
+            sReleasePending = false;
+            Log.i(TAG, "Bluetooth route released (platform clear=" + routeIsClear(am)
+                + ", timedOut=" + (now >= sReleaseDeadline) + ")");
+        }
 
         // Report the connected device separately from the route below. With the
         // setting on "phone" there is no route to report, yet the Settings row
@@ -130,12 +226,17 @@ final class BluetoothRoute {
         final String dev = connected ? nameOf(bt) : null;
         if (!sameDevice(dev, le)) pushDevice(dev, le);
 
-        // Report the route to native only while the headset route is actually
-        // engaged. While it is on, `le` is the `stereo` flag (LE keeps stereo; the
-        // classic call route is mono). Null otherwise (phone route, or a real
-        // call owns it) — that is what drives the UI's route/stereo/note.
-        final String name = wantRoute ? nameOf(bt) : null;
-        if (!same(name, wantRoute && le)) push(name, wantRoute && le);
+        // Report the route actually taken. While a release is still settling, the
+        // previous value stands: pushing null early is what told the engine to
+        // reopen onto a channel that was already going away.
+        if (!sReleasePending) {
+            // Report a route only while we really hold it: a failed engage must not
+            // claim one (the engine reopens its device on this signal, and the UI's
+            // mono note keys off it).
+            final boolean held = wantRoute && sHeld;
+            final String name = held ? nameOf(bt) : null;
+            if (!same(name, held && le)) push(name, held && le);
+        }
     }
 
     private static boolean sameDevice(String name, boolean le) {
@@ -264,6 +365,23 @@ final class BluetoothRoute {
         }
         PlatformMonitor.appOwnsAudioMode = false;
         sHeld = false;
+    }
+
+    /**
+     * A22: true once the platform is really back on the phone route — no
+     * communication device selected and the SCO link down. API 31+ reports the
+     * selection; older builds only have the SCO flag. Native is told about the
+     * release only after this, so the engine's device reopen cannot land on a
+     * tearing-down SCO channel (which it would read as noise).
+     */
+    private static boolean routeIsClear(AudioManager am) {
+        try {
+            if (Build.VERSION.SDK_INT >= 31 && am.getCommunicationDevice() != null)
+                return false;
+            return !am.isBluetoothScoOn();
+        } catch (Throwable t) {
+            return true;     // cannot ask: do not stall the release
+        }
     }
 
     // ---------------------------------------------------------------- detection

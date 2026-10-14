@@ -433,6 +433,27 @@ public:
 
     String getBluetoothMic() const { return mBluetoothMic.load() == 1 ? "headset" : "phone"; }
 
+    // A22 (android.md 14, on-demand route): the headset route is held only while
+    // capture is actually wanted, so playback returns to full-band stereo (A2DP)
+    // whenever nothing is being captured — holding the communication route forces
+    // the narrowband mono call path, whether or not we record. Two policies:
+    //
+    //  - soloEngages: soloing a station counts as "wanted", so the headset mic is
+    //    live while you talk to one station. Solo is a persistent state, so while
+    //    it lasts the route stays held (mono) — hence it is a setting.
+    //  - releaseOnMute: an explicit mute (open mode, mic off) releases the route
+    //    after the 3 s hold. With it off, a mute keeps the route held so unmuting
+    //    is instant — at the cost of staying mono while muted.
+    void setBluetoothMicSoloEngages (bool on) { mBtMicSoloEngages.store (on); }
+    bool getBluetoothMicSoloEngages() const { return mBtMicSoloEngages.load(); }
+    void setBluetoothMicReleaseOnMute (bool on) { mBtMicReleaseOnMute.store (on); }
+    bool getBluetoothMicReleaseOnMute() const { return mBtMicReleaseOnMute.load(); }
+
+    // A22: true while any remote peer is soloed (the send-side narrowing). The
+    // Android route controller asks this every tick to decide whether the headset
+    // route counts as wanted (settings.bluetoothMicSoloEngages).
+    bool isAnyPeerSoloed() const;
+
     // Per-peer talk flag (default true): gates what we send to that peer. While
     // any peer is soloed, sending goes to soloed peers only, whatever their talk
     // flag says; the flags are kept and apply again on un-solo. Only gates when
@@ -1240,6 +1261,8 @@ private:
     std::atomic<bool>  mPhoneCall { false };      // A14
     std::atomic<bool>  mListeningPaused { false };  // A18
     std::atomic<int>   mBluetoothMic { 0 };       // A22: 0 = "phone" (default), 1 = "headset"
+    std::atomic<bool>  mBtMicSoloEngages { true };   // A22: solo may engage the route
+    std::atomic<bool>  mBtMicReleaseOnMute { true }; // A22: a mute releases the route
     std::atomic<bool>  mMicBlocked { false };     // A9
     std::atomic<bool>  mMicOffByCall { false };   // A14
     float              mCallPlaybackGain = 1.0f;  // audio thread: ramps to 0 during a call

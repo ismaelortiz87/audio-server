@@ -65,6 +65,7 @@ private:
     CALLBACK (nativeBtRouteJni,          "nativeBtRoute",          "(Ljava/lang/String;Z)V") \
     CALLBACK (nativeBtDeviceJni,         "nativeBtDevice",         "(Ljava/lang/String;Z)V") \
     CALLBACK (nativeBtMicSettingJni,     "nativeBtMicSetting",     "()Ljava/lang/String;") \
+    CALLBACK (nativeBtRouteFlagsJni,     "nativeBtRouteFlags",     "()I") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
 #undef JNI_CLASS_MEMBERS
@@ -197,6 +198,16 @@ private:
         // A new local jstring; the Java caller owns it (do not wrap in LocalRef,
         // whose destructor would delete the very reference we return).
         return env->NewStringUTF (headset ? "headset" : "phone");
+    }
+
+    /** A22 (android.md 14, on-demand route): the mic/solo state and the two route
+        policies, read by the Java route controller on its main-looper tick — one
+        int instead of four calls. A bitmask: see Signals::BtRouteFlag. Mirrored by
+        the controller's tick on the message thread, so it needs no engine handle
+        and is safe before the engine exists (0 = nothing wanted, no route). */
+    static jint JNIEXPORT nativeBtRouteFlagsJni (JNIEnv*, jclass)
+    {
+        return (jint) crosspoint::android::Signals::get().btRouteFlags.load();
     }
 
  

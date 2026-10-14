@@ -276,6 +276,14 @@ static String defRecordDirKey("DefaultRecordDir");
 static String defRecordDirURLKey("DefaultRecordDirURL");
 static String lastBrowseDirKey("LastBrowseDir");
 static String sliderSnapKey("SliderSnapToMouse");
+
+// A22 (android.md 14): the Bluetooth headset mic choice and its two on-demand
+// route policies. Persisted here so they survive an app restart — the A22
+// setting was previously only reachable through the test-harness paths, so it
+// silently reset to "phone" on every launch.
+static String btMicSettingKey("BluetoothMic");
+static String btMicSoloEngagesKey("BluetoothMicSoloEngages");
+static String btMicReleaseOnMuteKey("BluetoothMicReleaseOnMute");
 static String disableShortcutsKey("DisableKeyShortcuts");
 static String peerDisplayModeKey("PeerDisplayMode");
 static String lastChatWidthKey("lastChatWidth");
@@ -6196,6 +6204,17 @@ bool SonobusAudioProcessor::computeHearsYou(const RemotePeer * peer, bool anyPee
     return anyPeerSoloed ? peer->soloed.load() : peer->talk.load();
 }
 
+// A22 (android.md 14): is any remote peer soloed? The same narrowing the per-peer
+// hear-you computation applies, exposed for the Android route controller, which
+// asks it every tick to decide whether the headset route counts as wanted.
+bool SonobusAudioProcessor::isAnyPeerSoloed() const
+{
+    const ScopedReadLock sl (mCoreLock);
+    for (int i = 0; i < mRemotePeers.size(); ++i)
+        if (mRemotePeers.getUnchecked (i)->soloed.load()) return true;
+    return false;
+}
+
 bool SonobusAudioProcessor::getRemotePeerHearsYou(int index) const
 {
     const ScopedReadLock sl (mCoreLock);
@@ -6247,11 +6266,17 @@ bool SonobusAudioProcessor::applyTestControlFile(const File & file)
         setSoloDimDb((float) (double) dim);
     }
 
-    // A22: which mic to use with a Bluetooth headset/car ("phone" | "headset").
+    // A22: which mic to use with a Bluetooth headset/car ("phone" | "headset"),
+    // plus the two on-demand route policies (the Android route controller reads
+    // all three through the Signals mirror).
     if (root.hasProperty("bluetoothMic")) {
         const String bm = root.getProperty("bluetoothMic", "").toString();
         if (bm == "headset" || bm == "phone") setBluetoothMic(bm);
     }
+    if (root.hasProperty("bluetoothMicSoloEngages"))
+        setBluetoothMicSoloEngages((bool) root.getProperty("bluetoothMicSoloEngages", true));
+    if (root.hasProperty("bluetoothMicReleaseOnMute"))
+        setBluetoothMicReleaseOnMute((bool) root.getProperty("bluetoothMicReleaseOnMute", true));
 
     // F2.1 TEST ONLY: {"globalSendMute": bool, "globalRecvMute": bool} drive the
     // real global mute parameters (the UI buttons' path). Only on change, since
@@ -6884,6 +6909,8 @@ void SonobusAudioProcessor::dumpPeersToFile(const File & file)
     root->setProperty("micTransmitting", isMicTransmitting());
     root->setProperty("soloDimDb", getSoloDimDb());
     root->setProperty("bluetoothMic", getBluetoothMic());   // A22
+    root->setProperty("bluetoothMicSoloEngages", getBluetoothMicSoloEngages());        // A22
+    root->setProperty("bluetoothMicReleaseOnMute", getBluetoothMicReleaseOnMute());    // A22
 
     // P2.3: what we actually send / monitor (the VDI locks show up here).
     root->setProperty("selfSendChannels", mSendChannels.get());
@@ -9855,6 +9882,11 @@ void SonobusAudioProcessor::getStateInformationWithOptions(MemoryBlock& destData
 
     extraTree.setProperty(lastBrowseDirKey, mLastBrowseDir, nullptr);
     extraTree.setProperty(sliderSnapKey, mSliderSnapToMouse, nullptr);
+    // A22 (android.md 14): the Bluetooth mic choice and its two on-demand route
+    // policies (persist across restarts; see the key constants above).
+    extraTree.setProperty(btMicSettingKey, mBluetoothMic.load(), nullptr);
+    extraTree.setProperty(btMicSoloEngagesKey, mBtMicSoloEngages.load(), nullptr);
+    extraTree.setProperty(btMicReleaseOnMuteKey, mBtMicReleaseOnMute.load(), nullptr);
     extraTree.setProperty(disableShortcutsKey, mDisableKeyboardShortcuts, nullptr);
     extraTree.setProperty(peerDisplayModeKey, var((int)mPeerDisplayMode), nullptr);
     extraTree.setProperty(lastChatWidthKey, var((int)mLastChatWidth), nullptr);
@@ -10035,6 +10067,10 @@ void SonobusAudioProcessor::setStateInformationWithOptions (const void* data, in
             setLastBrowseDirectory(extraTree.getProperty(lastBrowseDirKey, mLastBrowseDir));
 #endif
             setSlidersSnapToMousePosition(extraTree.getProperty(sliderSnapKey, mSliderSnapToMouse));
+            // A22 (android.md 14): the Bluetooth mic choice and its route policies.
+            setBluetoothMic ((int) extraTree.getProperty (btMicSettingKey, 0) == 1 ? "headset" : "phone");
+            setBluetoothMicSoloEngages ((bool) extraTree.getProperty (btMicSoloEngagesKey, true));
+            setBluetoothMicReleaseOnMute ((bool) extraTree.getProperty (btMicReleaseOnMuteKey, true));
             setDisableKeyboardShortcuts(extraTree.getProperty(disableShortcutsKey, mDisableKeyboardShortcuts));
             setPeerDisplayMode((PeerDisplayMode)(int)extraTree.getProperty(peerDisplayModeKey, (int)mPeerDisplayMode));
             setLastChatWidth((int)extraTree.getProperty(lastChatWidthKey, (int)mLastChatWidth));

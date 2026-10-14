@@ -19,6 +19,7 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import java.util.ArrayList;
@@ -45,6 +46,8 @@ import java.util.List;
  * button presses become nativePlayerButton calls.
  */
 final class CrosspointMediaSession {
+
+    private static final String TAG = "Crosspoint";
 
     // Native button codes. Must match crosspoint::android::PlayerButton in AndroidPlatform.h.
     static final int NATIVE_MIC = 1;
@@ -152,6 +155,13 @@ final class CrosspointMediaSession {
             @Override public boolean onMediaButtonEvent(Intent intent) {
                 KeyEvent ev = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
                 if (ev == null) return false;
+                // A22 follow-up: while we hold the Bluetooth call/communication
+                // route the headset's button stops toggling the mic on maelo's buds.
+                // Log every key that reaches the session (with whether it is still
+                // the active one) so a retest shows whether the key is swallowed
+                // before it arrives, or arrives with a code we do not handle.
+                Log.i(TAG, "media button: key=" + ev.getKeyCode() + " action=" + ev.getAction()
+                    + " repeat=" + ev.getRepeatCount() + " active=" + session.isActive());
                 switch (ev.getKeyCode()) {
                     case KeyEvent.KEYCODE_HEADSETHOOK:
                     case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:

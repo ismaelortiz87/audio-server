@@ -508,6 +508,27 @@ export function settingsSheet(ctx) {
   const btMicNote = h('small.note');
   const btMicSeg = h('div.seg', { role: 'group', 'aria-label': 'Bluetooth mic' }, btMicPhone, btMicHeadset);
   const btMicField = field('Bluetooth mic', btMicSeg, btMicNote);
+
+  // A22 (on-demand route): the headset route is held only while capture is
+  // wanted, so playback stays stereo (A2DP) whenever nothing is being captured —
+  // these two decide when "wanted" is true. Both only matter with the setting on
+  // "Headset mic", so they are shown with that choice.
+  //  - solo engages: a solo is a persistent state, so while any station is soloed
+  //    the route stays held (mono) — that is why it is optional.
+  //  - release on mute: with it off, muting keeps the route held so unmuting is
+  //    instant, at the price of staying mono while muted. (In push-to-talk,
+  //    releasing the key is not a mute and always releases, after the 3 s hold.)
+  const seg = (label, key) => {
+    const off = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { [key]: false }) }, 'Off');
+    const on = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { [key]: true }) }, 'On');
+    return { off, on, row: h('div.seg', { role: 'group', 'aria-label': label }, off, on) };
+  };
+  const btSoloSeg = seg('Solo also uses the headset mic', 'bluetoothMicSoloEngages');
+  const btSoloField = field('Solo also uses the headset mic', btSoloSeg.row,
+    h('small.note', 'While a station is soloed the headset route stays on.'));
+  const btMuteSeg = seg('Release the headset route when muted', 'bluetoothMicReleaseOnMute');
+  const btMuteField = field('Release the route when muted', btMuteSeg.row,
+    h('small.note', 'Off keeps the route through a mute, so unmuting is instant.'));
   const ptt = h('div.num.readonly'); const pttField = field('Push-to-talk key (works in other apps)', ptt);
   const codec = h('div'), buffer = h('div');
   const remembered = h('div.remembered'); const rememberedField = field('Remembered stations', remembered);
@@ -520,7 +541,8 @@ export function settingsSheet(ctx) {
     problems,
     h('span.label', 'Connection'), form,
     h('span.label', 'Audio'),
-    field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), btMicField, pttField,
+    field('Microphone', micSel), field('Output', outSel), field('Solo dims others by', dimSel), btMicField,
+    btSoloField, btMuteField, pttField,
     h('details', h('summary', 'Advanced'), h('div.adv', field('Codec', codec), field('Network buffer', buffer))),
     rememberedField);
   const el = h('div', { style: { display: 'contents' } }, scrim, sheet);
@@ -579,12 +601,24 @@ export function settingsSheet(ctx) {
       // choice produced, so it can never gate this row.
       const dev = btDevice(st);
       btMicField.hidden = !dev;
+      // A22 (on-demand route): the two policies only mean anything with a
+      // Bluetooth device on the "Headset mic" route — they decide when that route
+      // is held. Set OUTSIDE the `dev` block below: with no device they must
+      // disappear, and a `hidden` nobody assigns keeps them on screen.
+      const btPolicies = !!dev && s.bluetoothMic === 'headset';
+      btSoloField.hidden = btMuteField.hidden = !btPolicies;
       if (dev) {
         setAttr(btMicPhone, 'aria-pressed', (s.bluetoothMic ?? 'phone') === 'phone');
         setAttr(btMicHeadset, 'aria-pressed', s.bluetoothMic === 'headset');
         setText(btMicNote, s.bluetoothMic === 'headset'
           ? (dev.le ? 'Hands-free, stereo.' : 'Hands-free, call quality. Both ears hear the same mix, so placement is off.')
           : 'Stereo, full quality. Talk toward the phone.');
+      }
+      if (btPolicies) {
+        setAttr(btSoloSeg.off, 'aria-pressed', s.bluetoothMicSoloEngages === false);
+        setAttr(btSoloSeg.on, 'aria-pressed', s.bluetoothMicSoloEngages !== false);
+        setAttr(btMuteSeg.off, 'aria-pressed', s.bluetoothMicReleaseOnMute === false);
+        setAttr(btMuteSeg.on, 'aria-pressed', s.bluetoothMicReleaseOnMute !== false);
       }
       pttField.hidden = !s.pttHotkey; setText(ptt, s.pttHotkey ?? '');
       setText(codec, `${s.codec === 'opus' ? 'Opus' : s.codec} · ${s.bitrateKbps} kbps`);

@@ -78,6 +78,9 @@ public:
         connected. Sourced from the processor, so a `settings.set bluetoothMic`
         from any client (phone, Auto, the web console) is picked up here. */
     String getBluetoothMic() const { return proc.getBluetoothMic(); }
+    /** A22: the on-demand route bitmask for the Java route controller (see
+        Signals::BtRouteFlag for the bits). Mirrored every tick, like btMic. */
+    int getBtRouteFlags() const { return Signals::get().btRouteFlags.load(); }
 
     /** A20 (section 13.1): the car's browse list selected a station. Only the
         selection moves: solo, mute and the mic are untouched. Message thread. */
@@ -193,6 +196,22 @@ private:
         // Java route controller (BluetoothMicController) can read it with no engine
         // handle; it engages/releases the communication route to match.
         sig.btMic.store (proc.getBluetoothMic() == "headset" ? 1 : 0);
+
+        // A22 (android.md 14, on-demand route): holding the communication route
+        // forces the narrowband mono call path whether or not we capture, so the
+        // route is only held while capture is actually wanted. Java needs more
+        // than the setting for that — mic/solo state plus the two policies, all
+        // in one int it reads with a single JNI call (Signals::BtRouteFlag).
+        int btFlags = 0;
+        if (proc.isMicTransmitting())            btFlags |= Signals::btFlagMicTransmitting;
+        if (proc.isAnyPeerSoloed())              btFlags |= Signals::btFlagAnySolo;
+        if (proc.getBluetoothMicSoloEngages())   btFlags |= Signals::btFlagSoloEngages;
+        if (proc.getBluetoothMicReleaseOnMute()) btFlags |= Signals::btFlagReleaseOnMute;
+        if (proc.getMicMode() == SonobusAudioProcessor::MicMode::PushToTalk)
+                                                 btFlags |= Signals::btFlagPttMode;
+        if (proc.isMicOffByCall())               btFlags |= Signals::btFlagMicOffByCall;
+        if (proc.isMicBlocked())                 btFlags |= Signals::btFlagMicBlocked;
+        sig.btRouteFlags.store (btFlags);
 
         // The notification's legacy actions.
         switch (sig.pendingAction.exchange (0))

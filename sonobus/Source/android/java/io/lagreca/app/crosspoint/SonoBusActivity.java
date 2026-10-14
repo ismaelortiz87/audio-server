@@ -45,6 +45,9 @@ public class SonoBusActivity   extends Activity
     static native void nativeBtDevice(String name, boolean le);
     /** A22: the current "Bluetooth mic" setting ("phone" | "headset"), from the engine. */
     static native String nativeBtMicSetting();
+    // A22 (on-demand route): the mic/solo state and the two route policies, as a
+    // bitmask (see BtRouteFlags below). One call per tick instead of four.
+    static native int nativeBtRouteFlags();
 
     private final static String TAG = "Crosspoint";
 

@@ -3258,6 +3258,36 @@ is ever needed, adds 1–2 days.
        does not reliably re-route an already-open stream, so even with the route
        set the capture would have stayed on the phone mic.
     Awaiting his retest on the buds (and the car).
+    - **His retest: the fix worked** ("alright that fixed the issue"), with two
+    follow-ups — 1. the headset's own mute button does nothing while the route is
+    held; 2. switching back to the phone mic produced *noise* until he re-picked
+    the phone mic by hand. Plus a design idea of his: hold the route only while
+    capture is wanted, so playback keeps stereo whenever the mic is off.
+    - **On-demand route (same PR).** Holding the communication route forces the
+    narrowband mono call path whether or not anything is captured, so the route
+    is now held only while capture is wanted: while transmitting, plus — policy —
+    while any station is soloed (`isAnyPeerSoloed()`, a persistent state, which is
+    why it is optional). Released after a **3 s hold** so an ordinary pause does
+    not pay an SCO teardown + setup; the release is reported to native only once
+    the platform has really left the call route (`getCommunicationDevice() ==
+    null`, `isBluetoothScoOn()` false, 2.5 s bound). That report is what reopens
+    the engine's device, and sending it while the SCO link tears down rebinds
+    capture to a dying channel — **that was follow-up 2, the noise.**
+    - Two new settings, both default true and persisted: `bluetoothMicSoloEngages`
+    and `bluetoothMicReleaseOnMute` (off = a mute keeps the route held, so
+    unmuting is instant, at the cost of staying mono while muted; in PTT a
+    released key is not a mute and always releases). Wired end to end: processor
+    atomics + `extraTree` persistence + `settings.set` + `settings.*` in the
+    console state + two rows in the Settings sheet (only with "Headset mic").
+    - The persistence is a fix in itself: the A22 settings were **never persisted**
+    (only the test-harness paths touched `bluetoothMic`), so the choice silently
+    reset to "phone" on every launch.
+    - **Still open: follow-up 1** — the headset's mute button does nothing while the
+    route is held. While we hold the communication route, the HFP button arrives
+    as a call-control key rather than a media key, so the app's session never sees
+    it; needs a logcat of the key events before choosing between a `MediaSession`
+    handler and `dispatchKeyEvent`. Hardware-only (no Bluetooth stack on the
+    emulator).
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

@@ -285,7 +285,7 @@ Agent:
 | `mic.ptt` | `{ down: true \| false }` | per client; released on disconnect (§2.4) |
 | `output.setLevel` | `{ db }` | |
 | `devices.setInput` / `devices.setOutput` | `{ id }` | |
-| `settings.set` | `{ soloDimDb?, pttHotkey?, codec?, bitrateKbps?, networkBuffer? }` | partial update |
+| `settings.set` | `{ soloDimDb?, bluetoothMic?, bluetoothMicSoloEngages?, bluetoothMicReleaseOnMute?, pttHotkey?, codec?, bitrateKbps?, networkBuffer? }` | partial update |
 
 ### 5.2 Agent commands
 | `cmd` | `args` | Notes |

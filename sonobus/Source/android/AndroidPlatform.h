@@ -79,6 +79,32 @@ struct Signals
     // without an engine handle: 0 = "phone" (default), 1 = "headset".
     std::atomic<int>    btMic { 0 };
 
+    // A22 (android.md 14, on-demand route): everything the Java route controller
+    // needs each tick, in one int it reads with a single JNI call (it polls at
+    // 1 Hz). Mirrored from the processor by the controller's tick, like btMic.
+    //
+    //  bit0  the mic is transmitting right now (isMicTransmitting(): mic on, or
+    //        PTT held; false during a call or while the mic is not granted)
+    //  bit1  any remote peer is soloed (isAnyPeerSoloed())
+    //  bit2  settings.bluetoothMicSoloEngages  — solo may engage the route
+    //  bit3  settings.bluetoothMicReleaseOnMute — an explicit mute releases it
+    //  bit4  the mic mode is Push-to-Talk (so "not transmitting" is a released
+    //        key, not a mute — the mute rule must not apply)
+    //  bit5  a phone/VoIP call turned the mic off (A14)
+    //  bit6  the microphone is not granted (A9: nothing to capture)
+    enum BtRouteFlag
+    {
+        btFlagMicTransmitting = 1 << 0,
+        btFlagAnySolo        = 1 << 1,
+        btFlagSoloEngages    = 1 << 2,
+        btFlagReleaseOnMute  = 1 << 3,
+        btFlagPttMode        = 1 << 4,
+        btFlagMicOffByCall   = 1 << 5,
+        btFlagMicBlocked     = 1 << 6
+    };
+
+    std::atomic<int>    btRouteFlags { 0 };
+
     const char* micPermissionName() const
     {
         const int m = micPermission.load();

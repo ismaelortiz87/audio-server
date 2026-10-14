@@ -450,6 +450,7 @@ void ApiCommands::setSettings (const var& a)
     std::optional<int> format;
     std::optional<String> hotkey;
     std::optional<String> bluetoothMic;   // A22: "phone" | "headset"
+    std::optional<bool> btMicSoloEngages, btMicReleaseOnMute;   // A22: on-demand route policies
     String unsupported;
 
     for (auto& kv : o->getProperties())
@@ -467,6 +468,13 @@ void ApiCommands::setSettings (const var& a)
             if (kv.value.toString() != "phone" && kv.value.toString() != "headset")
                 throw CmdError { "bad_request", "bluetoothMic must be \"phone\" or \"headset\"" };
             bluetoothMic = kv.value.toString();
+        }
+        else if (key == "bluetoothMicSoloEngages" || key == "bluetoothMicReleaseOnMute")
+        {
+            // A22 (on-demand route): the two policies that decide whether a solo
+            // engages the headset route and whether a mute releases it.
+            if (! kv.value.isBool()) throw CmdError { "bad_request", key + " must be a boolean" };
+            (key == "bluetoothMicSoloEngages" ? btMicSoloEngages : btMicReleaseOnMute) = (bool) kv.value;
         }
         else if (key == "pttHotkey" && hooks.setPttHotkey)
         {
@@ -527,6 +535,8 @@ void ApiCommands::setSettings (const var& a)
     }
     if (dim) processor.setSoloDimDb (*dim);
     if (bluetoothMic) processor.setBluetoothMic (*bluetoothMic);   // A22: the Java route reacts to the processor value
+    if (btMicSoloEngages) processor.setBluetoothMicSoloEngages (*btMicSoloEngages);        // A22
+    if (btMicReleaseOnMute) processor.setBluetoothMicReleaseOnMute (*btMicReleaseOnMute);  // A22
     if (format) processor.setDefaultAudioCodecFormat (*format);   // the send format of new connections
 }
 

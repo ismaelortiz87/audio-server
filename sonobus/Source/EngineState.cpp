@@ -859,6 +859,8 @@ var EngineState::buildConsoleState (double now)
         { "platform", platform },
         { "settings", obj ({ { "soloDimDb", soloDimDb() }, { "pttHotkey", strOrNull (options.pttHotkey ? options.pttHotkey() : String()) },
                              { "bluetoothMic", processor.getBluetoothMic() },   // A22: "phone" | "headset"
+                             { "bluetoothMicSoloEngages", processor.getBluetoothMicSoloEngages() },      // A22
+                             { "bluetoothMicReleaseOnMute", processor.getBluetoothMicReleaseOnMute() },  // A22
                              { "codec", codec }, { "bitrateKbps", bitrate },
                              { "networkBuffer", obj ({ { "mode", autoBuf ? "auto" : "manual" },
                                                        { "currentMs", bufNow } }) } }) },
