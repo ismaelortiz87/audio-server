@@ -159,6 +159,7 @@ Ordered so that every task appears after everything it depends on.
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
 | A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix; **maelo on the phone 2026-10-13: the row now appears and the mode can be picked, but the route never engaged (no mono, no buds mic)** → fixed (missing `MODIFY_AUDIO_SETTINGS`, wrong device for `setCommunicationDevice`, engine never reopened its stream); **then four retests on the phone**: the route engages on unmute/solo, releases ~3 s after a mute with stereo back, no freeze/noise, and an unmute restores the buds mic — **the on-demand flow works on hardware** (three release-path crashes found and fixed along the way, `435b49da29`, `e9fac9c4cf`); residual: **B17** (rare crash right after reopening), **B18** (mute button dead while the route is held), **B19** (occasional noise when the headset drops) — all in BUGS.md, none scheduled; car check still pending |
+| A26 | A22 hardening: the route's residual defects (B17–B19), the two review edge cases, the car check | A22 | M | any + human | wip, PR open | Claude 2026-10-13: the two code items A22's review left open are fixed in this batch — `stop()` no longer releases a route it does not hold (it was resetting the audio mode, which can break another app's VoIP call) and another app's VoIP call is no longer overridden or masked from A14's detector; B17–B19 await the phone's evidence (BUGS.md) and the car check with Headset mic closes A22 |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | done | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; car acceptance passed (maelo 2026-10-13, A23). **PR #5: the design-review findings fixed** — a soloed station no longer reads "Soloed · Dimmed"; the health word is back for stations that hear you or are soloed (the lock-screen "Clear · 32 ms" detail regressed without it); `connecting` is read with `optBoolean`, not `has` (the key exists and is false after any connect attempt); connecting is said in the subtitle (§13.3), not the title; the fresh-install message is Auto's `STATE_ERROR` + `setErrorMessage` with an empty list, not a non-playable row |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
@@ -3369,6 +3370,57 @@ is ever needed, adds 1–2 days.
       held, needing a manual device pick.
     All three are written up with facts, the evidence to collect and candidate fixes
     in BUGS.md.
+
+#### A26 — A22 hardening: the route's residual defects · M · any + human
+- **Depends on:** A22 (merged in PR #5) · **Touches:** `BluetoothRoute.java`,
+  `PlatformMonitor.java` (A14's call detection), the media session
+- **Do:** close A22's leftovers, each driven by evidence rather than reasoning:
+  - **B17** (a crash once right after reopening the app): take `adb logcat -b crash`
+    together with `-s Crosspoint JUCE AndroidRuntime` on the next occurrence. An
+    `A22 route …: reopened audio …` line followed by `FAILED (…): no audio device open`
+    puts it in the reopen; its absence puts it elsewhere. If he has no adb, add an
+    in-app handler that persists the trace where the Console UI can show it — and note
+    that a native crash needs the tombstone, which a Java handler does not catch.
+  - **B18** (the headset's mute button does nothing *while the route is held*): the
+    media-button log is already in the build. Press it with the mic live and read
+    `adb logcat -s Crosspoint`: **no line = the HFP button is going to the call path,
+    not to us**, which is the expected reading. Then test the cause by holding
+    `setCommunicationDevice()` **without** `MODE_IN_COMMUNICATION` (behind a debug
+    flag) — the same change that removes the limit noted under item 2 below.
+  - **B19** (noise when the headset drops and reconnects with the route held): needs a
+    test where the buds disconnect *while the route is held*. Capture the `Crosspoint`
+    route lines plus the `JUCE` reopen line across the drop → reconnect; if the two
+    transitions overlap, give a device disappearance its own path (settle the release
+    and reopen once, then re-engage) instead of letting the poll drive the reopen.
+  - the car check with **Headset mic** (the same items as A22's buds check: engage and
+    release, the mic really comes from the car, the mic state does not change on
+    plug/unplug, restart persistence).
+- **Done when:** B17 has a trace and a cause (fixed, or explicitly accepted), B18 has a
+  decision (mode dropped so the button works, or documented as unavailable while the
+  route is held), B19 is reproduced with the transition logged, and the car check
+  passes — then **A22 is closed**.
+- **Result (2026-10-13, same batch: A22's review left two code items open, both fixed
+  here):**
+  1. **`stop()` no longer releases a route it does not hold.** `releaseRoute()` is now
+     gated on `sHeld`. `stop()` calls it unconditionally on the way out, and the
+     teardown it ran (`clearCommunicationDevice()`, `stopBluetoothSco()`,
+     `setMode(MODE_NORMAL)`) would take down whoever *does* hold the route: another
+     app's VoIP call, a ringing call, or a live call's SCO link. The `ours` check
+     inside also excludes `MODE_RINGTONE` now.
+  2. **Another app's VoIP call is no longer overridden.** Two things were wrong: the
+     route controller's guard knew only `MODE_IN_CALL`/`MODE_CALL_SCREENING`, and
+     `engage()` claimed `PlatformMonitor.appOwnsAudioMode` at its *top* — so from the
+     first engage onwards A14's detector (`MODE_IN_COMMUNICATION && !appOwnsAudioMode`)
+     could not see a VoIP call at all. The guard now counts a foreign
+     `MODE_IN_COMMUNICATION` and `MODE_RINGTONE` as a call, and the ownership flag is
+     set only where the app really calls `setMode()` (not on the LE path, which
+     switches nothing).
+     **Known limit, documented:** while the app itself holds `MODE_IN_COMMUNICATION`, a
+     VoIP call that starts *during* the hold is indistinguishable from our own route.
+     Dropping the mode on API 31+ (the B18 experiment) removes that as well — the
+     reason the two are one task.
+  **Still open:** B17–B19 (all three need the phone) and the car check. **Not verified
+  here:** the route paths are hardware-only; the AVD has no Bluetooth stack.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

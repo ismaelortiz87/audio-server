@@ -177,10 +177,17 @@ final class BluetoothRoute {
         final boolean le = bt != null && isLeType(bt.getType());
         final boolean connected = bt != null;
 
-        // A real call owns the route: never override it (android.md 6, A14).
+        // A real call owns the route: never override it (android.md 6, A14). That
+        // includes another app's VoIP call: it holds MODE_IN_COMMUNICATION, and
+        // engaging on top of it would take the mic and the speakers out from under
+        // their call. `sHeld` separates their hold from ours — our own engage is the
+        // only IN_COMMUNICATION we may override. A ringing call counts too: the
+        // user may answer it in a second.
         final int mode = am.getMode();
         final boolean inRealCall = mode == AudioManager.MODE_IN_CALL
-            || (Build.VERSION.SDK_INT >= 30 && mode == AudioManager.MODE_CALL_SCREENING);
+            || mode == AudioManager.MODE_RINGTONE
+            || (Build.VERSION.SDK_INT >= 30 && mode == AudioManager.MODE_CALL_SCREENING)
+            || (mode == AudioManager.MODE_IN_COMMUNICATION && !sHeld);
 
         // Is capture wanted right now? Solo only counts when the policy allows it:
         // a solo is a persistent state, and while the route is held playback is
@@ -302,7 +309,6 @@ final class BluetoothRoute {
 
     /** Move audio to the communication route on the given Bluetooth device. */
     private static void engage(AudioManager am, boolean le) {
-        PlatformMonitor.appOwnsAudioMode = true;   // A14: do not count this as a call
         if (le) {
             // LE Audio (android.md 14) carries the stereo media and the mic
             // together, so there is nothing to switch: the route stays where it is.
@@ -320,6 +326,10 @@ final class BluetoothRoute {
             if (comm != null) {
                 try {
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    // A14: the mode is ours, not a call. Set only where we really call
+                    // setMode (the LE path above switches nothing and must not claim
+                    // it, or another app's VoIP call would go undetected).
+                    PlatformMonitor.appOwnsAudioMode = true;
                     if (am.setCommunicationDevice(comm)) {
                         sHeld = true;
                         Log.i(TAG, "Bluetooth route engaged: type=" + comm.getType()
@@ -367,6 +377,7 @@ final class BluetoothRoute {
     private static void classicSco(AudioManager am) {
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            PlatformMonitor.appOwnsAudioMode = true;   // A14: this mode is ours
             am.startBluetoothSco();
             am.setBluetoothScoOn(true);
             sHeld = true;
@@ -379,11 +390,16 @@ final class BluetoothRoute {
 
     /** Back to normal media routing and the phone mic (mic on/off state untouched). */
     static void releaseRoute() {
-        if (sApp != null) {
+        // Nothing of ours to give back: leave the platform completely alone. stop()
+        // calls this unconditionally on the way out, and a mode/SCO teardown from
+        // there would take down whoever *does* hold the route — another app's VoIP
+        // call (MODE_IN_COMMUNICATION), a ringing call, or a live call's SCO link.
+        if (sHeld && sApp != null) {
             final AudioManager am = (AudioManager) sApp.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
                 final int mode = am.getMode();
                 final boolean ours = mode != AudioManager.MODE_IN_CALL
+                    && mode != AudioManager.MODE_RINGTONE
                     && (Build.VERSION.SDK_INT < 30 || mode != AudioManager.MODE_CALL_SCREENING);
                 if (Build.VERSION.SDK_INT >= 31 && ours) {
                     try { am.clearCommunicationDevice(); }
