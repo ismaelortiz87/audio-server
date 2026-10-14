@@ -4,11 +4,11 @@ Handoff-style register of defects: facts, evidence, how to reproduce, where
 the code is, what's already done, and what's left. Tasks and phases live in
 [TASKS.md](TASKS.md) and [ROADMAP.md](ROADMAP.md). This file is only for
 defects. When a bug is fixed, move its entry to "Closed" with the fixing commit.
-Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
+Open: **B12** and **B13** (Console UI, reported by maelo 2026-10-11, not scheduled). B15 closed 2026-10-12. **B16** open (reconnect with the same name). **B17**, **B18** and **B19** open — all A22 (the Android Bluetooth route) on real hardware, reported by maelo 2026-10-13; each is intermittent, unreproduced, or narrowed but unfixed. **B20** and **B21** open — the two directions of the phone/headset mic switch, reported by maelo 2026-10-14 on the merged A26 build. **He is filing these as he uses the app: collect them now and work them when he says so, not on sight.** B1–B11 are closed (B4–B11 found on the first VDI deployment, below).
 
-Last updated: 2026-10-14 by the A26/P5.9 session (review T4: B15/B16 added to the
-summary table).
-Repo state referenced: `task/a22-hardening` (PR #6).
+Last updated: 2026-10-14 (B20/B21 filed; review T4 added B15/B16 to the table).
+Repo state referenced: `main` @ `ee5f54072e` (PR #6 merged), APK
+`crosspoint-debug-a26-p59-merged-ee5f5407.apk` on the share.
 B1, B2 and B3 are **closed**; their entries are kept below for the record.
 
 | ID | Bug | Severity | Found in | Status |
@@ -28,6 +28,8 @@ B1, B2 and B3 are **closed**; their entries are kept below for the record.
 | [B17](#b17--an-intermittent-crash-right-after-reopening-the-app-android) | An intermittent crash right after reopening the app (Android) | High (a crash), seen once | A22 route builds | **Open** |
 | [B18](#b18--the-headsets-mute-button-stops-working-while-the-route-is-held) | The headset's mute button stops working while the communication route is held | Medium (dead in the state where it is wanted) | A22 on real hardware | **Open** |
 | [B19](#b19--noise-when-the-headset-drops-and-comes-back-with-the-route-held) | Noise when the headset drops and comes back while the route is held | Medium (recovers with a manual pick) | A22 on real hardware | **Open** |
+| [B20](#b20--switching-the-mic-setting-to-headset-kills-playback-until-a-muterelease-cycle) | Switching the mic setting to Headset kills playback until a mute/release cycle | High when it hits (no audio at all; recovered by muting and waiting ~3 s) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
+| [B21](#b21--going-back-to-phone-mic-leaves-capture-dead-until-the-mic-is-picked-again) | Going back to Phone mic leaves capture dead until the mic is picked again | Medium (mic dead until the input is re-picked) | A26 build on real hardware | **Open**, reported 2026-10-14, collecting |
 
 Related, tracked elsewhere: **L2** (residual Linux audio gaps and dropouts) is a
 task in TASKS.md, not repeated here.
@@ -649,6 +651,94 @@ route lines (engage/release, `platform clear=`, `mediaOut=`) plus the `JUCE`
 two overlap, give a device disappearance its own path (settle the release and reopen
 once, then re-engage) instead of letting the generic poll-driven route change drive
 it. Not scheduled.
+
+## B20 — Switching the mic setting to Headset kills playback until a mute/release cycle
+
+**Found** by maelo, 2026-10-14, on the phone (Pixel A22 + buds), build
+`crosspoint-debug-a26-p59-merged-ee5f5407.apk` (PR #6 merged, `ee5f5407`). Reported while
+using the app; **not scheduled** — he is collecting reports first and will say when to
+work them.
+**Owner:** any (Android route) + human.
+
+**Facts (maelo's words).** "When I switch from phone to headset mode, it correctly
+starts using the microphone but I don't hear anything, unless [I] mute the mic, wait the
+3 seconds, then audio from VDIs start[s] being audible; if I unmute, audio pass[es] to
+mono as expected."
+
+In order, and this ordering is the whole bug:
+1. The setting goes to **Headset mic**: the headset mic **is** used, so the route does
+   engage.
+2. Remote audio (a VDI's) is **inaudible** from that moment.
+3. Muting the mic → ~3 s of `RELEASE_HOLD_MS` → the route releases → the remote audio is
+   audible again.
+4. Un-muting → the route engages again → audio is present and **mono**, as expected.
+
+Playback survives the *second* engagement (step 4) but not the first (step 1), so the
+path that fails is the engage driven by the **setting switch**, not the engage driven by
+the mic coming up.
+
+**What is already fixed nearby (do not re-fix).** The on-demand route works on hardware:
+engage on unmute/solo per the policy toggles, release ~3 s after a mute, stereo back on
+release. Both directions close *and* reopen the engine's audio device — the reopen is
+what rebinds the streams — gated on the platform really being on/off the call route
+(`routeIsConnected()` / `routeIsClear()`), and the exit crash the reopen caused is fixed
+(`a653c8b742`, `9a60f7c7fe`). The failure here is not "nothing reopens"; it is that the
+reopen on *this* engage does not leave audible playback behind.
+
+**Hypotheses (unconfirmed, cheapest first).**
+- H1: the first engage's reopen lands before the call channel is up, so the streams bind
+  to a channel that carries nothing. `sEngagePending`/`sEngageDeadline` gate the
+  *notification* to native on `routeIsConnected()`; the setting-switch path may reach the
+  reopen through a different branch than the mic-driven engage (step 4).
+- H2: the switch engages while the engine still holds the device opened for the previous
+  (phone-mic, stereo) setup, and the reopen is skipped because the route name had not
+  changed from the engine's point of view.
+- H3: audio *is* on the route, but the engine's output still points at the released A2DP
+  path — the earlier "streams stayed frozen on the call channel" release defect, mirrored.
+
+**Evidence to collect next (do not guess a fix).** `adb logcat -s Crosspoint JUCE` across
+the switch: the `Crosspoint` route lines (engage/release, `platform clear=`, `mediaOut=`)
+and, critically, whether the `JUCE` `A22 route …: reopened audio in='…' out='…'` line
+appears at step 1 at all and again at step 4. Present at both → the reopen lands in the
+wrong state (H1/H2); present only at step 4 → the switch path never notifies native (H2).
+Also worth having: the same log while the audio is inaudible, to see whether the route
+reports engaged and `routeIsConnected()` true.
+
+**Left.** Capture that log with the buds connected, then decide. Severity: high when it
+happens (no audio at all until the user mutes and waits), but it is recovered by a
+known gesture, so it is not a blocker.
+
+## B21 — Going back to Phone mic leaves capture dead until the mic is picked again
+
+**Found** by maelo, 2026-10-14, same session and build as B20. **Not scheduled.**
+**Owner:** any (Android route) + human.
+
+**Facts (maelo's words).** "If I go back to phone mode, the audio correctly switches to
+stereo but I have to manually pick the phone mic again for [the] mic to get it working
+again."
+
+So the release side is half right: playback returns to stereo, but **capture stops
+working** and only recovers when he re-picks the input in the app's device settings.
+This is the mirror of the retest-3 defect — an engage that left capture on the phone mic,
+fixed by making the reopen symmetric — with the release now showing the same shape.
+
+**Hypotheses (unconfirmed).**
+- H1: the reopen re-selects the input by the name the engine already had
+  (`AndroidAudioRoute.h` aliases Android devices to "System Default (Input)"), so it lands
+  on whatever the platform's default input is at that instant — still the call-route
+  device while the SCO/HFP link is tearing down — and nothing corrects it afterwards.
+- H2: the release notification is understood by the engine as "route changed" but the
+  input re-selection depends on an event the release path consumes before the platform
+  has actually left the route (`RELEASE_SETTLE_MS` bounds the notification, not the
+  re-pick).
+
+**Evidence to collect next.** The same `adb logcat -s Crosspoint JUCE` capture across the
+switch back to Phone mic: the `JUCE` reopen line's `in='…'` names the device the engine
+actually opened. Route/call device → H1; no line at all → H2.
+
+**Left.** Same log session as B20; the two directions of the same switch are likely one
+fix. Severity: medium (the mic is dead until the user re-picks it, and the setting alone
+does not say so).
 
 ---
 
