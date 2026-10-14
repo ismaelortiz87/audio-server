@@ -178,6 +178,7 @@ private:
     var androidDevicesVar();
     var androidPlatformVar (bool anyHearsYou);
     var androidBluetoothRouteVar (const crosspoint::android::Signals&);   // A22
+    var androidBluetoothDeviceVar (const crosspoint::android::Signals&);  // A22: connected device
     int androidDefaultOut = 0, androidDefaultIn = 0;   // AudioDeviceInfo types "System Default" resolves to
     double androidRouteAtMs = -1e12;
     bool aecChecked = false, aecWorking = false;

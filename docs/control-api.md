@@ -316,7 +316,9 @@ State: `self.kind: "android"` (also in peer info; agents show "Console ·
 Android"). `platform` is `null` except on Android: `{ micPermission:
 granted|prompt|denied, notifications: granted|denied, backgroundRestricted,
 phoneCall, micOffByCall, outputRoute: speaker|earpiece|wired|bluetooth|usb,
-echoRisk }`. `settings.headsetButton: mic|off`. Commands:
+echoRisk, bluetoothDevice: null|{name,le} (the connected headset/car — what
+offers the Bluetooth mic row), bluetoothRoute: null|{name,stereo} (the route
+taken; null until the setting is "headset") }`. `settings.headsetButton: mic|off`. Commands:
 `platform.requestMic {}`, `platform.openSettings { page: app|notifications|battery }`,
 `platform.allowBackground {}`, `settings.set { headsetButton }`. Elsewhere
 they return `not_supported`. Each implementing task adds its fields to the

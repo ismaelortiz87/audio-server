@@ -40,6 +40,9 @@ public class SonoBusActivity   extends Activity
     static native void nativeShutdown();                       // swipe-away: leave the group, save state
     /** A22: the Bluetooth route changed (null name = none; stereo = LE Audio). */
     static native void nativeBtRoute(String name, boolean stereo);
+    /** A22: a Bluetooth headset/car is connected (null = none), independent of the
+     *  "Bluetooth mic" setting. `le` is true for LE Audio. */
+    static native void nativeBtDevice(String name, boolean le);
     /** A22: the current "Bluetooth mic" setting ("phone" | "headset"), from the engine. */
     static native String nativeBtMicSetting();
 

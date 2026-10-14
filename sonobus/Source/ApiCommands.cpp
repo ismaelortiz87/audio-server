@@ -600,6 +600,10 @@ void ApiCommands::connectionConnect (const var& a)
     if (! recents.isEmpty()) base = recents.getReference (0);
 
     String host = base.serverHost;
+    // No live/recent/initial connection: default to aoo.sonobus.net, so the API
+    // and the app only need a group (matches DEFAULT_SERVER_HOST; the settings
+    // sheet seeds the same host:port from console-ui's lib/defaults.js).
+    if (host.isEmpty()) host = DEFAULT_SERVER_HOST;
     int port = base.serverPort;
     String liveHost; int livePort = 0;
     if (processor.getServerEndpointInfo (liveHost, livePort) && liveHost.isNotEmpty()) { host = liveHost; port = livePort; }

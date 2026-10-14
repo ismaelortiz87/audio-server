@@ -27,9 +27,12 @@ import android.util.Log;
  *
  * It runs on the main looper (the PlatformMonitor pattern): once a second it
  * reads the desired setting (from the engine via nativeBtMicSetting), checks the
- * connected Bluetooth device, and engages or releases the route. A change is
- * pushed to native (nativeBtRoute), which surfaces it as
- * platform.bluetoothRoute.
+ * connected Bluetooth device, and engages or releases the route. Two things go
+ * to native: the *connected device* (nativeBtDevice →
+ * platform.bluetoothDevice), which is what offers the Settings row at all, and
+ * the *route actually taken* (nativeBtRoute → platform.bluetoothRoute). The row
+ * must not depend on the route: that is only published once the setting is
+ * already "headset", so gating on it would hide the control that sets it.
  *
  * LE Audio (android.md 14) keeps the stereo media route untouched: it can carry
  * media and the mic together, so there is nothing to switch. Only the classic
@@ -63,6 +66,8 @@ final class BluetoothRoute {
     private static String sLastRoute = null;   // last route name pushed to native (null = none)
     private static boolean sLastStereo = false;
     private static boolean sHeld = false;      // we currently hold the communication route
+    private static String sLastDevice = null;  // last *connected* device pushed (null = none)
+    private static boolean sLastDeviceLe = false;
 
     static synchronized void start(Context ctx) {
         if (sApp != null) return;
@@ -84,6 +89,8 @@ final class BluetoothRoute {
         sApp = null;
         sLastRoute = null;
         sLastStereo = false;
+        sLastDevice = null;
+        sLastDeviceLe = false;
         sHeld = false;
     }
 
@@ -115,12 +122,34 @@ final class BluetoothRoute {
         if (wantRoute && !sHeld) engage(am, le, bt);
         else if (!wantRoute && sHeld) releaseRoute();
 
-        // Report to native only while the headset route is actually engaged.
-        // While it is on, `le` is the `stereo` flag (LE keeps stereo; the
+        // Report the connected device separately from the route below. With the
+        // setting on "phone" there is no route to report, yet the Settings row
+        // that offers "Headset" has to be there — gating that row on the route
+        // would hide the only control that sets it (android.md 14). `le` is the
+        // LE Audio flag, which the route reports as `stereo`.
+        final String dev = connected ? nameOf(bt) : null;
+        if (!sameDevice(dev, le)) pushDevice(dev, le);
+
+        // Report the route to native only while the headset route is actually
+        // engaged. While it is on, `le` is the `stereo` flag (LE keeps stereo; the
         // classic call route is mono). Null otherwise (phone route, or a real
         // call owns it) — that is what drives the UI's route/stereo/note.
         final String name = wantRoute ? nameOf(bt) : null;
         if (!same(name, wantRoute && le)) push(name, wantRoute && le);
+    }
+
+    private static boolean sameDevice(String name, boolean le) {
+        return (name == null ? sLastDevice == null : name.equals(sLastDevice)) && le == sLastDeviceLe;
+    }
+
+    private static void pushDevice(String name, boolean le) {
+        sLastDevice = name;
+        sLastDeviceLe = le;
+        try {
+            SonoBusActivity.nativeBtDevice(name, le);
+        } catch (Throwable t) {
+            // ignore: the engine is tearing down
+        }
     }
 
     private static boolean same(String name, boolean stereo) {

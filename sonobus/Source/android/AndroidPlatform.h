@@ -53,6 +53,19 @@ struct Signals
     mutable std::mutex  btRouteNameLock;
     std::string         btRouteName;
 
+    // A22: the connected Bluetooth headset/car itself, independent of the
+    // "Bluetooth mic" setting — btDevice=false means none is connected. This is
+    // what the Settings row is offered on, and it must NOT be the route above:
+    // the route only exists once the setting is already "headset", so gating the
+    // control on it would hide the control that picks "headset" (unreachable on
+    // the default "phone"). btDeviceLe is true for LE Audio (stereo + mic
+    // together, source type "BLE headset"), false for classic A2DP. Same threading
+    // and locking rules as btRoute.
+    std::atomic<bool>   btDevice { false };
+    std::atomic<bool>   btDeviceLe { false };
+    mutable std::mutex  btDeviceNameLock;
+    std::string         btDeviceName;
+
     // A22: the current "Bluetooth mic" setting, mirrored from the processor by the
     // controller's tick (message thread) so the Java route controller can read it
     // without an engine handle: 0 = "phone" (default), 1 = "headset".

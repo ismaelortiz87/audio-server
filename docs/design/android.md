@@ -607,5 +607,9 @@ Note under it, changing with the choice:
   "Bluetooth · {name}".
 
 **API:** `settings.bluetoothMic: "phone" | "headset"`, and
-`platform.bluetoothRoute: null | { name, stereo }` (null when no Bluetooth
-headset or car is connected).
+`platform.bluetoothDevice: null | { name, le }` — the Bluetooth headset or car
+that is *connected*, which is what offers the row (null when none is connected),
+`le` true for LE Audio. Alongside it `platform.bluetoothRoute: null | { name,
+stereo }` — the route actually taken, so it stays null until the setting is
+"headset" and a device is connected. The row must read the device, not the route:
+gating it on the route hides the only control that can set the route.

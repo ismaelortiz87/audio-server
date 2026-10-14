@@ -158,7 +158,7 @@ Ordered so that every task appears after everything it depends on.
 | A25 | Lock-screen player artwork v2: full-bleed (fixes Samsung black corners), gradient, station name, state pill | A18 | S | any + design review | done | Claude 2026-10-13: merged (`cc8ddaab`), builds; maelo 2026-10-13: checked on the Samsung, confirmed nice |
 | A19 | Quick Settings tile: Crosspoint mic on/off (optional) | A15, A17 | S | any + design review | deferred | android.md §12.6; maelo 2026-10-13: deferred for now |
 | A21 | UX addendum: the lock-screen player on Android Auto (browse list, actions, car copy) | A15 | S | design | done | Claude 2026-10-13 (`docs/design/android.md` §13) |
-| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check |
+| A22 | Bluetooth mic setting (buds and car): Phone mic / Headset mic (android.md §14) | A8, A14 | M | any + design review + human | wip | Claude 2026-10-13: implemented + build-verified (setting, SCO/setCommunicationDevice route, placement note, `platform.bluetoothRoute`); **design review PASSED with two fixes in the PR** (LE Audio keeps stereo — no route switch; `bluetoothRoute` null unless the route is actually engaged); pending maelo's buds/car check AFTER the row-unreachable fix below |
 | A20 | Android Auto media app: MediaBrowserService on the A18 session, station browse list, Auto declaration, DHU test | A18, A21 | S | any + design review | wip, PR #2 | Claude 2026-10-13: build + browse tree + session token verified via a MediaBrowser client; follow-ups (shared station-state, §13.2 Dimmed, §13.3 fresh-install message) in PR #2; car acceptance passed (maelo 2026-10-13, A23) |
 | A23 | In-car test via Android Auto (sideload, Unknown sources, controls, car speakers, talking with the phone's mic) | A20 | S | human | done | maelo 2026-10-13: tested in-car, worked well |
 | A13 | On-phone acceptance (VPN, screen off, network switch, headsets, lock-screen player) | A7–A11, A14, A9, A18 | S | human | done | maelo 2026-10-13: tested on the phone, passed |
@@ -1406,6 +1406,12 @@ build against the spec. Implementers don't make design decisions (see
   desktop/phone, 7 agent states) into an index page; `?open=settings` deep link.
   Tests: 13 unit tests plus 30 browser smoke checks pass. **Left for P5.6:**
   wiring to the real engine once P4.2–P4.4 exist.
+- **Server default (2026-10-13, PR #5):** the sheet seeded the Server field
+  empty, so a fresh install had to be told `aoo.sonobus.net` by hand. It now
+  seeds `aoo.sonobus.net:10998` (`console-ui/src/lib/defaults.js`, mirroring the
+  engine's `DEFAULT_SERVER_HOST`/`DEFAULT_SERVER_PORT`), and
+  `connection.connect` falls back to the same host when it is called without a
+  server, so a group alone is enough.
 - **Result:**
 
 ### P5.6 — Wire to the real API · M
@@ -3179,6 +3185,20 @@ is ever needed, adds 1–2 days.
     `OUTPUT_DEVICE_*`→`TYPE_*` rename, so `BluetoothRoute.java` resolves the
     type constants at runtime (both names) instead of referencing them at
     compile time.
+  - **Fix (2026-10-13, `task/android-consolidated`, PR #5): the control was
+    unreachable.** Review fix #2 above made `platform.bluetoothRoute` null until
+    the route is engaged, but the Console still gated the row on it — so with
+    buds connected and the setting still "phone" there was no route, the row was
+    hidden, and nothing could ever set the route. The engine now reports the
+    *connected device* separately as `platform.bluetoothDevice: null | { name,
+    le }` (JNI `nativeBtDevice`, pushed on every tick from the same controller,
+    independent of the setting), and the Console offers the row on that.
+    `bluetoothRoute` keeps its meaning (the route actually taken) and still
+    drives the placement note. Unit tests cover both fields, including the case
+    that used to be unreachable. **Still needs maelo's buds/car:** that a real
+    headset makes the row appear, that "Headset mic" engages the route, and the
+    §14 notes — the emulator has no Bluetooth stack, so none of it is testable
+    here.
 
 #### A20 — Android Auto media app · S · any + design review
 - **Depends on:** A18, A21 · **Touches:** new `CrosspointBrowserService.java`

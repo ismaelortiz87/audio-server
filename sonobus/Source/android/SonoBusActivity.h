@@ -63,6 +63,7 @@ private:
     CALLBACK (nativeSelectStationJni,    "nativeSelectStation",    "(Ljava/lang/String;)V") \
     CALLBACK (nativeShutdownJni,         "nativeShutdown",         "()V") \
     CALLBACK (nativeBtRouteJni,          "nativeBtRoute",          "(Ljava/lang/String;Z)V") \
+    CALLBACK (nativeBtDeviceJni,         "nativeBtDevice",         "(Ljava/lang/String;Z)V") \
     CALLBACK (nativeBtMicSettingJni,     "nativeBtMicSetting",     "()Ljava/lang/String;") \
     
     DECLARE_JNI_CLASS (SonoBusActivityJavaClass, JUCE_ANDROID_ACTIVITY_OVERRIDE_CLASSPATH)
@@ -152,6 +153,28 @@ private:
             sig.btRoute.store (true);
             sig.btRouteStereo.store (stereo != JNI_FALSE);
             sig.btRouteName = juceString (env, name).toStdString();
+        }
+    }
+
+    /** A22 (android.md 14): a Bluetooth headset/car is connected (or was
+        disconnected). Independent of the "Bluetooth mic" setting: this is what
+        makes the Settings row available, while nativeBtRoute above reports only
+        the route actually taken. `le` is true for LE Audio. */
+    static void JNIEXPORT nativeBtDeviceJni (JNIEnv* env, jclass, jstring name, jboolean le)
+    {
+        auto& sig = crosspoint::android::Signals::get();
+        std::lock_guard<std::mutex> lock (sig.btDeviceNameLock);
+        if (name == nullptr)
+        {
+            sig.btDevice.store (false);
+            sig.btDeviceLe.store (false);
+            sig.btDeviceName.clear();
+        }
+        else
+        {
+            sig.btDevice.store (true);
+            sig.btDeviceLe.store (le != JNI_FALSE);
+            sig.btDeviceName = juceString (env, name).toStdString();
         }
     }
 

@@ -6,7 +6,8 @@ import { h, setText, setAttr, setHTML, ICONS } from '../lib/dom.js';
 import { dbText, panText, panLabel, shortName, listNames, hears, doesnt, lastSeenText, echoNoticeShown, ECHO_NOTICE, allHearYouText } from '../lib/format.js';
 import { AUDIO } from '../lib/tokens.js';
 import { latest } from '../lib/boot.js';
-import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, problemRows } from '../lib/platform.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, btDevice, problemRows } from '../lib/platform.js';
+import { DEFAULT_SERVER } from '../lib/defaults.js';
 
 const STATION_VAR = i => `var(--s${(i % 4) + 1})`;
 const ordered = st => st.stationOrder.map(id => st.stations[id]).filter(Boolean);
@@ -496,10 +497,12 @@ export function settingsSheet(ctx) {
   const outSel = h('select', { onchange: () => ctx.client.fire('devices.setOutput', { id: outSel.value }) });
   const dimSel = h('select', { onchange: () => ctx.client.fire('settings.set', { soloDimDb: Number(dimSel.value) }) },
     [-12, -18, -24, -30].map(v => h('option', { value: v }, `−${Math.abs(v)} dB`)));
-  // A22 (android.md 14): Bluetooth mic. Shown only while a Bluetooth headset or
-  // car is connected (platform.bluetoothRoute non-null); "Phone mic" is today's
-  // routing, "Headset mic" takes the call/SCO route (mono, placement off — or
-  // stereo for LE Audio, which the route reports as stereo:true).
+  // A22 (android.md 14): Bluetooth mic. Shown while a Bluetooth headset or car is
+  // connected — that is platform.bluetoothDevice, NOT platform.bluetoothRoute:
+  // the route only appears once this row has already set the setting to "headset",
+  // so gating the row on it would hide the only control that picks the route.
+  // "Phone mic" is today's routing, "Headset mic" takes the call/SCO route (mono,
+  // placement off — or stereo for LE Audio, which the device reports as le:true).
   const btMicPhone = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { bluetoothMic: 'phone' }) }, 'Phone mic');
   const btMicHeadset = h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => ctx.client.fire('settings.set', { bluetoothMic: 'headset' }) }, 'Headset mic');
   const btMicNote = h('small.note');
@@ -561,7 +564,7 @@ export function settingsSheet(ctx) {
       problems.hidden = !rows.length;
       const connected = c.state === 'connected';
       for (const f of [server, group, password, name]) f.disabled = connected;
-      setVal(server, c.server ?? ''); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');
+      setVal(server, c.server || server.value || DEFAULT_SERVER); setVal(group, c.group ?? ''); setVal(name, st.self.name ?? '');
       setText(form.querySelector('.pwnote'), c.passwordSaved ? 'A password is saved. Leave empty to keep it.' : 'No password saved.');
       setText(connectBtn, connected ? 'Disconnect' : c.state === 'connecting' || c.state === 'reconnecting' ? 'Connecting…' : 'Connect');
       connectBtn.classList.toggle('primary', !connected);
@@ -570,15 +573,17 @@ export function settingsSheet(ctx) {
       options(micSel, st.devices.inputs, st.mic.device);
       options(outSel, st.devices.outputs, st.output.device);
       setVal(dimSel, String(s.soloDimDb));
-      // A22 (android.md 14): the Bluetooth mic row is only offered while a
-      // Bluetooth headset or car is connected.
-      const route = btRoute(st);
-      btMicField.hidden = !route;
-      if (route) {
+      // A22 (android.md 14): the Bluetooth mic row is offered while a Bluetooth
+      // headset or car is *connected* (bluetoothDevice) — that is what lets the
+      // user pick "Headset" at all. bluetoothRoute only reports the route that
+      // choice produced, so it can never gate this row.
+      const dev = btDevice(st);
+      btMicField.hidden = !dev;
+      if (dev) {
         setAttr(btMicPhone, 'aria-pressed', (s.bluetoothMic ?? 'phone') === 'phone');
         setAttr(btMicHeadset, 'aria-pressed', s.bluetoothMic === 'headset');
         setText(btMicNote, s.bluetoothMic === 'headset'
-          ? (route.stereo ? 'Hands-free, stereo.' : 'Hands-free, call quality. Both ears hear the same mix, so placement is off.')
+          ? (dev.le ? 'Hands-free, stereo.' : 'Hands-free, call quality. Both ears hear the same mix, so placement is off.')
           : 'Stereo, full quality. Talk toward the phone.');
       }
       pttField.hidden = !s.pttHotkey; setText(ptt, s.pttHotkey ?? '');

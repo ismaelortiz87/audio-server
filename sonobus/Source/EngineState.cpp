@@ -501,6 +501,19 @@ var EngineState::androidBluetoothRouteVar (const crosspoint::android::Signals& s
                   { "stereo", sig.btRouteStereo.load() } });
 }
 
+var EngineState::androidBluetoothDeviceVar (const crosspoint::android::Signals& sig)
+{
+    // android.md 14: the connected Bluetooth headset/car itself, independent of
+    // the "Bluetooth mic" setting — null when none is connected, else { name, le }
+    // with le true for LE Audio. This is what makes the Settings row available;
+    // androidBluetoothRouteVar above reports only the route the row picked, so it
+    // stays null until the setting is already "headset".
+    if (! sig.btDevice.load()) return var();
+    std::lock_guard<std::mutex> lock (sig.btDeviceNameLock);
+    return obj ({ { "name", String::fromUTF8 (sig.btDeviceName.c_str()) },
+                  { "le", sig.btDeviceLe.load() } });
+}
+
 var EngineState::androidPlatformVar (bool anyHearsYou)
 {
     // control-api 5.5 / android.md section 10. Other A-tasks add their own fields
@@ -516,7 +529,8 @@ var EngineState::androidPlatformVar (bool anyHearsYou)
                   { "backgroundRestricted", sig.backgroundRestricted.load() },
                   { "phoneCall", processor.isPhoneCall() },
                   { "micOffByCall", processor.isMicOffByCall() },
-                  { "bluetoothRoute", androidBluetoothRouteVar (sig) } });   // A22 (android.md 14)
+                  { "bluetoothRoute", androidBluetoothRouteVar (sig) },        // A22 (android.md 14)
+                  { "bluetoothDevice", androidBluetoothDeviceVar (sig) } });   // A22: connected device
 }
 #endif
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { clone } from '../src/lib/patch.js';
 import { Client } from '../src/api/client.js';
 import { MockEngine } from '../src/api/mock.js';
-import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, problemRows } from '../src/lib/platform.js';
+import { callBandText, callMicButton, blockedMicButton, micBlocked, btRoute, btDevice, problemRows } from '../src/lib/platform.js';
 import { allHearYouText } from '../src/lib/format.js';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -169,4 +169,21 @@ test('A22: btRoute reads platform.bluetoothRoute (null off Android / no device, 
   assert.equal(btRoute(le).stereo, true);
   // Android platform present but nothing connected.
   assert.equal(btRoute({ platform: { phoneCall: false } }), null);
+});
+
+test('A22: btDevice reads platform.bluetoothDevice — the connected headset/car, before any route exists', async () => {
+  // Off Android there is no platform object at all.
+  const off = boot('everyday');
+  await settle();
+  assert.equal(btDevice(off.st()), null);
+  // The case that used to be unreachable: a headset is connected while the
+  // setting is still "phone", so there is no route yet — but the Settings row
+  // has to be offered, which is what this field is for.
+  const st = { platform: { bluetoothDevice: { name: 'Galaxy Buds', le: false } } };
+  assert.deepEqual(btDevice(st), { name: 'Galaxy Buds', le: false });
+  assert.equal(btRoute(st), null, 'no route until the setting says headset');
+  // LE Audio: stereo and mic together.
+  assert.equal(btDevice({ platform: { bluetoothDevice: { name: 'Buds Pro', le: true } } }).le, true);
+  // Android platform present but nothing connected.
+  assert.equal(btDevice({ platform: { phoneCall: false } }), null);
 });
